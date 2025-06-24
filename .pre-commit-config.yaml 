@@ -1,0 +1,38 @@
+exclude: |
+  (?x)^(
+    .gitlab-ci.yml|
+    helm/.*|
+  )$
+# https://pre-commit.com/#regular-expressions
+
+repos:
+  # common hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: end-of-file-fixer # the file should ends with an empty line
+      - id: check-merge-conflict # you can't commit if there is a conflict
+      - id: trailing-whitespace # remove extra spaces at the end of lines
+      - id: check-case-conflict # asks to correct file names if the name is interpreted differently in different operating systems
+
+  # pep8 formatter
+  - repo: https://github.com/hhatto/autopep8
+    rev: v2.3.1
+    hooks:
+      - id: autopep8
+        args: [ "--max-line-length=120", "--in-place" ]
+
+  # configurable linter written in Rust that fixes some limitations of autopep8.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.1
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [ --config=pyproject.toml, --fix ]
+
+  # if PDM is used to manage venv/deps, those checks may be helpful
+  - repo: https://github.com/pdm-project/pdm
+    rev: 2.22.0
+    hooks:
+      - id: pdm-lock-check # check if pdm.lock is up-to-date with pyproject.toml (run "pdm lock" to update it) on commit
+      - id: pdm-sync # ensure current "working set" (venv) is up-to-date with pdm.lock on checkout
