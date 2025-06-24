@@ -1,1 +1,1 @@
-# stein-sense
+# Bayesian sensitivity analysis toolkit
