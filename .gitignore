@@ -1,3 +1,6 @@
 .idea
 .DS_Store
 .venv
+.pdm-python
+.python-version
+src/stein_sense.egg-info/
