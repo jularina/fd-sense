@@ -1,7 +1,7 @@
 from src.kernels.base import BaseKernel
 from src.discrepancies.ksd import KernelizedSteinDiscrepancy
 from src.bayesian_model.base import BayesianModel
-from utils.utils import ArrayLike
+from src.utils.typing import ArrayLike
 
 
 class PosteriorKSD:
@@ -22,16 +22,16 @@ class PosteriorKSD:
         self.samples = samples
         self.model = model
         self.kernel = kernel
-        self.ksd = KernelizedSteinDiscrepancy(samples, model.posterior_score, kernel)
+        self.ksd = KernelizedSteinDiscrepancy(model.posterior_score, self.kernel)
 
     def estimate_ksd(self) -> float:
-        return self.ksd.estimate()
+        return self.ksd.compute(self.samples)
 
     def prior_term(self) -> float:
-        return KernelizedSteinDiscrepancy(self.samples, self.model.prior_score, self.kernel).estimate()
+        return KernelizedSteinDiscrepancy(self.model.prior_score, self.kernel).compute(self.samples)
 
     def loss_term(self) -> float:
-        return KernelizedSteinDiscrepancy(self.samples, self.model.loss_score, self.kernel).estimate()
+        return KernelizedSteinDiscrepancy(self.model.loss_score, self.kernel).compute(self.samples)
 
     def cross_term(self) -> float:
         m = len(self.samples)

@@ -2,13 +2,14 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Union
 
-from utils.utils import ArrayLike
+from src.utils.typing import ArrayLike
 
 class BaseKernel(ABC):
-    def __init__(self, lengthscale: Union[float, np.ndarray] = 1.0, variance: float = 1.0, isotropic: bool = True):
+    def __init__(self, lengthscale: Union[float, np.ndarray] = 1.0, variance: float = 1.0, isotropic: bool = True, heuristic: bool = False,):
         self.lengthscale = lengthscale
         self.variance = variance
         self.isotropic = isotropic
+        self.heuristic = heuristic
 
     def _scale_distances(self, X1: np.ndarray, X2: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         if self.isotropic:

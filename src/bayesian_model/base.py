@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Callable
 
-from utils.utils import ArrayLike
+from src.utils.typing import ArrayLike
 
 class BayesianModel:
     def __init__(

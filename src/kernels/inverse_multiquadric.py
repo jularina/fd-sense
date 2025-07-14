@@ -1,17 +1,36 @@
 import numpy as np
+from typing import Union
 
 from src.kernels.base import BaseKernel
 
 
 class InverseMultiquadricKernel(BaseKernel):
-    def __init__(self, lengthscale=1.0, variance=1.0, isotropic=True, alpha=1.0):
-        super().__init__(lengthscale, variance, isotropic)
+    def __init__(self, lengthscale=1.0, variance=1.0, isotropic=True, alpha=1.0, heuristic=False, reference_data=None):
+        super().__init__(lengthscale, variance, isotropic, heuristic)
         self.alpha = alpha
+
+        if self.heuristic:
+            if reference_data is None:
+                raise ValueError("reference_data must be provided when heuristic=True")
+            self.lengthscale = self._median_heuristic(reference_data)
 
     def __call__(self, X1, X2):
         X1, X2 = np.asarray(X1), np.asarray(X2)
         sq_dist = self._squared_distance(X1, X2)
         return self.variance * (1 + sq_dist) ** -self.alpha
+
+    def _median_heuristic(self, X: np.ndarray) -> Union[float, np.ndarray]:
+        if self.isotropic:
+            # Scalar median heuristic
+            pairwise_sq_dists = self._squared_distance(X, X)
+            upper_tri = pairwise_sq_dists[np.triu_indices_from(pairwise_sq_dists, k=1)]
+            return np.sqrt(np.median(upper_tri))
+
+        else:
+            # Vector-valued lengthscales, one per dimension
+            diffs = X[:, np.newaxis, :] - X[np.newaxis, :, :]  # shape (n, n, d)
+            medians = np.median(np.abs(diffs), axis=(0, 1))  # shape (d,)
+            return medians + 1e-8  # avoid zero lengthscale
 
     def grad_x1(self, X1, X2):
         X1, X2 = np.asarray(X1), np.asarray(X2)
