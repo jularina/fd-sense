@@ -3,10 +3,8 @@ data:
     distribution:
     mu: 3
     sigma: 10
-  prior_parameters_box_range:
-    mu: [-5, 5]
-    sigma: [1, 7]
-  true_dgp_parameters:
+  true_dgp:
+    distribution:
     mu: 3
     sigma: 2
   observations_num: 100
@@ -22,12 +20,16 @@ ksd:
       variance:
       isotropic:
   optimize:
+    prior:
+      parameters_box_range:
+        mu: [ -5, 5 ]
+        sigma: [ 1, 7 ]
 
 flags:
   plots:
     generate_plots:
       heatmap:
-    save_plots:
+    save_plots: True
     output_dir:
 
 
