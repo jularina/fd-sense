@@ -1,0 +1,33 @@
+data:
+  base_prior:
+    distribution:
+    mu: 3
+    sigma: 10
+  prior_parameters_box_range:
+    mu: [-5, 5]
+    sigma: [1, 7]
+  true_dgp_parameters:
+    mu: 3
+    sigma: 2
+  observations_num: 100
+  posterior_samples_num: 1000
+
+
+ksd:
+  kernel:
+    type:
+    parameters:
+      heuristic:
+      lengthscale:
+      variance:
+      isotropic:
+  optimize:
+
+flags:
+  plots:
+    generate_plots:
+      heatmap:
+    save_plots:
+    output_dir:
+
+
