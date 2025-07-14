@@ -1,0 +1,24 @@
+font:
+  family: serif
+  size: 10            # Matches \normalsize in Overleaf (10pt for IEEE/Elsevier)
+  latex: true
+
+axes:
+  titlesize: 10
+  labelsize: 10
+
+xtick:
+  labelsize: 9
+
+ytick:
+  labelsize: 9
+
+legend:
+  fontsize: 9
+
+figure:
+  figsize: [3.5, 2.5]  # Inches, matching column width in Overleaf
+
+savefig:
+  dpi: 300
+  bbox: tight
