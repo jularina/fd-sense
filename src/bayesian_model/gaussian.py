@@ -9,7 +9,7 @@ from src.utils.typing import ArrayLike
 from utils.instantiation import get_class_from_path
 
 
-class SimpleGaussianModel:
+class SimpleGaussianModel(BayesianModel):
     """
     A simple Bayesian model for univariate Gaussian likelihood with Gaussian prior.
     Assumes data ~ Normal(mu, sigma_obs^2), and prior ~ Normal(mu0, sigma0^2).

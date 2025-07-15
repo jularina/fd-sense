@@ -1,24 +1,33 @@
-font:
-  family: serif
-  size: 10            # Matches \normalsize in Overleaf (10pt for IEEE/Elsevier)
-  latex: true
+plot:
+  font:
+    size: 10  # match Overleaf 10pt font
+    family: serif  # for LaTeX compatibility
+    use_tex: true  # render text with LaTeX
 
-axes:
-  titlesize: 10
-  labelsize: 10
+  figure:
+    size:
+      width: 4  # in inches
+      height: 3.2
+    dpi: 300
+    tight_layout: true
 
-xtick:
-  labelsize: 9
+  color_palette:
+    colors:
+      - "#5A051A"  # cherry
+      - "#EE1E52"  # pink
+      - "#FF6B90"  # light-pink
+      - "#1f77b4"  # blue
+      - "#5b9bd5"  # lighter blue
 
-ytick:
-  labelsize: 9
+  seaborn:
+    style: "whitegrid"
+    context: "paper"
 
-legend:
-  fontsize: 9
+  param_latex_names:
+    mu: "$\\mu$"
+    sigma: "$\\sigma$"
+    alpha: "$\\alpha$"
+    beta: "$\\beta$"
 
-figure:
-  figsize: [3.5, 2.5]  # Inches, matching column width in Overleaf
-
-savefig:
-  dpi: 300
-  bbox: tight
+  y_axis:
+    log_scale: false

@@ -13,32 +13,31 @@ data:
     sigma: 2
   observations_num: 100
   posterior_samples_num: 1000
-
 model:
   _target_: src.bayesian_model.gaussian.SimpleGaussianModel
-
 ksd:
   kernel:
     _target_: src.kernels.inverse_multiquadric.InverseMultiquadricKernel
     lengthscale: 1
     variance: 1
-    isotropic: True
-    heuristic: True
+    isotropic: true
+    heuristic: true
   optimize:
     prior:
       parameters_box_range:
         ranges:
-          mu: [ -2, 5 ]
-          sigma: [ 1, 8 ]
+          mu:
+          - -2
+          - 5
+          sigma:
+          - 1
+          - 8
         nums:
           mu: 8
           sigma: 8
-
 flags:
   plots:
     generate_plots:
-      heatmap: True
-      line_plot: True
+      heatmap: true
+      line_plot: true
     output_dir: outputs/plots
-
-
