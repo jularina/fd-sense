@@ -4,3 +4,4 @@
 .pdm-python
 .python-version
 src/stein_sense.egg-info/
+outputs/

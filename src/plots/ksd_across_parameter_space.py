@@ -152,12 +152,12 @@ def plot_ksd_line_plots(
                     dpi=plot_cfg.plot.figure.dpi,
                 )
 
-                ax.plot(x_vals, y_vals, marker='o', color=plot_cfg.plot.color_palette.colors[0])
+                ax.plot(x_vals, y_vals, marker='.', color=plot_cfg.plot.color_palette.colors[0])
 
                 ax.set_xlabel(varying_param_latex)
                 ylabel = "log KSD" if plot_cfg.plot.y_axis.log_scale else "KSD"
                 ax.set_ylabel(ylabel)
-                ax.set_title(f"KSD vs {varying_param_latex} (fixed {fixed_param_latex} = {fixed_val:.1f})")
+                ax.set_title(f"KSD vs {varying_param_latex} ({fixed_param_latex} = {fixed_val:.1f})")
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
 
@@ -246,7 +246,7 @@ def plot_ksd_multi_line_plots(
 
             ax.plot(
                 x, y,
-                marker='o',
+                marker='.',
                 label=f"{fixed_param_latex} = {fixed_val:.2f}",
                 color=shaded_rgb,
             )
@@ -254,10 +254,10 @@ def plot_ksd_multi_line_plots(
         ax.set_xlabel(varying_param_latex)
         ylabel = "log KSD" if plot_cfg.plot.y_axis.log_scale else "KSD"
         ax.set_ylabel(ylabel)
-        ax.set_title(f"KSD vs {varying_param_latex} (multiple {fixed_param_latex})")
+        ax.set_title(f"KSD vs {varying_param_latex}")
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.legend()
+        ax.legend(loc='upper right')
 
         if plot_cfg.plot.y_axis.log_scale:
             ax.set_yscale("log")
