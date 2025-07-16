@@ -51,6 +51,7 @@ class SimpleGaussianModel(BayesianModel):
         # Closed-form posterior variance and mean
         sigma_n_squared = 1 / (self.observations_num / sigma_obs ** 2 + 1 / sigma0 ** 2)
         mu_n = sigma_n_squared * (self.observations_num * x_bar / sigma_obs ** 2 + mu0 / sigma0 ** 2)
+        self.mu_n = mu_n
         sigma_n = np.sqrt(sigma_n_squared)
 
         return np.random.normal(loc=mu_n, scale=sigma_n, size=n_samples).reshape(n_samples, -1)

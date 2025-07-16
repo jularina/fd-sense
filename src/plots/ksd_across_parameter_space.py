@@ -190,6 +190,9 @@ def plot_ksd_multi_line_plots(
         "font.size": plot_cfg.plot.font.size,
         "font.family": plot_cfg.plot.font.family,
         "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"""
+            \usepackage{amsmath}
+        """,
     })
 
     param_values = np.array(list(ksd_results.keys()))
@@ -221,9 +224,11 @@ def plot_ksd_multi_line_plots(
         avg_ksd_per_line = np.array(avg_ksd_per_line)
 
         # Normalize inverse brightness: low KSD = high brightness
-        norm = (avg_ksd_per_line - np.min(avg_ksd_per_line)) / (
-                    np.max(avg_ksd_per_line) - np.min(avg_ksd_per_line) + 1e-12)
-        brightness_vals = 0.3 + 0.7 * (1 - norm)  # range [0.3, 1.0]
+        # norm = (avg_ksd_per_line - np.min(avg_ksd_per_line)) / (
+        #             np.max(avg_ksd_per_line) - np.min(avg_ksd_per_line) + 1e-12)
+        # brightness_vals = 0.3 + 0.7 * (1-norm)  # range [0.3, 1.0]
+        num_lines = len(fixed_vals)
+        brightness_vals = np.linspace(0.2, 0.9, num_lines)
 
         fig, ax = plt.subplots(
             figsize=(
@@ -247,14 +252,17 @@ def plot_ksd_multi_line_plots(
             ax.plot(
                 x, y,
                 marker='.',
-                label=f"{fixed_param_latex} = {fixed_val:.2f}",
+                label=f"{fixed_param_latex} = {fixed_val:.0f}",
                 color=shaded_rgb,
             )
 
         ax.set_xlabel(varying_param_latex)
-        ylabel = "log KSD" if plot_cfg.plot.y_axis.log_scale else "KSD"
+        ksd_latex = latex_param_names.get("estimatedKSDposteriors", "KSD")
+        ylabel = f"log {ksd_latex}" if plot_cfg.plot.y_axis.log_scale else ksd_latex
         ax.set_ylabel(ylabel)
-        ax.set_title(f"KSD vs {varying_param_latex}")
+        # title = f"{ksd_latex} vs {varying_param_latex}"
+        # ax.set_title(title)
+
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.legend(loc='upper right')
@@ -275,3 +283,273 @@ def plot_ksd_multi_line_plots(
 
     # Plot 2: Vary param2, lines for each fixed param1
     make_multi_line_plot(fixed_idx=0, varying_idx=1, filename_prefix="ksd_multiline")
+
+
+def plot_ksd_multi_line_plots_with_minima(
+    ksd_results: Dict[Tuple[float, ...], float],
+    param_names: List[str],
+    plot_cfg: DictConfig,
+    output_dir: str,
+) -> None:
+    import matplotlib.pyplot as plt
+    import os
+
+    from matplotlib.colors import to_rgb
+    import colorsys
+    import numpy as np
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    latex_param_names = plot_cfg.plot.param_latex_names
+    colors = plot_cfg.plot.color_palette.colors
+
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "figure.dpi": plot_cfg.plot.figure.dpi,
+    })
+
+    param_values = np.array(list(ksd_results.keys()))
+    ksd_values = np.array(list(ksd_results.values()))
+
+    if len(param_names) != 2:
+        raise ValueError("This function currently supports exactly two parameters.")
+
+    fixed_idx, varying_idx = 0, 1  # Fixed = observations_num, Varying = mu_0
+    fixed_param_name = param_names[fixed_idx]
+    varying_param_name = param_names[varying_idx]
+    fixed_param_latex = latex_param_names.get(fixed_param_name, fixed_param_name)
+    varying_param_latex = latex_param_names.get(varying_param_name, varying_param_name)
+
+    fixed_vals = np.unique(param_values[:, fixed_idx])
+    num_colors = len(colors)
+
+    fig, ax = plt.subplots(
+        figsize=(
+            plot_cfg.plot.figure.size.width,
+            plot_cfg.plot.figure.size.height,
+        ),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    for i, fixed_val in enumerate(fixed_vals):
+        mask = param_values[:, fixed_idx] == fixed_val
+        x = param_values[mask, varying_idx]
+        y = ksd_values[mask]
+        sorted_idx = np.argsort(x)
+        x = x[sorted_idx]
+        y = y[sorted_idx]
+
+        color = colors[i % num_colors]
+        ax.plot(
+            x, y,
+            marker='.',
+            label=f"{fixed_param_latex} = {int(fixed_val)}",
+            color=color,
+        )
+
+        # Highlight minimum
+        min_idx = np.argmin(y)
+        ax.plot(
+            x[min_idx],
+            y[min_idx],
+            marker='*',
+            markersize=8,
+            color=color,
+            label=None,
+        )
+
+    ylabel = latex_param_names.get("estimatedKSDposteriors", "KSD")
+    if plot_cfg.plot.y_axis.log_scale:
+        ax.set_yscale("log")
+        ylabel = f"log {ylabel}"
+
+    ax.set_xlabel(varying_param_latex)
+    ax.set_ylabel(ylabel)
+    ax.legend(loc='best')
+
+    if plot_cfg.plot.figure.tight_layout:
+        plt.tight_layout()
+
+    save_path = os.path.join(output_dir, f"ksd_multiline_minima_{varying_param_name}_vs_{fixed_param_name}.pdf")
+    fig.savefig(save_path, format="pdf")
+    plt.close(fig)
+    print(f"Saved KSD multiline plot with minima to: {save_path}")
+
+
+def plot_ksd_multi_line_plots_with_error_bands(
+    ksd_results: Dict[Tuple[float, ...], List[float]],  # Updated to store lists of KSDs
+    param_names: List[str],
+    plot_cfg: DictConfig,
+    output_dir: str,
+) -> None:
+    import matplotlib.pyplot as plt
+    import os
+    import numpy as np
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    latex_param_names = plot_cfg.plot.param_latex_names
+    colors = plot_cfg.plot.color_palette.colors
+
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "figure.dpi": plot_cfg.plot.figure.dpi,
+    })
+
+    param_values = np.array(list(ksd_results.keys()))
+    ksd_values = np.array(list(ksd_results.values()))
+
+    if len(param_names) != 2:
+        raise ValueError("This function currently supports exactly two parameters.")
+
+    fixed_idx, varying_idx = 0, 1  # Fixed = observations_num, Varying = mu_0
+    fixed_param_name = param_names[fixed_idx]
+    varying_param_name = param_names[varying_idx]
+    fixed_param_latex = latex_param_names.get(fixed_param_name, fixed_param_name)
+    varying_param_latex = latex_param_names.get(varying_param_name, varying_param_name)
+
+    fixed_vals = np.unique(param_values[:, fixed_idx])
+    num_colors = len(colors)
+
+    fig, ax = plt.subplots(
+        figsize=(
+            plot_cfg.plot.figure.size.width,
+            plot_cfg.plot.figure.size.height,
+        ),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    for i, fixed_val in enumerate(fixed_vals):
+        mask = param_values[:, fixed_idx] == fixed_val
+        x = param_values[mask, varying_idx]
+        y_lists = ksd_values[mask]
+
+        # Compute the median and ±3 std deviation for each varying parameter value
+        medians = [np.median(y_list) for y_list in y_lists]
+        lower_bounds = [np.median(y_list) - 3 * np.std(y_list) for y_list in y_lists]
+        upper_bounds = [np.median(y_list) + 3 * np.std(y_list) for y_list in y_lists]
+
+        sorted_idx = np.argsort(x)
+        x = x[sorted_idx]
+        medians = np.array(medians)[sorted_idx]
+        lower_bounds = np.array(lower_bounds)[sorted_idx]
+        upper_bounds = np.array(upper_bounds)[sorted_idx]
+
+        color = colors[i % num_colors]
+        ax.plot(
+            x, medians,
+            marker='.',
+            label=f"{fixed_param_latex} = {int(fixed_val)}",
+            color=color,
+        )
+
+        # Fill the shaded region for ±3 std deviations
+        ax.fill_between(x, lower_bounds, upper_bounds, color=color, alpha=0.3)
+
+        # Highlight minimum of the median curve
+        min_idx = np.argmin(medians)
+        ax.plot(
+            x[min_idx],
+            medians[min_idx],
+            marker='*',
+            markersize=8,
+            color=color,
+            label=None,
+        )
+
+    ylabel = latex_param_names.get("estimatedKSDposteriors", "KSD")
+    if plot_cfg.plot.y_axis.log_scale:
+        ax.set_yscale("log")
+        ylabel = f"log {ylabel}"
+
+    ax.set_xlabel(varying_param_latex)
+    ax.set_ylabel(ylabel)
+    ax.legend(loc="best")
+
+    if plot_cfg.plot.figure.tight_layout:
+        plt.tight_layout()
+
+    save_path = os.path.join(output_dir, f"ksd_multiline_error_bands_{varying_param_name}_vs_{fixed_param_name}.pdf")
+    fig.savefig(save_path, format="pdf")
+    plt.close(fig)
+    print(f"Saved KSD multiline plot with error bands to: {save_path}")
+
+
+def plot_distribution_of_optimal_mu0(
+    ksd_results: Dict[Tuple[float, float], List[float]],
+    param_names: List[str],
+    plot_cfg: DictConfig,
+    output_dir: str,
+) -> None:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import os
+    import numpy as np
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    latex_param_names = plot_cfg.plot.param_latex_names
+    colors = plot_cfg.plot.color_palette.colors
+
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "figure.dpi": plot_cfg.plot.figure.dpi,
+    })
+
+    # Group KSDs by obs_num
+    obs_to_mu0_ksd = {}
+    for (obs_num, mu_0), ksd_list in ksd_results.items():
+        if obs_num not in obs_to_mu0_ksd:
+            obs_to_mu0_ksd[obs_num] = {}
+        obs_to_mu0_ksd[obs_num][mu_0] = ksd_list
+
+    fig, axes = plt.subplots(
+        nrows=1,
+        ncols=len(obs_to_mu0_ksd),
+        figsize=(6 * len(obs_to_mu0_ksd), 4),
+        sharey=True,
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    if len(obs_to_mu0_ksd) == 1:
+        axes = [axes]
+
+    for idx, (obs_num, mu0_ksds) in enumerate(sorted(obs_to_mu0_ksd.items())):
+        # Number of repeats (assumes equal per mu_0)
+        num_repeats = len(next(iter(mu0_ksds.values())))
+
+        # For each repeat, find the mu_0 with minimal KSD
+        optimal_mu0s = []
+        for rep in range(num_repeats):
+            min_ksd = float("inf")
+            best_mu0 = None
+            for mu_0, ksd_list in mu0_ksds.items():
+                ksd = ksd_list[rep]
+                if ksd < min_ksd:
+                    min_ksd = ksd
+                    best_mu0 = mu_0
+            optimal_mu0s.append(best_mu0)
+
+        # Plot distribution
+        ax = axes[idx]
+        color = colors[idx % len(colors)]
+        sns.histplot(optimal_mu0s, bins=20, kde=True, ax=ax, color=color)
+
+        ax.set_title(f"{latex_param_names.get('observations_num', 'obs_num')} = {int(obs_num)}")
+        ax.set_xlabel(latex_param_names.get("mu_0", "mu_0"))
+        ax.set_ylabel("Count" if idx == 0 else "")
+        ax.grid(True)
+
+    if plot_cfg.plot.figure.tight_layout:
+        plt.tight_layout()
+
+    save_path = os.path.join(output_dir, "optimal_mu0_distribution_across_repeats.pdf")
+    fig.savefig(save_path, format="pdf")
+    plt.close(fig)
+    print(f"Saved distribution plot of optimal mu_0s to: {save_path}")

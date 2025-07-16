@@ -1,6 +1,6 @@
 plot:
   font:
-    size: 10  # match Overleaf 10pt font
+    size: 32  # match Overleaf 10pt font
     family: serif  # for LaTeX compatibility
     use_tex: true  # render text with LaTeX
 
@@ -26,8 +26,14 @@ plot:
   param_latex_names:
     mu: "$\\mu$"
     sigma: "$\\sigma$"
+    mu_0: "$\\mu_0$"
+    sigma_0: "$\\sigma_0$"
     alpha: "$\\alpha$"
     beta: "$\\beta$"
+    estimatedKSD: "$\\widehat{\\mathrm{KSD}}^2$"
+    estimatedposterior: "$\\tilde{\\Pi}^m_\\text{ref}$"
+    candidateposterior: "$\\tilde{\\Pi}$"
+    estimatedKSDposteriors: "$\\widehat{\\mathrm{KSD}}^2(\\tilde{\\Pi}^m_\\text{ref}, \\tilde{\\Pi})$"
 
   y_axis:
     log_scale: false

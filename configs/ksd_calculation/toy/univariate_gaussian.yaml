@@ -11,7 +11,7 @@ data:
     _target_: src.distributions.gaussian.Gaussian
     mu: 3
     sigma: 2
-  observations_num: 50
+  observations_num: 100
   posterior_samples_num: 1000
 
 model:
@@ -29,10 +29,10 @@ ksd:
       parameters_box_range:
         ranges:
           mu: [ -10, 10 ]
-          sigma: [ 2, 10 ]
+          sigma: [ 2, 8 ]
         nums:
           mu: 21
-          sigma: 9
+          sigma: 7
 
 flags:
   plots:
