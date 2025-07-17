@@ -1,3 +1,5 @@
+from statistics import median
+
 import numpy as np
 import hydra
 from hydra.utils import instantiate, get_original_cwd
@@ -70,8 +72,7 @@ def run(cfg) -> None:
     posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
 
     # Instantiate the kernel
-    observations = np.array(model.observations).reshape(-1, 1)
-    kernel = instantiate(cfg.ksd.kernel, reference_data=observations)
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
 
     # Compute initial KSD
     ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
@@ -84,9 +85,10 @@ def run(cfg) -> None:
 
 @hydra.main(config_path="../configs/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_ksd_across_observations(cfg):
-    obs_nums = [10, 100, 1000]
-    mu_vals = np.round(np.linspace(-10, 10, 21), 2)
-    fixed_sigma = 4.0
+    # obs_nums = [25, 50, 100, 200, 400, 800]
+    obs_nums = [25, 50]
+    mu_vals = np.round(np.linspace(-5, 10, 16), 2)
+    fixed_sigma = 2.0
     repeats = 500  # number of repeated runs per setting
 
     ksd_results = {}  # will store list of KSDs for each (obs_num, mu_0)
@@ -97,8 +99,10 @@ def run_ksd_across_observations(cfg):
 
         for mu_0 in mu_vals:
             ksd_list = []
+            mu_ns = []
             for _ in range(repeats):
                 posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+                mu_ns.append(model.mu_n)
                 observations = np.array(model.observations).reshape(-1, 1)
                 kernel = instantiate(cfg.ksd.kernel, reference_data=observations)
 
@@ -110,7 +114,7 @@ def run_ksd_across_observations(cfg):
             ksd_results[(obs_num, mu_0)] = ksd_list
             median_ksd = np.median(ksd_list)
             std_ksd = np.std(ksd_list)
-            print(f"obs_num={obs_num}, mu_0={mu_0}, mu_n={model.mu_n}, Median KSD={median_ksd:.4f}, ±3*STD={3 * std_ksd:.4f}")
+            print(f"obs_num={obs_num}, mu_0={mu_0}, mu_n={median(mu_ns)}, Median KSD={median_ksd:.4f}, ±3*STD={3 * std_ksd:.4f}")
 
     if cfg.flags.plots.generate_plots.line_plot:
         plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
@@ -130,13 +134,13 @@ def run_ksd_across_observations(cfg):
 
         plot_ksd_multi_line_plots_with_error_bands(
             ksd_results=ksd_results,
-            param_names=["obs.#", "mu_0"],
+            param_names=["obs. num.", "mu_0"],
             plot_cfg=plot_cfg,
             output_dir=output_dir,
         )
         plot_distribution_of_optimal_mu0(
             ksd_results=ksd_results,
-            param_names=["obs.#", "mu_0"],
+            param_names=["obs. num.", "mu_0"],
             plot_cfg=plot_cfg,
             output_dir=output_dir,
         )
@@ -144,4 +148,4 @@ def run_ksd_across_observations(cfg):
 
 if __name__ == "__main__":
     run()
-    run_ksd_across_observations()
+    # run_ksd_across_observations()
