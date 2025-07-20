@@ -36,10 +36,10 @@ class KernelizedSteinDiscrepancy:
         m, d = samples.shape
         scores = self.score_fn(samples)  # (m, d)
 
-        K = self.kernel(samples, samples)                    # (m, m)
-        grad1 = self.kernel.grad_x1(samples, samples)        # (m, m, d)
-        grad2 = self.kernel.grad_x2(samples, samples)        # (m, m, d)
-        hess = self.kernel.hess_xy(samples, samples)         # (m, m)
+        K = self.kernel.value          # (m, m)
+        grad1 = self.kernel.grad_x1        # (m, m, d)
+        grad2 = self.kernel.grad_x2        # (m, m, d)
+        hess = self.kernel.hess_xy         # (m, m)
 
         term1 = np.einsum('ik,jk,ij->ij', scores, scores, K)
         term2 = np.einsum('ik,ijk->ij', scores, grad2)

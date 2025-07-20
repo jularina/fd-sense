@@ -20,6 +20,9 @@ class SimpleGaussianModel(BayesianModel):
         self.true_dgp = data_config.true_dgp
         self.observations_num = data_config.observations_num
         self.observations = self.true_dgp.sample(self.observations_num)
+        # self.observations = np.full((self.observations_num, 1), 3.0)
+        self.x_bar = np.mean(self.observations)
+        self.loss_lr = data_config.loss_lr
 
         # Prior config
         self.prior = data_config.base_prior
@@ -42,19 +45,14 @@ class SimpleGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Posterior samples of the latent mean parameter.
         """
-        mu0 = self.prior.mu
-        sigma0 = self.prior.sigma
-
-        sigma_obs = self.loss.sigma
-        x_bar = np.mean(self.observations)
-
         # Closed-form posterior variance and mean
-        sigma_n_squared = 1 / (self.observations_num / sigma_obs ** 2 + 1 / sigma0 ** 2)
-        mu_n = sigma_n_squared * (self.observations_num * x_bar / sigma_obs ** 2 + mu0 / sigma0 ** 2)
+        sigma_n_squared = 1 / (self.observations_num / self.loss.var + 1 / self.prior.var)
+        mu_n = sigma_n_squared * (self.observations_num * self.x_bar / self.loss.var + self.prior.mu / self.prior.var)
         self.mu_n = mu_n
         sigma_n = np.sqrt(sigma_n_squared)
 
         return np.random.normal(loc=mu_n, scale=sigma_n, size=n_samples).reshape(n_samples, -1)
+        # return np.full((n_samples, 1), 3.0)
 
     def prior_score(self, x: ArrayLike) -> np.ndarray:
         """Score function of the prior.
@@ -68,15 +66,18 @@ class SimpleGaussianModel(BayesianModel):
         return self.prior.grad_log_pdf(x)
 
     def loss_score(self, x: ArrayLike) -> np.ndarray:
-        """Score function of the likelihood.
+        """
+        Score function of the likelihood, treating x as the latent variable (mean of Gaussian).
+        Evaluates the gradient of log-likelihood for observed data.
 
         Args:
-            x (ArrayLike): Points at which to evaluate the score.
+            x (ArrayLike): Latent variable values (e.g., mean) to evaluate the score at.
+                           Should be shape (n_samples, 1)
 
         Returns:
-            np.ndarray: Score values.
+            np.ndarray: Score values with shape (n_samples, 1)
         """
-        return self.loss.grad_log_pdf(x)
+        return self.loss_lr * self.observations_num * (self.x_bar-x) / self.loss.var  # Shape (n_samples, 1)
 
     def posterior_score(self, x: ArrayLike) -> np.ndarray:
         """Score function of the posterior (prior + likelihood).
@@ -87,4 +88,6 @@ class SimpleGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Score values.
         """
+        ps = self.prior_score(x)
+        ls = self.loss_score(x)
         return self.prior_score(x) + self.loss_score(x)

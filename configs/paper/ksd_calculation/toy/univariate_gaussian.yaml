@@ -1,8 +1,8 @@
 data:
   base_prior:
     _target_: src.distributions.gaussian.Gaussian
-    mu: 0
-    sigma: 4
+    mu: 2
+    sigma: 3
   true_dgp:
     _target_: src.distributions.gaussian.Gaussian
     mu: 3
@@ -11,8 +11,9 @@ data:
     _target_: src.distributions.gaussian.Gaussian
     mu: 3
     sigma: 2
-  observations_num: 100
-  posterior_samples_num: 1000
+  loss_lr: 1
+  observations_num: 500
+  posterior_samples_num: 5000
 
 model:
   _target_: src.bayesian_model.gaussian.SimpleGaussianModel
@@ -20,25 +21,26 @@ model:
 ksd:
   kernel:
     _target_: src.kernels.inverse_multiquadric.InverseMultiquadricKernel
-    lengthscale: 1
-    variance: 1
+    lengthscale: 1.0
+    alpha: 0.5
     isotropic: True
-    heuristic: True
+    heuristic: False
   optimize:
     prior:
       parameters_box_range:
         ranges:
-          mu: [ -10, 10 ]
-          sigma: [ 2, 8 ]
+          mu: [ -10, 10]
+          sigma: [2, 5]
         nums:
           mu: 21
-          sigma: 7
+          sigma: 4
 
 flags:
   plots:
     generate_plots:
       heatmap: True
       line_plot: True
-    output_dir: outputs/plots
+      density_plot: True
+    output_dir: outputs/paper/plots
 
 
