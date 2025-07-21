@@ -85,6 +85,14 @@ class SimpleGaussianModel(BayesianModel):
         """
         return self.prior_score(x) + self.loss_score(x)
 
+    def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
+        # Returns ∇ J_T(θ), shape (m, d, p)
+        return self.prior.grad_sufficient_statistics(x)
+
+    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
+        # Returns ∇ log h(θ), shape (m, d)
+        return self.prior.grad_log_base_measure(x)
+
 
 class MultivariateGaussianModel(BayesianModel):
     """
@@ -129,11 +137,8 @@ class MultivariateGaussianModel(BayesianModel):
 
         # Likelihood variance (observation noise covariance)
         Sigma_obs = self.loss.cov  # shape (dim, dim)
-
-        # Posterior covariance: inv(Sigma_n) = n * inv(Sigma_obs) + inv(Sigma0)
         Sigma_obs_inv = np.linalg.inv(Sigma_obs)
         Sigma0_inv = np.linalg.inv(Sigma0)
-
         Sigma_n_inv = self.observations_num * Sigma_obs_inv + Sigma0_inv
         Sigma_n = np.linalg.inv(Sigma_n_inv)
 
@@ -181,3 +186,11 @@ class MultivariateGaussianModel(BayesianModel):
             np.ndarray: Score values, shape (n_samples, dim).
         """
         return self.prior_score(x) + self.loss_score(x)
+
+    def jacobian_sufficient_statistics(self, theta: np.ndarray) -> np.ndarray:
+        # Returns J_T(θ), shape (m, d, p)
+        pass
+
+    def grad_log_base_measure(self, theta: np.ndarray) -> np.ndarray:
+        # Returns ∇ log h(θ), shape (m, d)
+        pass

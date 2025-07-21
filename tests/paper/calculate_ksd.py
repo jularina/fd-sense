@@ -11,11 +11,13 @@ import copy
 from src.discrepancies.posterior_ksd import PosteriorKSD
 from src.plots.paper.paper_funcs import (plot_ksd_heatmaps, plot_ksd_line_plots, plot_ksd_multi_line_plots,
                                          plot_ksd_multi_line_plots_with_error_bands, plot_distribution_of_optimal_mu0,
-                                         plot_gaussian_prior_densities_by_ksd, plot_prior_densities_by_ksd)
+                                         plot_gaussian_prior_densities_by_ksd, plot_prior_densities_by_ksd,
+                                         plot_multivariate_priors_densities_by_ksd)
 from src.bayesian_model.base import BayesianModel
 from src.kernels.base import BaseKernel
+from src.distributions.gaussian import MultivariateGaussian
 from src.utils.files_operations import load_plot_config
-from src.utils.typing import DISTRIBUTION_MAP
+from src.utils.distributions import DISTRIBUTION_MAP
 
 
 def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
@@ -139,6 +141,52 @@ def density_plot_across_prior_parameter_sets(cfg, model: BayesianModel, posterio
             cfg=cfg,
             plot_cfg=plot_cfg,
             output_dir=output_dir,
+        )
+
+def density_plot_across_multivariate_prior_parameter_sets(
+    cfg,
+    model,
+    posterior_samples,
+    kernel,
+):
+    # Define priors to test
+    param_values_dict = {
+        "MultivariateGaussian": [
+            {"mu": np.array([0.0, 0.0]), "cov": np.eye(2)},
+            {"mu": np.array([2.0, 3.0]), "cov": 0.5 * np.eye(2)},
+            {"mu": np.array([-2.0, 1.0]), "cov": np.array([[1.0, 0.5], [0.5, 1.5]])},
+        ]
+    }
+
+    all_ksd_results = {}
+    dist_name = "MultivariateGaussian"
+    distribution_cls = MultivariateGaussian
+    param_values = param_values_dict[dist_name]
+    dist_ksd_results = {}
+    all_dists = {}
+
+    for param_dict in param_values:
+        model.set_prior_parameters(param_dict, distribution_cls=distribution_cls)
+        ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+        ksd = ksd_estimator.estimate_ksd()
+
+        key = (tuple(param_dict["mu"].flatten()), tuple(param_dict["cov"].flatten()))
+        dist_ksd_results[key] = ksd
+        all_dists[key] = param_dict
+
+        print(f"[INFO] Prior: {param_dict}, KSD: {ksd:.4f}")
+
+    if cfg.flags.plots.generate_plots.density_plot:
+        plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+        output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+        plot_cfg = load_plot_config(plot_config_path)
+        plot_multivariate_priors_densities_by_ksd(
+            all_params=all_dists,
+            all_ksds=dist_ksd_results,
+            output_dir=output_dir,
+            plot_cfg=plot_cfg,
+            true_theta=cfg.data.base_prior.mu,
+            true_cov = cfg.data.base_prior.cov
         )
 
 
@@ -300,6 +348,9 @@ def run_gaussian_priors(cfg) -> None:
     ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
+    # Quadratic form parameters
+    Lambda_m, b_m, C = ksd_estimator.compute_ksd_quadratic_form()
+
     # Perform grid search over parameters box ranges if defined
     if cfg.ksd.optimize:
         plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples, kernel)
@@ -327,7 +378,6 @@ def run_gaussian_log_normal_priors(cfg) -> None:
     ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
-    # Perform grid search over parameters box ranges if defined
     if cfg.ksd.optimize:
         density_plot_across_prior_parameter_sets(cfg, model, posterior_samples, kernel)
 
@@ -353,8 +403,11 @@ def run_multivariate_gaussian_priors(cfg) -> None:
     ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
+    if cfg.ksd.optimize:
+        density_plot_across_multivariate_prior_parameter_sets(cfg, model, posterior_samples, kernel)
+
 
 if __name__ == "__main__":
-    # run_gaussian_priors()
+    run_gaussian_priors()
     # run_gaussian_log_normal_priors()
-    run_multivariate_gaussian_priors()
+    # run_multivariate_gaussian_priors()

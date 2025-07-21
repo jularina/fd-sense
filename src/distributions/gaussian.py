@@ -3,6 +3,8 @@ from numpy.linalg import inv, det
 from typing import Union
 from .base import BaseDistribution
 
+from src.utils.typing import ArrayLike
+
 
 class Gaussian(BaseDistribution):
     """
@@ -40,6 +42,41 @@ class Gaussian(BaseDistribution):
     def grad_pdf(self, x: Union[float, np.ndarray]) -> np.ndarray:
         return self.grad_log_pdf(x) * self.pdf(x)
 
+    def sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
+        """
+        T(x): Sufficient statistics for the Gaussian.
+        For univariate Gaussian: T(x) = [x, x^2]
+        Returns shape (..., 2)
+        """
+        x = np.asarray(x)
+        return np.stack([x[..., 0], x[..., 0] ** 2], axis=-1)
+
+    def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
+        """
+        ∇T(x): Jacobian of sufficient statistics.
+        For univariate Gaussian: [1, 2x]
+        Returns shape (..., 1, 2)
+        """
+        x = np.asarray(x)
+        grad_T1 = np.ones_like(x[..., 0])
+        grad_T2 = 2 * x[..., 0]
+        grad = np.stack([grad_T1, grad_T2], axis=-1)
+        return grad[..., None, :]  # shape (..., 1, 2)
+
+    def base_measure(self, x: np.ndarray) -> np.ndarray:
+        """
+        h(x): Base measure of the Gaussian distribution.
+        For standard Gaussian in exponential form, h(x) = 1.
+        """
+        return np.ones_like(x[..., 0])
+
+    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
+        """
+        ∇ log h(x): Gradient of log base measure.
+        For Gaussian, log h(x) = 0 → ∇ log h(x) = 0
+        """
+        return np.zeros_like(x)  # shape (..., 1)
+
 
 class MultivariateGaussian(BaseDistribution):
     """
@@ -47,15 +84,17 @@ class MultivariateGaussian(BaseDistribution):
 
     Parameters
     ----------
-    mu : np.ndarray
+    mu : list[float]
         Mean vector.
-    cov : np.ndarray
+    cov : list[list[float]]
         Covariance matrix.
     """
 
-    def __init__(self, mu: np.ndarray, cov: np.ndarray):
+    def __init__(self, mu: ArrayLike, cov: ArrayLike):
+        self.mu = np.asarray(mu)
+        self.cov = np.asarray(cov)
         self.dim = self.mu.shape[0]
-        assert self.cov.shape == (self.dim, self.dim), "Covariance shape mismatch."
+        # assert self.cov.shape == (self.dim, self.dim), "Covariance shape mismatch."
 
         self.cov_inv = inv(self.cov)
         self._norm_const = 1.0 / np.sqrt((2 * np.pi) ** self.dim * det(self.cov))
@@ -78,7 +117,7 @@ class MultivariateGaussian(BaseDistribution):
     def grad_log_pdf(self, x: Union[np.ndarray, list]) -> np.ndarray:
         x = np.atleast_2d(x)
         dx = x - self.mu
-        return -np.einsum("ij,...j->...i", self.cov_inv, dx)
+        return - np.einsum("ij,...j->...i", self.cov_inv, dx)
 
     def grad_pdf(self, x: Union[np.ndarray, list]) -> np.ndarray:
         return self.grad_log_pdf(x) * self.pdf(x)[..., np.newaxis]

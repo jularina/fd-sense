@@ -13,14 +13,14 @@ plot:
 
   color_palette:
     colors:
-      - "#5A051A"  # cherry
+#      - "#5A051A"  # cherry
       - "#6E3D6F"
-#      - "#D20A2E"  # red
-      - "#EE1E52"  # pink
+      - "#D20A2E"  # red
+#      - "#EE1E52"  # pink
 #      - "#FF6B90"  # light-pink
       - "#F2BDCD"  # light-light-pink
-      - "#5b9bd5"  # lighter blue
-      - "#1f77b4"  # blue
+#      - "#5b9bd5"  # lighter blue
+#      - "#1f77b4"  # blue
 
   seaborn:
     style: "whitegrid"

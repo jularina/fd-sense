@@ -439,12 +439,6 @@ def plot_prior_densities_by_ksd(
     Plots all prior densities (from different distributions) in one figure,
     using 4 discrete color bins based on KSD quantiles and a colorbar legend.
     """
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import ListedColormap, BoundaryNorm, to_rgb
-    import matplotlib.cm as cmx
-
     os.makedirs(output_dir, exist_ok=True)
 
     # Setup figure
@@ -668,81 +662,6 @@ def plot_ksd_multi_line_plots_with_error_bands(
     print(f"Saved KSD multiline plot with error bands to: {save_path}")
 
 
-# def plot_distribution_of_optimal_mu0(
-#     ksd_results: Dict[Tuple[float, float], List[float]],
-#     param_names: List[str],
-#     plot_cfg: DictConfig,
-#     output_dir: str,
-# ) -> None:
-#     import matplotlib.pyplot as plt
-#     import seaborn as sns
-#     import os
-#
-#     os.makedirs(output_dir, exist_ok=True)
-#
-#     latex_param_names = plot_cfg.plot.param_latex_names
-#     colors = plot_cfg.plot.color_palette.colors
-#
-#     plt.rcParams.update({
-#         "font.size": plot_cfg.plot.font.size,
-#         "font.family": plot_cfg.plot.font.family,
-#         "text.usetex": plot_cfg.plot.font.use_tex,
-#         "figure.dpi": plot_cfg.plot.figure.dpi,
-#     })
-#
-#     # Group KSDs by obs_num
-#     obs_to_mu0_ksd = {}
-#     for (obs_num, mu_0), ksd_list in ksd_results.items():
-#         if obs_num not in obs_to_mu0_ksd:
-#             obs_to_mu0_ksd[obs_num] = {}
-#         obs_to_mu0_ksd[obs_num][mu_0] = ksd_list
-#
-#     fig, axes = plt.subplots(
-#         nrows=1,
-#         ncols=len(obs_to_mu0_ksd),
-#         figsize=(6 * len(obs_to_mu0_ksd), 4),
-#         sharey=True,
-#         dpi=plot_cfg.plot.figure.dpi,
-#     )
-#
-#     if len(obs_to_mu0_ksd) == 1:
-#         axes = [axes]
-#
-#     for idx, (obs_num, mu0_ksds) in enumerate(sorted(obs_to_mu0_ksd.items())):
-#         # Number of repeats (assumes equal per mu_0)
-#         num_repeats = len(next(iter(mu0_ksds.values())))
-#
-#         # For each repeat, find the mu_0 with minimal KSD
-#         optimal_mu0s = []
-#         for rep in range(num_repeats):
-#             min_ksd = float("inf")
-#             best_mu0 = None
-#             for mu_0, ksd_list in mu0_ksds.items():
-#                 ksd = ksd_list[rep]
-#                 if ksd < min_ksd:
-#                     min_ksd = ksd
-#                     best_mu0 = mu_0
-#             optimal_mu0s.append(best_mu0)
-#
-#         # Plot distribution
-#         ax = axes[idx]
-#         color = colors[idx % len(colors)]
-#         sns.histplot(optimal_mu0s, bins=20, kde=True, ax=ax, color=color)
-#
-#         ax.set_title(f"{latex_param_names.get('obs. num.', 'obs. num.')} = {int(obs_num)}")
-#         ax.set_xlabel(latex_param_names.get("mu_0", "mu_0"))
-#         ax.set_ylabel("Count" if idx == 0 else "")
-#         ax.grid(True)
-#
-#     if plot_cfg.plot.figure.tight_layout:
-#         plt.tight_layout()
-#
-#     save_path = os.path.join(output_dir, "optimal_mu0_distribution_across_repeats.pdf")
-#     fig.savefig(save_path, format="pdf", bbox_inches='tight')
-#     plt.close(fig)
-#     print(f"Saved distribution plot of optimal mu_0s to: {save_path}")
-
-
 def plot_distribution_of_optimal_mu0(
     ksd_results: Dict[Tuple[float, float], List[float]],
     param_names: List[str],
@@ -812,3 +731,124 @@ def plot_distribution_of_optimal_mu0(
     fig.savefig(save_path, format="pdf", bbox_inches='tight')
     plt.close(fig)
     print(f"Saved combined distribution plot of optimal mu_0s to: {save_path}")
+
+
+def plot_multivariate_priors_densities_by_ksd(all_params, all_ksds, output_dir, plot_cfg, true_theta=None, true_cov=None):
+    """
+    Plots joint prior densities (3 of them) with marginals using fixed 3-color scheme and KSD arrow bar.
+    """
+    assert len(all_params) == 3, "Function currently assumes 3 density entries for coloring."
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Sort keys by KSD value ascending
+    sorted_keys = sorted(all_ksds, key=lambda k: all_ksds[k])
+    sorted_ksds = [all_ksds[k] for k in sorted_keys]
+
+    # Get 3 distinct fixed colors
+    palette_colors = plot_cfg.plot.color_palette.colors[:3]
+    rgb_colors = [to_rgb(c) for c in palette_colors[::-1]]
+
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    fig = plt.figure(figsize=(6, 6))
+    grid = plt.GridSpec(4, 4, hspace=0.05, wspace=0.05)
+
+    ax_main = fig.add_subplot(grid[1:, :-1])
+    ax_x = fig.add_subplot(grid[0, :-1], sharex=ax_main)
+    ax_y = fig.add_subplot(grid[1:, -1], sharey=ax_main)
+
+    for i, key in enumerate(sorted_keys):
+        mu = all_params[key]["mu"]
+        cov = all_params[key]["cov"]
+        color = rgb_colors[i]
+
+        samples = np.random.multivariate_normal(mu, cov, size=2000)
+
+        # Joint KDE
+        sns.kdeplot(
+            x=samples[:, 0],
+            y=samples[:, 1],
+            ax=ax_main,
+            fill=True,
+            levels=10,
+            alpha=0.9,
+            thresh=0.01,
+            linewidths=0.7,
+            color=color,
+        )
+
+        # Marginals
+        sns.kdeplot(samples[:, 0], ax=ax_x, color=color, fill=True, alpha=0.6)
+        sns.kdeplot(samples[:, 1], ax=ax_y, color=color, fill=True, alpha=0.6, vertical=True)
+
+    # Plot true_theta reference
+    if true_theta is not None:
+        # Black lines
+        ax_main.axvline(true_theta[0], color="k", linestyle="-", lw=1)
+        ax_main.axhline(true_theta[1], color="k", linestyle="-", lw=1)
+        ax_x.axvline(true_theta[0], color="k", linestyle="-", lw=1)
+        ax_y.axhline(true_theta[1], color="k", linestyle="-", lw=1)
+
+        # Overlay black marginal KDE lines
+        true_samples = np.random.multivariate_normal(true_theta, true_cov, size=2000)
+        sns.kdeplot(true_samples[:, 0], ax=ax_x, color="k", lw=1, fill=False)
+        sns.kdeplot(true_samples[:, 1], ax=ax_y, color="k", lw=1, fill=False, vertical=True)
+
+        sns.kdeplot(
+            x=true_samples[:, 0],
+            y=true_samples[:, 1],
+            ax=ax_main,
+            fill=False,
+            levels=10,
+            alpha=0.3,
+            thresh=0.01,
+            linewidths=0.7,
+            color="black",
+        )
+
+    # Axis cleanup
+    ax_x.axis("off")
+    ax_y.axis("off")
+    ax_main.set_xlabel("$\\mu_{01}$")
+    ax_main.set_ylabel("$\\mu_{02}$")
+    ax_main.spines['top'].set_visible(False)
+    ax_main.spines['right'].set_visible(False)
+
+    # Add custom arrow colorbar for KSD ordering
+    cbar_ax = fig.add_axes([0.91, 0.15, 0.03, 0.7])
+    cmap = ListedColormap(rgb_colors)
+    norm = BoundaryNorm([0, 1, 2, 3], cmap.N)
+    cb = plt.colorbar(cmx.ScalarMappable(cmap=cmap, norm=norm), cax=cbar_ax)
+    cb.ax.tick_params(size=0, width=0, labelsize=0, left=False, right=False)
+    cb.set_ticks([])
+
+    # Arrow showing increasing KSD
+    cb.ax.annotate(
+        '',
+        xy=(1.4, 0.7),
+        xytext=(1.4, 0.3),
+        xycoords='axes fraction',
+        textcoords='axes fraction',
+        arrowprops=dict(
+            arrowstyle='->',
+            color='black',
+            lw=1,
+            shrinkA=0,
+            shrinkB=0,
+            mutation_scale=8
+        ),
+    )
+
+    cb.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+
+    fig.tight_layout(rect=[0, 0, 0.9, 1.0])
+    output_path = os.path.join(output_dir, "multivariate_joint_prior_plot.pdf")
+    fig.savefig(output_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved multivariate joint prior plot to: {output_path}")

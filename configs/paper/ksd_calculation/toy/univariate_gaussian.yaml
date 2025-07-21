@@ -20,10 +20,9 @@ model:
 
 ksd:
   kernel:
-    _target_: src.kernels.inverse_multiquadric.InverseMultiquadricKernel
+    _target_: src.kernels.inverse_multiquadric.InverseUnivariateMultiquadricKernel
     lengthscale: 1.0
     alpha: 0.5
-    isotropic: True
     heuristic: False
   optimize:
     prior:

@@ -39,12 +39,18 @@ class KernelizedSteinDiscrepancy:
         K = self.kernel.value          # (m, m)
         grad1 = self.kernel.grad_x1        # (m, m, d)
         grad2 = self.kernel.grad_x2        # (m, m, d)
-        hess = self.kernel.hess_xy         # (m, m)
+        hess = self.kernel.hess_xy         # (m, m) or (m, m, d, d)
+
+        if hess.ndim == 2:
+            term4 = hess  # univariate: (m, m)
+        elif hess.ndim == 4:
+            term4 = np.trace(hess, axis1=-2, axis2=-1)  # multivariate: (m, m)
+        else:
+            raise ValueError(f"Unexpected hessian shape: {hess.shape}")
 
         term1 = np.einsum('ik,jk,ij->ij', scores, scores, K)
         term2 = np.einsum('ik,ijk->ij', scores, grad2)
         term3 = np.einsum('jk,ijk->ij', scores, grad1)
-        term4 = hess
 
         total = term1 + term2 + term3 + term4
         return np.sum(total) / (m * m)
