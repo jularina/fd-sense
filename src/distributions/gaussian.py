@@ -54,8 +54,6 @@ class MultivariateGaussian(BaseDistribution):
     """
 
     def __init__(self, mu: np.ndarray, cov: np.ndarray):
-        self.mu = np.asarray(mu)
-        self.cov = np.asarray(cov)
         self.dim = self.mu.shape[0]
         assert self.cov.shape == (self.dim, self.dim), "Covariance shape mismatch."
 

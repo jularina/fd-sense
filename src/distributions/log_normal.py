@@ -9,17 +9,16 @@ class LogNormal(BaseDistribution):
 
     Parameters
     ----------
-    mu : float
-        Mean of the underlying normal distribution.
-    sigma : float
-        Standard deviation of the underlying normal distribution.
+    mu_log : float
+        Mean  = exp(mu_log)
+    sigma_log : float
     """
 
-    def __init__(self, mu: float, sigma: float):
-        assert sigma > 0, "Standard deviation must be positive."
-        self.mu = mu
-        self.sigma = sigma
-        self.var = sigma ** 2
+    def __init__(self, mu_log: float, sigma_log: float):
+        assert sigma_log > 0, "Standard deviation must be positive."
+        self.mu = mu_log
+        self.sigma = sigma_log
+        self.var = self.sigma ** 2
         self._norm_const = 1.0 / (np.sqrt(2 * np.pi * self.var))
 
     def sample(self, n_samples: int = 1) -> np.ndarray:

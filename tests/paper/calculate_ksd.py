@@ -10,13 +10,15 @@ import copy
 
 from src.discrepancies.posterior_ksd import PosteriorKSD
 from src.plots.paper.paper_funcs import (plot_ksd_heatmaps, plot_ksd_line_plots, plot_ksd_multi_line_plots,
-                                         plot_ksd_multi_line_plots_with_error_bands, plot_distribution_of_optimal_mu0, plot_prior_densities_by_ksd)
+                                         plot_ksd_multi_line_plots_with_error_bands, plot_distribution_of_optimal_mu0,
+                                         plot_gaussian_prior_densities_by_ksd, plot_prior_densities_by_ksd)
 from src.bayesian_model.base import BayesianModel
 from src.kernels.base import BaseKernel
 from src.utils.files_operations import load_plot_config
+from src.utils.typing import DISTRIBUTION_MAP
 
 
-def plots_across_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
+def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
     """
     Recalculates KSD along all the possible hyperparameters combination across the ranges
 
@@ -27,7 +29,8 @@ def plots_across_parameters_ranges(cfg, model: BayesianModel, posterior_samples:
         kernel (BaseKernel): Kernel
     """
     ksd_results = {}
-    box_cfg = cfg.ksd.optimize.prior.parameters_box_range
+    box_cfg = cfg.ksd.optimize.prior.Gaussian.parameters_box_range
+    distribution_cls = DISTRIBUTION_MAP["Gaussian"]
     param_names = list(box_cfg.ranges.keys())
     param_ranges = [
         np.round(np.linspace(*box_cfg.ranges[name], num=box_cfg.nums[name]), 2)
@@ -35,7 +38,7 @@ def plots_across_parameters_ranges(cfg, model: BayesianModel, posterior_samples:
     ]
     for values in np.array(np.meshgrid(*param_ranges)).T.reshape(-1, len(param_names)):
         prior_params = dict(zip(param_names, values))
-        model.set_prior_parameters(prior_params)
+        model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
 
         ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
@@ -58,7 +61,7 @@ def plots_across_parameters_ranges(cfg, model: BayesianModel, posterior_samples:
         plot_ksd_multi_line_plots(ksd_results, param_names, plot_cfg, output_dir)
 
 
-def density_plot_across_parameter_set(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
+def density_plot_across_gaussian_prior_parameter_set(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
     """
     Recalculates KSD along all the possible hyperparameters combination across the ranges
 
@@ -69,12 +72,13 @@ def density_plot_across_parameter_set(cfg, model: BayesianModel, posterior_sampl
         kernel (BaseKernel): Kernel
     """
     ksd_results = {}
-    box_cfg = cfg.ksd.optimize.prior.parameters_box_range
+    box_cfg = cfg.ksd.optimize.prior.Gaussian.parameters_box_range
     param_names = list(box_cfg.ranges.keys())
-    param_ranges = np.array([[-7, 1], [5, 3], [9, 2]])
-    for values in param_ranges:
+    params = np.array([[-7, 1], [5, 3], [9, 2]])
+    distribution_cls = DISTRIBUTION_MAP["Gaussian"]
+    for values in params:
         prior_params = dict(zip(param_names, values))
-        model.set_prior_parameters(prior_params)
+        model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
 
         ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
@@ -87,12 +91,61 @@ def density_plot_across_parameter_set(cfg, model: BayesianModel, posterior_sampl
         plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
         output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
         plot_cfg = load_plot_config(plot_config_path)
-        plot_prior_densities_by_ksd(ksd_results, param_names, cfg, plot_cfg, output_dir)
+        plot_gaussian_prior_densities_by_ksd(ksd_results, param_names, cfg, plot_cfg, output_dir)
+
+
+def density_plot_across_prior_parameter_sets(cfg, model: BayesianModel, posterior_samples: np.ndarray, kernel: BaseKernel):
+    """
+    Recalculates KSD across all prior hyperparameter combinations for each distribution.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+        model (BayesianModel): Model.
+        posterior_samples (np.ndarray): Posterior samples.
+        kernel (BaseKernel): Kernel.
+    """
+    all_ksd_results = {}
+    param_values_dict = {"Gaussian":np.array([[-7, 1], [5, 3], [9, 2]]), "LogNormal":np.array([[1, 0.5]])}
+    for dist_name, dist_cfg in cfg.ksd.optimize.prior.items():
+        distribution_cls = DISTRIBUTION_MAP[dist_name]
+        box_cfg = dist_cfg.parameters_box_range
+        param_names = list(box_cfg.ranges.keys())
+        param_values = param_values_dict[dist_name]
+        dist_ksd_results = {}
+
+        for values in param_values:
+            prior_params = dict(zip(param_names, values))
+            model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
+
+            ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+            ksd = ksd_estimator.estimate_ksd()
+            dist_ksd_results[tuple(values)] = ksd
+            print(f"Dist: {dist_name}, Prior: {prior_params}, mu_n: {model.mu_n}, KSD: {ksd:.4f}")
+
+        all_ksd_results[dist_name] = {
+            "ksd": dist_ksd_results,
+            "param_names": [p + "_0" for p in param_names],
+            "distribution_cls": distribution_cls
+        }
+
+    # Plot all distributions
+    if cfg.flags.plots.generate_plots.density_plot:
+        plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+        output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+        plot_cfg = load_plot_config(plot_config_path)
+
+        plot_prior_densities_by_ksd(
+            all_ksd_data=all_ksd_results,
+            cfg=cfg,
+            plot_cfg=plot_cfg,
+            output_dir=output_dir,
+        )
 
 
 def compute_ksd_for_setting(obs_num, mu_0, cfg_serialized, repeats, fixed_sigma):
     cfg = copy.deepcopy(cfg_serialized)  # each process gets its own copy
     cfg.data.observations_num = obs_num
+    distribution_cls = DISTRIBUTION_MAP["Gaussian"]
     model = instantiate(cfg.model, data_config=cfg.data)
 
     ksd_list = []
@@ -101,7 +154,7 @@ def compute_ksd_for_setting(obs_num, mu_0, cfg_serialized, repeats, fixed_sigma)
         posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
         mu_ns.append(model.mu_n)
         kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-        model.set_prior_parameters({'mu': mu_0, 'sigma': fixed_sigma})
+        model.set_prior_parameters({'mu': mu_0, 'sigma': fixed_sigma}, distribution_cls=distribution_cls)
         ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
         ksd_list.append(ksd)
@@ -169,6 +222,7 @@ def run_ksd_across_various_observations_nums(cfg):
     mu_vals = np.round(np.linspace(-10, 10, 21), 2)
     fixed_sigma = 2.0
     repeats = 100  # number of repeated runs per setting
+    distribution_cls = DISTRIBUTION_MAP["Gaussian"]
 
     ksd_results = {}  # will store list of KSDs for each (obs_num, mu_0)
 
@@ -185,7 +239,7 @@ def run_ksd_across_various_observations_nums(cfg):
                 mu_ns.append(model.mu_n)
                 kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
 
-                model.set_prior_parameters({'mu': mu_0, 'sigma': fixed_sigma})
+                model.set_prior_parameters({'mu': mu_0, 'sigma': fixed_sigma}, distribution_cls=distribution_cls)
                 ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
                 ksd = ksd_estimator.estimate_ksd()
                 ksd_list.append(ksd)
@@ -226,7 +280,7 @@ def run_ksd_across_various_observations_nums(cfg):
 
 
 @hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
-def run(cfg) -> None:
+def run_gaussian_priors(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
 
@@ -248,9 +302,59 @@ def run(cfg) -> None:
 
     # Perform grid search over parameters box ranges if defined
     if cfg.ksd.optimize:
-        plots_across_parameters_ranges(cfg, model, posterior_samples, kernel)
-        density_plot_across_parameter_set(cfg, model, posterior_samples, kernel)
+        plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples, kernel)
+        density_plot_across_gaussian_prior_parameter_set(cfg, model, posterior_samples, kernel)
+
+
+@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+def run_gaussian_log_normal_priors(cfg) -> None:
+    """
+    Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    # Instantiate the Bayesian model with runtime overrides
+    model = instantiate(cfg.model, data_config=cfg.data)
+
+    # Sample from the posterior
+    posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+
+    # Instantiate the kernel
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+
+    # Compute initial KSD
+    ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+    print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+
+    # Perform grid search over parameters box ranges if defined
+    if cfg.ksd.optimize:
+        density_plot_across_prior_parameter_sets(cfg, model, posterior_samples, kernel)
+
+
+@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+def run_multivariate_gaussian_priors(cfg) -> None:
+    """
+    Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    # Instantiate the Bayesian model with runtime overrides
+    model = instantiate(cfg.model, data_config=cfg.data)
+
+    # Sample from the posterior
+    posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+
+    # Instantiate the kernel
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+
+    # Compute initial KSD
+    ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+    print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
 
 if __name__ == "__main__":
-    run()
+    # run_gaussian_priors()
+    # run_gaussian_log_normal_priors()
+    run_multivariate_gaussian_priors()

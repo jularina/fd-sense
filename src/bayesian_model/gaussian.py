@@ -1,12 +1,10 @@
 import numpy as np
-from typing import Dict, Any
-import pymc as pm
-from hydra.utils import instantiate
+from typing import Dict, Type
 
 from src.bayesian_model.base import BayesianModel
 from src.distributions.gaussian import Gaussian
+from src.distributions.log_normal import LogNormal
 from src.utils.typing import ArrayLike
-from utils.instantiation import get_class_from_path
 
 
 class SimpleGaussianModel(BayesianModel):
@@ -23,20 +21,17 @@ class SimpleGaussianModel(BayesianModel):
         # self.observations = np.full((self.observations_num, 1), 3.0)
         self.x_bar = np.mean(self.observations)
         self.loss_lr = data_config.loss_lr
-
-        # Prior config
+        self.loss = data_config.loss
         self.prior = data_config.base_prior
 
-        # Likelihood config
-        self.loss = data_config.loss
-
-    def set_prior_parameters(self, params: Dict[str, float]) -> None:
+    def set_prior_parameters(self, params: Dict[str, float], distribution_cls: Type = Gaussian | LogNormal) -> None:
         """Update prior parameters for optimization.
 
         Args:
             params (Dict[str, float]): Dictionary of new prior parameters.
+            distribution_cls (Type): The distribution class to use (default is Gaussian).
         """
-        self.prior = Gaussian(**params)
+        self.prior = distribution_cls(**params)
 
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
         """
@@ -77,7 +72,7 @@ class SimpleGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Score values with shape (n_samples, 1)
         """
-        return self.loss_lr * self.observations_num * (self.x_bar-x) / self.loss.var  # Shape (n_samples, 1)
+        return self.loss_lr * self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)  # Shape (n_samples, 1)
 
     def posterior_score(self, x: ArrayLike) -> np.ndarray:
         """Score function of the posterior (prior + likelihood).
@@ -88,6 +83,101 @@ class SimpleGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Score values.
         """
-        ps = self.prior_score(x)
-        ls = self.loss_score(x)
+        return self.prior_score(x) + self.loss_score(x)
+
+
+class MultivariateGaussianModel(BayesianModel):
+    """
+    A Bayesian model for multivariate Gaussian likelihood with Gaussian prior.
+    Assumes data ~ Normal(mu, Sigma_obs), and prior ~ Normal(mu0, Sigma0).
+    """
+
+    def __init__(self, data_config):
+        # True data generator and sample observations
+        self.true_dgp = data_config.true_dgp
+        self.observations_num = data_config.observations_num
+        self.observations = self.true_dgp.sample(self.observations_num)  # shape (n_samples, dim)
+
+        self.dim = self.observations.shape[1]
+        self.x_bar = np.mean(self.observations, axis=0)  # sample mean vector shape (dim,)
+
+        self.loss_lr = data_config.loss_lr
+        self.loss = data_config.loss
+        self.prior = data_config.base_prior
+
+    def set_prior_parameters(self, params: Dict[str, np.ndarray],
+                             distribution_cls: Type = Gaussian | LogNormal) -> None:
+        """
+        Update prior parameters for optimization.
+
+        Args:
+            params (Dict[str, np.ndarray]): New prior parameters (mean vector and covariance matrix).
+            distribution_cls (Type): Distribution class to use (default Gaussian).
+        """
+        self.prior = distribution_cls(**params)
+
+    def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
+        """
+        Sample from the closed-form conjugate posterior of a multivariate Gaussian model.
+
+        Returns:
+            np.ndarray: Posterior samples of the latent mean vector, shape (n_samples, dim).
+        """
+        # Prior parameters
+        mu0 = self.prior.mu  # shape (dim,)
+        Sigma0 = self.prior.cov  # shape (dim, dim)
+
+        # Likelihood variance (observation noise covariance)
+        Sigma_obs = self.loss.cov  # shape (dim, dim)
+
+        # Posterior covariance: inv(Sigma_n) = n * inv(Sigma_obs) + inv(Sigma0)
+        Sigma_obs_inv = np.linalg.inv(Sigma_obs)
+        Sigma0_inv = np.linalg.inv(Sigma0)
+
+        Sigma_n_inv = self.observations_num * Sigma_obs_inv + Sigma0_inv
+        Sigma_n = np.linalg.inv(Sigma_n_inv)
+
+        # Posterior mean: mu_n = Sigma_n @ (n * inv(Sigma_obs) @ x_bar + inv(Sigma0) @ mu0)
+        mu_n = Sigma_n @ (self.observations_num * Sigma_obs_inv @ self.x_bar + Sigma0_inv @ mu0)
+
+        self.mu_n = mu_n
+        self.Sigma_n = Sigma_n
+
+        return np.random.multivariate_normal(mean=mu_n, cov=Sigma_n, size=n_samples)
+
+    def prior_score(self, x: ArrayLike) -> np.ndarray:
+        """
+        Score function (gradient of log pdf) of the prior.
+
+        Args:
+            x (ArrayLike): Points at which to evaluate the score, shape (n_samples, dim).
+
+        Returns:
+            np.ndarray: Score values, shape (n_samples, dim).
+        """
+        return self.prior.grad_log_pdf(x)
+
+    def loss_score(self, x: ArrayLike) -> np.ndarray:
+        """
+        Score function (gradient of log likelihood) treating x as the latent mean vector.
+
+        Args:
+            x (ArrayLike): Latent variables, shape (n_samples, dim).
+
+        Returns:
+            np.ndarray: Score values, shape (n_samples, dim).
+        """
+        # Assuming self.loss.grad_log_pdf handles multivariate input: grad w.r.t. mean vector
+        return self.loss_lr * self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
+
+    def posterior_score(self, x: ArrayLike) -> np.ndarray:
+        """
+        Score function of the posterior (prior + likelihood).
+
+        Args:
+            x (ArrayLike): Points at which to evaluate the score, shape (n_samples, dim).
+
+        Returns:
+            np.ndarray: Score values, shape (n_samples, dim).
+        """
         return self.prior_score(x) + self.loss_score(x)

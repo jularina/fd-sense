@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Callable
-
-from src.utils.typing import ArrayLike
 
 class BayesianModel:
-    pass
+    def set_prior_parameters(self, prior_params, distribution_cls):
+        pass
+
+    def sample_posterior(self):
+        pass

@@ -1,0 +1,53 @@
+data:
+  base_prior:
+    _target_: src.distributions.gaussian.MultivariateGaussian
+    mu: [2.0, 2.0]
+    cov: [[9.0, 0.0], [0.0, 9.0]]
+
+  true_dgp:
+    _target_: src.distributions.gaussian.MultivariateGaussian
+    mu: [3.0, 3.0]
+    cov: [[4.0, 0.0], [0.0, 4.0]]
+
+  loss:
+    _target_: src.losses.gaussian_log_likelihood.MultivariateGaussianLogLikelihood
+    mu: [3.0, 3.0]
+    cov: [[4.0, 0.0], [0.0, 4.0]]
+
+  loss_lr: 1
+  observations_num: 500
+  posterior_samples_num: 5000
+
+model:
+  _target_: src.bayesian_model.gaussian.MultivariateGaussianModel
+
+ksd:
+  kernel:
+    _target_: src.kernels.inverse_multiquadric.InverseMultiquadricKernel
+    lengthscale: 1.0
+    alpha: 0.5
+    isotropic: True
+    heuristic: False
+
+  optimize:
+    prior:
+      MultivariateGaussian:
+        parameters_box_range:
+          ranges:
+            mu:
+              - [-10, -10]
+              - [10, 10]
+            cov_diag:  # Assume optimizing diagonal entries of covariance
+              - [2.0, 2.0]
+              - [5.0, 5.0]
+          nums:
+            mu: [21, 21]
+            cov_diag: [4, 4]
+
+flags:
+  plots:
+    generate_plots:
+      heatmap: False
+      line_plot: False
+      density_plot: False
+    output_dir: outputs/paper/plots/multivariate

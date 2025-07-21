@@ -1,8 +1,7 @@
 import numpy as np
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Union
 
-from src.utils.typing import ArrayLike
 
 class BaseKernel(ABC):
     def __init__(self, lengthscale: Union[float, np.ndarray] = 1.0, variance: float = None, isotropic: bool = True, heuristic: bool = False,):

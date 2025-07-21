@@ -1,6 +1,5 @@
 import numpy as np
 from typing import Union
-from functools import cached_property
 
 from src.kernels.base import BaseKernel
 from src.utils.checkers import is_symmetric

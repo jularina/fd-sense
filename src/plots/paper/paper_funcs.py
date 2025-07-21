@@ -2,13 +2,12 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Type
 from omegaconf import DictConfig
 from matplotlib.colors import LinearSegmentedColormap
 import colorsys
-from matplotlib.colors import to_rgb, Normalize
+from matplotlib.colors import to_rgb, Normalize, ListedColormap, BoundaryNorm
 import matplotlib.cm as cmx
-
 
 from src.distributions.gaussian import Gaussian
 
@@ -301,19 +300,13 @@ def plot_ksd_multi_line_plots(
     make_multi_line_plot(fixed_idx=0, varying_idx=1, filename_prefix="ksd_multiline")
 
 
-def plot_prior_densities_by_ksd(
+def plot_gaussian_prior_densities_by_ksd(
     ksd_results: Dict[Tuple[float, ...], float],
     param_names: List[str],
     cfg: DictConfig,
     plot_cfg: DictConfig,
     output_dir: str,
 ):
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import matplotlib.cm as cmx
-    from matplotlib.colors import to_rgb, ListedColormap, BoundaryNorm
-
     os.makedirs(output_dir, exist_ok=True)
 
     # Base prior
@@ -434,6 +427,144 @@ def plot_prior_densities_by_ksd(
     fig.savefig(output_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
     print(f"Saved prior density plot with discrete color bar to: {output_path}")
+
+
+def plot_prior_densities_by_ksd(
+    all_ksd_data: Dict[str, Dict],
+    cfg: DictConfig,
+    plot_cfg: DictConfig,
+    output_dir: str,
+):
+    """
+    Plots all prior densities (from different distributions) in one figure,
+    using 4 discrete color bins based on KSD quantiles and a colorbar legend.
+    """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap, BoundaryNorm, to_rgb
+    import matplotlib.cm as cmx
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Setup figure
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    fig, ax = plt.subplots(
+        figsize=(
+            plot_cfg.plot.figure.size.width,
+            plot_cfg.plot.figure.size.height,
+        ),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    # Plot base prior
+    base_mu = cfg.data.base_prior.mu
+    base_sigma = cfg.data.base_prior.sigma
+    from src.distributions.gaussian import Gaussian
+    base_dist = Gaussian(mu=base_mu, sigma=base_sigma)
+    x = np.linspace(base_mu - 6 * base_sigma, base_mu + 6 * base_sigma, 300)
+    ax.plot(
+        x,
+        base_dist.pdf(x),
+        label="Base prior",
+        color="black",
+        linewidth=1,
+        linestyle="--"
+    )
+
+    # Collect all KSD values
+    all_ksd_values = []
+    for dist_data in all_ksd_data.values():
+        all_ksd_values.extend(dist_data["ksd"].values())
+    all_ksd_values = np.array(all_ksd_values)
+
+    # Compute quartile cutoffs
+    quantiles = np.quantile(all_ksd_values, [0.25, 0.5, 0.75])
+
+    # Use first 4 colors from palette (reversed if desired)
+    palette_colors = plot_cfg.plot.color_palette.colors[:4]
+    rgb_colors = [to_rgb(c) for c in palette_colors[::-1]]
+
+    # Plot densities with 4-bin color coding
+    for dist_name, dist_data in all_ksd_data.items():
+        ksd_results = dist_data["ksd"]
+        param_names = dist_data["param_names"]
+        distribution_cls = dist_data["distribution_cls"]
+
+        for param_tuple, ksd in ksd_results.items():
+            # Determine bin
+            if ksd <= quantiles[0]:
+                bin_idx = 0
+            elif ksd <= quantiles[1]:
+                bin_idx = 1
+            elif ksd <= quantiles[2]:
+                bin_idx = 2
+            else:
+                bin_idx = 3
+
+            param_dict = dict(zip([p.replace("_0", "") for p in param_names], param_tuple))
+
+            try:
+                dist = distribution_cls(**param_dict)
+                pdf_vals = dist.pdf(x)
+                ax.fill_between(
+                    x,
+                    pdf_vals,
+                    color=rgb_colors[bin_idx],
+                    alpha=0.7,
+                    linewidth=0
+                )
+            except Exception as e:
+                print(f"[WARN] Skipping {dist_name} with params {param_dict}: {e}")
+
+    # Axes formatting
+    ax.set_xlabel(plot_cfg.plot.param_latex_names.mu_0)
+    ax.set_ylabel(plot_cfg.plot.param_latex_names.prior)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    # Create colorbar
+    cmap = ListedColormap(rgb_colors)
+    bounds = [0, 1, 2, 3, 4]
+    norm = BoundaryNorm(bounds, cmap.N)
+    sm = cmx.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.ax.tick_params(size=0, width=0, labelsize=0, left=False, right=False)
+    cbar.set_ticks([])
+    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+
+    # Arrow on colorbar
+    cbar.ax.annotate(
+        '',
+        xy=(1.4, 0.7),
+        xytext=(1.4, 0.3),
+        xycoords='axes fraction',
+        textcoords='axes fraction',
+        arrowprops=dict(
+            arrowstyle='->',
+            color='black',
+            lw=1,
+            shrinkA=0,
+            shrinkB=0,
+            mutation_scale=8
+        ),
+    )
+
+    if plot_cfg.plot.figure.tight_layout:
+        plt.tight_layout()
+
+    output_path = os.path.join(output_dir, "prior_densities_by_ksd_ALL.pdf")
+    fig.savefig(output_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved combined prior density plot: {output_path}")
 
 
 def plot_ksd_multi_line_plots_with_error_bands(

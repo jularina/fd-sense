@@ -7,3 +7,4 @@ src/stein_sense.egg-info/
 outputs/
 src/plots/paper/__pycache__/
 src/utils/__pycache__/
+**/__pycache__/
