@@ -34,7 +34,7 @@ class KernelizedSteinDiscrepancy:
             The KSD^2 value.
         """
         m, d = samples.shape
-        scores = self.score_fn(samples)  # (m, d)
+        scores, prior_scores, loss_scores = self.score_fn(samples)  # (m, d)
 
         K = self.kernel.value          # (m, m)
         grad1 = self.kernel.grad_x1        # (m, m, d)
@@ -53,4 +53,5 @@ class KernelizedSteinDiscrepancy:
         term3 = np.einsum('jk,ijk->ij', scores, grad1)
 
         total = term1 + term2 + term3 + term4
+
         return np.sum(total) / (m * m)

@@ -265,10 +265,22 @@ def plot_ksd_multi_line_plots(
                 min_y = y[min_idx]
                 ax.scatter(
                     min_x, min_y,
-                    color="red",
+                    color="black",
                     zorder=5,
-                    marker='*',
-                    s=40,
+                    marker='x',
+                    s=50,
+                )
+
+            if getattr(plot_cfg.plot, "show_max_point", False) and fixed_param_latex == "$\\sigma_0$" and fixed_val==2.0:
+                max_idx = np.argmax(y)
+                max_x = x[max_idx]
+                max_y = y[max_idx]
+                ax.scatter(
+                    max_x, max_y,
+                    color="red",
+                    zorder=6,
+                    marker='*',  # or '^', 's', etc.
+                    s=50,
                 )
 
         ax.set_xlabel(varying_param_latex)
@@ -511,8 +523,8 @@ def plot_prior_densities_by_ksd(
                     x,
                     pdf_vals,
                     color=rgb_colors[bin_idx],
-                    alpha=0.7,
-                    linewidth=0
+                    alpha=0.8,
+                    linewidth=0.7
                 )
             except Exception as e:
                 print(f"[WARN] Skipping {dist_name} with params {param_dict}: {e}")

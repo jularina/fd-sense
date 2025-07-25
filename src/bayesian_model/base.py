@@ -6,3 +6,18 @@ class BayesianModel:
 
     def sample_posterior(self):
         pass
+
+    def prior_score(self):
+        pass
+
+    def loss_score(self):
+        pass
+
+    def posterior_score(self):
+        pass
+
+    def jacobian_sufficient_statistics(self):
+        pass
+
+    def grad_log_base_measure(self):
+        pass

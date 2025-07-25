@@ -18,6 +18,7 @@ from src.kernels.base import BaseKernel
 from src.distributions.gaussian import MultivariateGaussian
 from src.utils.files_operations import load_plot_config
 from src.utils.distributions import DISTRIBUTION_MAP
+from src.optimization.corner_points import OptimizationCornerPoints
 
 
 def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
@@ -348,8 +349,10 @@ def run_gaussian_priors(cfg) -> None:
     ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
-    # Quadratic form parameters
-    Lambda_m, b_m, C = ksd_estimator.compute_ksd_quadratic_form()
+    # Corner points optimization
+    if cfg.ksd.optimize:
+        optimizer = OptimizationCornerPoints(ksd_estimator, cfg.ksd.optimize.prior.Gaussian)
+        results = optimizer.evaluate_all_corners()
 
     # Perform grid search over parameters box ranges if defined
     if cfg.ksd.optimize:
@@ -408,6 +411,6 @@ def run_multivariate_gaussian_priors(cfg) -> None:
 
 
 if __name__ == "__main__":
-    run_gaussian_priors()
+    # run_gaussian_priors()
     # run_gaussian_log_normal_priors()
-    # run_multivariate_gaussian_priors()
+    run_multivariate_gaussian_priors()

@@ -83,10 +83,14 @@ class SimpleGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Score values.
         """
-        return self.prior_score(x) + self.loss_score(x)
+        prior_score = self.prior_score(x)
+        loss_score = self.loss_score(x)
+        posterior_score = prior_score + loss_score
+
+        return posterior_score, prior_score, loss_score
 
     def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        # Returns ∇ J_T(θ), shape (m, d, p)
+        # Returns J_T(θ), shape (m, d, p)
         return self.prior.grad_sufficient_statistics(x)
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
@@ -185,12 +189,16 @@ class MultivariateGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Score values, shape (n_samples, dim).
         """
-        return self.prior_score(x) + self.loss_score(x)
+        prior_score = self.prior_score(x)
+        loss_score = self.loss_score(x)
+        posterior_score = prior_score + loss_score
 
-    def jacobian_sufficient_statistics(self, theta: np.ndarray) -> np.ndarray:
+        return posterior_score, prior_score, loss_score
+
+    def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
         # Returns J_T(θ), shape (m, d, p)
-        pass
+        return self.prior.grad_sufficient_statistics(x)
 
-    def grad_log_base_measure(self, theta: np.ndarray) -> np.ndarray:
+    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
         # Returns ∇ log h(θ), shape (m, d)
-        pass
+        return self.prior.grad_log_base_measure(x)

@@ -77,6 +77,22 @@ class Gaussian(BaseDistribution):
         """
         return np.zeros_like(x)  # shape (..., 1)
 
+    def natural_parameters(self) -> np.ndarray:
+        """
+        Returns the natural parameter vector η for the exponential form.
+        For univariate Gaussian:
+        η = [mu / sigma^2, -1 / (2 * sigma^2)]
+        """
+        eta1 = self.mu / self.var
+        eta2 = -0.5 / self.var
+        return np.array([eta1, eta2])
+
+    def augmented_natural_parameters(self) -> np.ndarray:
+        """
+        Returns the augmented natural parameter vector: [η; 1]
+        """
+        return np.append(self.natural_parameters(), 1.0)
+
 
 class MultivariateGaussian(BaseDistribution):
     """
@@ -121,3 +137,21 @@ class MultivariateGaussian(BaseDistribution):
 
     def grad_pdf(self, x: Union[np.ndarray, list]) -> np.ndarray:
         return self.grad_log_pdf(x) * self.pdf(x)[..., np.newaxis]
+
+    def natural_parameters(self) -> np.ndarray:
+        """
+        Returns the natural parameter vector η = [η1, η2] for the exponential form:
+        η1 = Σ^{-1} μ (shape: d,)
+        η2 = -0.5 * vec(Σ^{-1}) (shape: d^2,)
+        Result shape: (d + d^2,)
+        """
+        eta1 = self.cov_inv @ self.mu  # (d,)
+        eta2 = -0.5 * self.cov_inv.flatten()  # vec(Sigma^{-1}) → (d^2,)
+        return np.concatenate([eta1, eta2])  # (d + d^2,)
+
+    def augmented_natural_parameters(self) -> np.ndarray:
+        """
+        Returns the augmented natural parameter vector [η; 1].
+        Shape: (d + d^2 + 1,)
+        """
+        return np.append(self.natural_parameters(), 1.0)
