@@ -410,7 +410,30 @@ def run_multivariate_gaussian_priors(cfg) -> None:
         density_plot_across_multivariate_prior_parameter_sets(cfg, model, posterior_samples, kernel)
 
 
+@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="inverse_wishart")
+def run_inverse_wishart_priors(cfg) -> None:
+    """
+    Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    # Instantiate the Bayesian model with runtime overrides
+    model = instantiate(cfg.model, data_config=cfg.data)
+
+    # Sample from the posterior
+    posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+
+    # Instantiate the kernel
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+
+    # Compute initial KSD
+    ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+    print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+
+
 if __name__ == "__main__":
     # run_gaussian_priors()
     # run_gaussian_log_normal_priors()
-    run_multivariate_gaussian_priors()
+    # run_multivariate_gaussian_priors()
+    run_inverse_wishart_priors()

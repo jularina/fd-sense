@@ -1,17 +1,17 @@
 data:
   base_prior:
+    _target_: src.distributions.inverse_wishart.InverseWishart
+    df: 5.0
+    scale: [[4.0, 0.0], [0.0, 4.0]]
+
+  true_dgp:
     _target_: src.distributions.gaussian.MultivariateGaussian
     mu: [2.0, 3.0]
     cov: [[4.0, 0.0], [0.0, 4.0]]
 
-  true_dgp:
-    _target_: src.distributions.gaussian.MultivariateGaussian
-    mu: [3.0, 3.0]
-    cov: [[4.0, 0.0], [0.0, 4.0]]
-
   loss:
     _target_: src.losses.gaussian_log_likelihood.MultivariateGaussianLogLikelihood
-    mu: [3.0, 3.0]
+    mu: [2.0, 3.0]
     cov: [[4.0, 0.0], [0.0, 4.0]]
 
   loss_lr: 1
@@ -19,7 +19,7 @@ data:
   posterior_samples_num: 5000
 
 model:
-  _target_: src.bayesian_model.gaussian.MultivariateGaussianModel
+  _target_: src.bayesian_model.inverse_wishart.InverseWishartModel
 
 ksd:
   kernel:
@@ -30,23 +30,22 @@ ksd:
 
   optimize:
     prior:
-      MultivariateGaussian:
+      InverseWishart:
         parameters_box_range:
           ranges:
-            mu:
+            df:
               - [-10, -10]
-              - [10, 10]
-            cov_diag:
+            scale:
               - [2.0, 2.0]
               - [5.0, 5.0]
           nums:
-            mu: [21, 21]
-            cov_diag: [4, 4]
+            df: [21, 21]
+            scale: [4, 4]
 
 flags:
   plots:
     generate_plots:
-      heatmap: False
-      line_plot: False
+      heatmap: True
+      line_plot: True
       density_plot: True
-    output_dir: outputs/paper/plots/multivariate
+    output_dir: outputs/paper/plots/inverse_wishart

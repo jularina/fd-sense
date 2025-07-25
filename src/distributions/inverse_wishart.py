@@ -2,6 +2,9 @@ import numpy as np
 from scipy.stats import invwishart
 from .base import BaseDistribution
 
+from src.utils.typing import ArrayLike
+
+
 class InverseWishart(BaseDistribution):
     """
     Inverse Wishart distribution.
@@ -14,9 +17,9 @@ class InverseWishart(BaseDistribution):
         Positive definite scale matrix.
     """
 
-    def __init__(self, df: float, scale: np.ndarray):
+    def __init__(self, df: float, scale: ArrayLike):
         self.df = df
-        self.scale = scale
+        self.scale = np.asarray(scale)
         self.d = self.scale.shape[0]
 
     def sample(self, n_samples: int = 1) -> np.ndarray:
@@ -57,3 +60,6 @@ class InverseWishart(BaseDistribution):
         ∇ log h(X) = - (p + 1)/2 * X^{-1}
         """
         return -0.5 * (self.d + 1) * np.linalg.inv(x)
+
+    def grad_pdf(self, x: np.ndarray) -> np.ndarray:
+        pass

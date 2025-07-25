@@ -13,15 +13,15 @@ class InverseWishartModel(BayesianModel):
     def __init__(self, data_config):
         self.true_dgp = data_config.true_dgp
         self.observations_num = data_config.observations_num
-        self.observations = self.true_dgp.sample(self.observations_num)  # (n, d)
+        self.observations = self.true_dgp.sample(self.observations_num)
 
-        self.mu = data_config.known_mean  # known fixed mean, shape (d,)
+        self.mu = data_config.true_dgp.mu
         self.dim = self.mu.shape[0]
         self.x_bar = self.observations.mean(axis=0)
 
         self.loss_lr = data_config.loss_lr
         self.loss = data_config.loss
-        self.prior = data_config.base_prior  # instance of InverseWishart
+        self.prior = data_config.base_prior
 
     def set_prior_parameters(self, params: dict) -> None:
         """
@@ -89,3 +89,4 @@ class InverseWishartModel(BayesianModel):
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
         return self.prior.grad_log_base_measure(x)
+
