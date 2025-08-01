@@ -75,3 +75,31 @@ class MultivariateGaussianLogLikelihood:
         diff = x_bar - x
         result = diff @ self.cov_inv.T
         return observations_num * result
+
+
+    def grad_log_pdf_wrt_cov(self, Sigma: np.ndarray, observations: np.ndarray) -> np.ndarray:
+        """
+        Gradient of the log-likelihood w.r.t. the covariance matrix Sigma,
+        assuming mean mu is known.
+
+        Parameters
+        ----------
+        Sigma : np.ndarray
+            Covariance matrix parameter (d, d)
+        observations : np.ndarray
+            Observed data, shape (n, d)
+
+        Returns
+        -------
+        grad : np.ndarray
+            Gradient of log-likelihood w.r.t. Sigma, shape (d, d)
+        """
+        n, d = observations.shape
+        centered = observations - self.mu
+        S = centered.T @ centered  # empirical scatter matrix (d, d)
+
+        Sigma_inv = np.linalg.inv(Sigma)
+
+        # Gradient: ∇_Σ log p(X | Σ) = 0.5 * (Σ⁻¹ S Σ⁻¹ - n Σ⁻¹)
+        grad = 0.5 * (Sigma_inv @ S @ Sigma_inv - n * Sigma_inv)
+        return grad

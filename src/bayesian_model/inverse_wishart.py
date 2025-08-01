@@ -1,4 +1,6 @@
 import numpy as np
+from typing import Dict, Type
+
 from src.bayesian_model.base import BayesianModel
 from src.utils.typing import ArrayLike
 from src.distributions.inverse_wishart import InverseWishart
@@ -23,13 +25,24 @@ class InverseWishartModel(BayesianModel):
         self.loss = data_config.loss
         self.prior = data_config.base_prior
 
-    def set_prior_parameters(self, params: dict) -> None:
+    def set_prior_parameters(self, params: dict,
+                             distribution_cls: Type = InverseWishart) -> None:
         """
         Update the inverse Wishart prior.
         Args:
             params (dict): {"df": ..., "scale": ...}
+             distribution_cls (Type): Distribution class to use (default Gaussian).
         """
-        self.prior = InverseWishart(**params)
+        self.prior = distribution_cls(**params)
+
+    def set_loss_parameters(self, lr: float) -> None:
+        """
+        Update the loss.
+        Args:
+            params (dict): {"df": ..., "scale": ...}
+        """
+        self.loss_lr = lr
+
 
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
         """
@@ -59,21 +72,20 @@ class InverseWishartModel(BayesianModel):
         """
         Score of the Inverse Wishart prior w.r.t. Sigma
         """
+        if x.ndim == 2:
+            x = x.reshape(x.shape[0], self.prior.d, self.prior.d)
         return self.prior.grad_log_pdf(x)
+
 
     def loss_score(self, x: ArrayLike) -> np.ndarray:
         """
         Score of the log-likelihood w.r.t. Sigma for multivariate normal with known mu:
         \nabla_\Sigma \log p(X | mu, Sigma)
         """
-        n = self.observations.shape[0]
-        X = self.observations
-        centered = X - self.mu
-        S = centered.T @ centered  # empirical scatter matrix
-        x_inv = np.linalg.inv(x)
+        if x.ndim == 2:
+            x = x.reshape(x.shape[0], self.prior.d, self.prior.d)
+        return self.loss_lr * self.loss.grad_log_pdf_wrt_cov(x, self.observations)
 
-        grad = 0.5 * (x_inv @ S @ x_inv - n * x_inv)
-        return grad
 
     def posterior_score(self, x: ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -81,12 +93,31 @@ class InverseWishartModel(BayesianModel):
         """
         prior_grad = self.prior_score(x)
         loss_grad = self.loss_score(x)
-        total_grad = prior_grad + self.loss_lr * loss_grad
-        return total_grad, prior_grad, loss_grad
+
+        prior_grads_vec = prior_grad.reshape(prior_grad.shape[0], -1)
+        loss_grads_vec = loss_grad.reshape(loss_grad.shape[0], -1)
+        total_grads_vec = prior_grads_vec + loss_grads_vec
+
+        return total_grads_vec, prior_grads_vec, loss_grads_vec
 
     def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
         return self.prior.grad_sufficient_statistics(x)
 
+
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
         return self.prior.grad_log_base_measure(x)
+
+
+    def vectorize_samples(self, samples: np.ndarray) -> np.ndarray:
+        """
+        Vectorizes a batch of (n_samples, d, d) covariance matrices into
+        (n_samples, d^2) vectors using row-major flattening (C-order).
+
+        Args:
+            samples (np.ndarray): Array of shape (n_samples, d, d)
+
+        Returns:
+            np.ndarray: Array of shape (n_samples, d^2)
+        """
+        return samples.reshape(samples.shape[0], -1)
 

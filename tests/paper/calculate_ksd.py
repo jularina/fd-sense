@@ -16,6 +16,7 @@ from src.plots.paper.paper_funcs import (plot_ksd_heatmaps, plot_ksd_line_plots,
 from src.bayesian_model.base import BayesianModel
 from src.kernels.base import BaseKernel
 from src.distributions.gaussian import MultivariateGaussian
+from src.distributions.inverse_wishart import InverseWishart
 from src.utils.files_operations import load_plot_config
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.optimization.corner_points import OptimizationCornerPoints
@@ -423,13 +424,19 @@ def run_inverse_wishart_priors(cfg) -> None:
 
     # Sample from the posterior
     posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+    posterior_samples_vec = model.vectorize_samples(posterior_samples)
 
     # Instantiate the kernel
-    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples_vec)
 
     # Compute initial KSD
-    ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+    ksd_estimator = PosteriorKSD(samples=posterior_samples_vec, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+
+    # Corner points optimization
+    if cfg.ksd.optimize:
+        optimizer = OptimizationCornerPoints(ksd_estimator, cfg.ksd.optimize.prior.InverseWishart, distribution_cls=InverseWishart)
+        results = optimizer.evaluate_all_corners()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,10 @@
 from itertools import product
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
+
+import numpy as np
 
 from src.distributions.gaussian import Gaussian, MultivariateGaussian
+from src.distributions.inverse_wishart import InverseWishart
 from src.discrepancies.posterior_ksd import PosteriorKSD
 
 
@@ -38,6 +41,22 @@ class OptimizationCornerPoints:
         all_combinations = list(product(*endpoints))
         return [dict(zip(keys, values)) for values in all_combinations]
 
+
+    def _prepare_prior_params(self, corner: Dict[str, float]) -> Dict[str, Any]:
+        """
+        Transforms corner dict into actual prior kwargs, including
+        scale matrix construction from scalar value.
+        """
+        if self.distribution_cls.__name__ == "InverseWishart":
+            df = corner["df"]
+            scale_scalar = corner["scale_scalar"]
+            d = self.model.dim
+            scale = scale_scalar * np.eye(d)
+            return {"df": df, "scale": scale}
+        else:
+            return corner  # e.g., for Gaussian
+
+
     def evaluate_all_corners(self) -> List[Tuple[Dict[str, float], float]]:
         """
         For each corner point:
@@ -51,7 +70,8 @@ class OptimizationCornerPoints:
         results = []
 
         for corner in self.corner_points:
-            self.model.set_prior_parameters(corner, distribution_cls=self.distribution_cls)
+            prior_params = self._prepare_prior_params(corner)
+            self.model.set_prior_parameters(prior_params, distribution_cls=self.distribution_cls)
             # Natural parameter vector (augmented)
             eta_tilde = self.model.prior.augmented_natural_parameters()  # shape (p+1,)
 
@@ -63,7 +83,6 @@ class OptimizationCornerPoints:
             ksd_est = eta_tilde @ Lambda_m @ eta_tilde + b_m @ eta_tilde + ksd_for_loss
 
             results.append((corner, ksd_est))
-
             print(f"Corner: {corner} => Estimated KSD: {ksd_est:.6f}")
 
         return results

@@ -24,7 +24,7 @@ model:
 ksd:
   kernel:
     _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
-    lengthscale: [[1.0, 0.0], [0.0, 1.0]]
+    lengthscale: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
     alpha: 0.5
     heuristic: False
 
@@ -33,14 +33,11 @@ ksd:
       InverseWishart:
         parameters_box_range:
           ranges:
-            df:
-              - [-10, -10]
-            scale:
-              - [2.0, 2.0]
-              - [5.0, 5.0]
+            df: [5, 15]
+            scale_scalar: [0.1, 2.0]
           nums:
-            df: [21, 21]
-            scale: [4, 4]
+            df: 3
+            scale_scalar: 3
 
 flags:
   plots:
