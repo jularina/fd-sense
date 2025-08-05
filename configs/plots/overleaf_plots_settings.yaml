@@ -13,13 +13,14 @@ plot:
 
   color_palette:
     colors:
-#      - "#5A051A"  # cherry
+      - "#450314" # dark cherry
+      - "#5A051A"  # cherry
 #      - "#D20A2E"  # red
-      - "#EE1E52"  # pink
+#      - "#EE1E52"  # pink
 #      - "#6E3D6F" # darker purple
       - "#7c397d" # purple
-##      - "#FF6B90"  # light-pink
-##      - "#1f77b4"  # blue
+#      - "#FF6B90"  # light-pink
+#      - "#1f77b4"  # blue
 #      - "#D20A2E"   # red (keep)
 #      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
@@ -45,9 +46,13 @@ plot:
     estimatedposterior: "$\\tilde{\\Pi}^m_\\text{ref}$"
     candidateposterior: "$\\tilde{\\Pi}$"
     estimatedKSDposteriors: "$\\widehat{\\mathrm{KSD}}^2(\\tilde{\\Pi}^m_\\text{ref}, \\tilde{\\Pi})$"
+    estimatedKSDposteriorsQuadraticForm: "$L_m(\\gamma)$"
+    lr: "lr"
 
   y_axis:
     log_scale: false
 
   show_min_point: true
   show_max_point: true
+
+

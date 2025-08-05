@@ -43,12 +43,21 @@ ksd:
               mu_log: 21
               sigma_log: 4
 
+    loss:
+      GaussianLogLikelihood:
+        parameters_box_range:
+          ranges:
+            lr: [0.05, 2.5]
+          nums:
+            lr: 15
+
 flags:
   plots:
     generate_plots:
       heatmap: True
       line_plot: True
       density_plot: True
+      quadratic_form: True
     output_dir: outputs/paper/plots/univariate
 
 

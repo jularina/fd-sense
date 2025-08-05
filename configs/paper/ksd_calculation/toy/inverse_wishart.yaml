@@ -34,10 +34,18 @@ ksd:
         parameters_box_range:
           ranges:
             df: [5, 15]
-            scale_scalar: [0.1, 2.0]
+            scale:
+              "0_0": [2.0, 3.0]
+              "1_1": [2.0, 3.0]
+              "0_1": [0.0, 0.0]
+              "1_0": [0.0, 0.0]
           nums:
             df: 3
-            scale_scalar: 3
+            scale:
+              "0_0": 2
+              "1_1": 2
+              "0_1": 1
+              "1_0": 1
 
 flags:
   plots:

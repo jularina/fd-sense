@@ -30,29 +30,46 @@ class PosteriorKSD:
         return self.ksd.compute(self.samples)
 
     def compute_ksd_quadratic_form_for_prior(self):
-        JT_aug_T = self._compute_augmented_jacobians()  # (m, p+1, d)
-        Lambda_m = self._compute_Lambda(JT_aug_T)
+        JT_aug_T = self._compute_augmented_jacobians_for_prior()  # (m, p+1, d)
+        Lambda_m = self._compute_Lambda_for_prior(JT_aug_T)
         b_prior = self._compute_b_prior(JT_aug_T)
-        b_cross = self._compute_b_cross(JT_aug_T)
+        b_cross = self._compute_b_cross_for_prior(JT_aug_T)
         b_m = b_prior + b_cross
         C = self._compute_C()
         return Lambda_m, b_m, b_prior, b_cross, C, JT_aug_T
 
-    def _compute_augmented_jacobians(self):
+    def compute_ksd_quadratic_form_for_loss(self):
+        scores_loss = self.model.loss_score(self.samples, multiply_by_lr=False)
+        scores_prior = self.model.prior_score(self.samples)
+        Lambda_m = self._compute_Lambda_for_loss(scores_loss)
+        b_loss = self._compute_b_loss(scores_loss)
+        b_cross = self._compute_b_cross_for_loss(scores_loss, scores_prior)
+        b_m = b_loss + b_cross
+        return Lambda_m, b_m, b_loss, b_cross
+
+    def _compute_augmented_jacobians_for_prior(self):
         J_T = self.model.jacobian_sufficient_statistics(self.samples)  # (m, d, p)
         s_h = self.model.grad_log_base_measure(self.samples)  # (m, d)
         JT_aug = np.concatenate([J_T, s_h[..., None]], axis=2)  # (m, d, p+1)
         JT_aug_T = np.transpose(JT_aug, (0, 2, 1))  # (m, p+1, d)
         return JT_aug_T
 
-    def _compute_Lambda(self, JT_aug_T: np.ndarray) -> np.ndarray:
+    def _compute_Lambda_for_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
         """
         Computes Lambda_m = (1/m^2) sum_{i,j} J_i @ J_j^T * k(theta_i, theta_j)
         """
-        m, p1, d = JT_aug_T.shape
+        m, p, d = JT_aug_T.shape
         Lambda = np.einsum('ij,ipd,jqd->pq', self.kernel.value, JT_aug_T, JT_aug_T)
 
         return Lambda / (m ** 2)
+
+    def _compute_Lambda_for_loss(self, scores: np.ndarray) -> np.ndarray:
+        """
+        Computes Lambda_m = (1/m^2) sum_{i,j} J_i @ J_j^T * k(theta_i, theta_j)
+        """
+        Lambda = np.einsum('ik,jk,ij->ij', scores, scores, self.kernel.value)
+
+        return np.sum(Lambda) / (self.model.m ** 2)
 
     def _compute_b_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
         """
@@ -66,7 +83,16 @@ class PosteriorKSD:
 
         return (term1 + term2) / (m ** 2)
 
-    def _compute_b_cross(self, JT_aug_T: np.ndarray) -> np.ndarray:
+    def _compute_b_loss(self, scores: np.ndarray) -> np.ndarray:
+        """
+        Computes b_prior = (1/m^2) * sum_{i,j} (J_i^T grad1_{i,j} + J_j^T grad2_{i,j})
+        """
+        term1 = np.einsum('ik,ijk->ij', scores, self.kernel.grad_x2)
+        term2 = np.einsum('jk,ijk->ij', scores, self.kernel.grad_x1)
+
+        return np.sum(term1 + term2) / (self.model.m ** 2)
+
+    def _compute_b_cross_for_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
         """
         Computes b_cross = (2 / m^2) * sum_{i,j} J_i^T (loss_scores[j] * K[i, j])
         """
@@ -76,9 +102,16 @@ class PosteriorKSD:
 
         return (2 / m ** 2) * b_cross
 
+    def _compute_b_cross_for_loss(self, scores_loss: np.ndarray, scores_prior: np.ndarray) -> np.ndarray:
+        """
+        Computes b_cross = (2 / m^2) * sum_{i,j} J_i^T (loss_scores[j] * K[i, j])
+        """
+        term = np.einsum('ik,jk,ij->ij', scores_loss, scores_prior, self.kernel.value)
+
+        return (2 / self.model.m ** 2) * np.sum(term)
+
     def _compute_C(self):
-        m = self.samples.shape[0]
-        return np.sum(self.kernel.hess_xy) / (m ** 2)
+        return np.sum(self.kernel.hess_xy) / (self.model.m ** 2)
 
     def compute_ksd_for_loss_term(self):
         m, d = self.samples.shape
@@ -101,6 +134,7 @@ class PosteriorKSD:
         term3 = np.einsum('jk,ijk->ij', scores, grad1)
 
         total = term1 + term2 + term3 + term4
+
         return np.sum(total) / (m * m)
 
     def compute_ksd_for_prior_term(self):

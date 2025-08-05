@@ -8,6 +8,10 @@ from matplotlib.colors import LinearSegmentedColormap
 import colorsys
 from matplotlib.colors import to_rgb, Normalize, ListedColormap, BoundaryNorm
 import matplotlib.cm as cmx
+from mpl_toolkits.mplot3d import Axes3D
+from typing import Set, FrozenSet
+from matplotlib.ticker import MaxNLocator
+from matplotlib.cm import ScalarMappable
 
 from src.distributions.gaussian import Gaussian
 
@@ -102,6 +106,148 @@ def plot_ksd_heatmaps(
             print(f"Saved heatmap to: {save_path}")
 
 
+def plot_ksd_eta_surface(
+    results: List[Tuple[Dict[str, float], np.ndarray, float]],
+    corner_points: List[Dict[str, float]],  # <-- NEW ARG
+    plot_cfg: DictConfig,
+    output_dir: str,
+) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+
+    latex_param_names = plot_cfg.plot.param_latex_names
+
+    x, y, z = [], [], []
+    annotations = []
+
+    # Convert corner points to a set of frozensets for fast lookup
+    corner_set: Set[FrozenSet[Tuple[str, float]]] = {
+        frozenset({(k, float(f"{v:.8f}")) for k, v in cp.items()})
+        for cp in corner_points
+    }
+
+    for prior_params, eta_tilde, ksd_est in results:
+        if len(eta_tilde) < 2:
+            continue  # Skip if not enough dimensions
+
+        eta_0, eta_1 = eta_tilde[0], eta_tilde[1]
+        x.append(eta_0)
+        y.append(eta_1)
+        z_val = np.log10(ksd_est) if plot_cfg.plot.y_axis.log_scale else ksd_est
+        z.append(z_val)
+
+        # Format prior_params to match precision and check against corners
+        param_key = frozenset({(k, float(f"{v:.8f}")) for k, v in prior_params.items()})
+        if param_key in corner_set:
+            label = "\n".join(
+                f"{latex_param_names.get(k+"_0", k)}={v}" for k, v in prior_params.items()
+            )
+        else:
+            label = None
+        annotations.append(label)
+
+    x = np.array(x)
+    y = np.array(y)
+    z = np.array(z)
+
+    # Create colormap from config
+    palette_colors = plot_cfg.plot.color_palette.colors
+    palette_colors = palette_colors[::-1]
+    cmap = LinearSegmentedColormap.from_list("custom_cmap", palette_colors)
+
+    # Plot
+    fig = plt.figure(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+    ax = fig.add_subplot(111, projection='3d')
+
+    surf = ax.plot_trisurf(x, y, z, cmap=cmap, edgecolor='none', linewidth=0.2, antialiased=True)
+
+    ax.set_xlabel(r"$\gamma_0=\frac{\mu_0}{\sigma_0^2}$")
+    ax.set_ylabel(r"$\gamma_1=\frac{-0.5}{\sigma_0^2}$")
+
+    # ax.set_zlabel(ksd_qf_latex)
+
+    # Annotate only corner points
+    for i in range(len(x)):
+        if annotations[i] is not None:
+            ax.text(x[i], y[i], z[i], annotations[i], fontsize=3, rotation=30, color='black', zorder=10)
+
+    if plot_cfg.plot.figure.tight_layout:
+        plt.tight_layout()
+
+    # Mark min and max KSD points
+    z = np.array(z)
+    min_idx = np.argmin(z)
+    max_idx = np.argmax(z)
+
+    min_x, min_y = x[min_idx], y[min_idx]
+    max_x, max_y = x[max_idx], y[max_idx]
+
+    # Red star at maximum
+    ax.scatter(
+        max_x, max_y, z[max_idx],
+        color="red",
+        zorder=6,
+        marker='*',
+        s=50,
+    )
+    ax.view_init(elev=30, azim=50)
+
+    ksd_qf_latex = latex_param_names.get("estimatedKSDposteriorsQuadraticForm", "KSD")
+    zmin, zmax = ax.get_zlim()
+    xmid = np.max(ax.get_xlim())
+    ymid = np.min(ax.get_ylim())
+    ax.text(
+        xmid, ymid-0.05, zmax-0.03,
+        ksd_qf_latex,
+        rotation=90,
+        fontsize=10,
+        va='bottom',
+        ha='left'
+    )
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+
+    # fig.colorbar(surf, ax=ax, shrink=0.6, aspect=10, pad=0.1)
+
+    # cbar = fig.colorbar(surf, ax=ax)
+    # cbar.ax.tick_params(
+    #     size=0,
+    #     width=0,
+    #     length=0,
+    #     labelsize=0,
+    #     left=False,
+    #     right=False
+    # )
+    # cbar.set_ticks([])  # Also ensure no major ticks
+    # cbar.set_label(ksd_latex)
+    #
+    # # Add subtle upward arrow inside the colorbar
+    # cbar.ax.annotate(
+    #     '',
+    #     xy=(1.4, 0.6),
+    #     xytext=(1.4, 0.4),
+    #     xycoords='axes fraction',
+    #     textcoords='axes fraction',
+    #     arrowprops=dict(
+    #         arrowstyle='->',
+    #         color='black',
+    #         lw=1,
+    #         shrinkA=0,
+    #         shrinkB=0,
+    #         mutation_scale=8  # smaller arrow head
+    #     ),
+    # )
+
+    filename = "ksd_eta_surface_from_corners.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches='tight')
+    plt.close(fig)
+
+    print(f"Saved 3D eta surface with annotations to: {save_path}")
+
+
 def plot_ksd_line_plots(
     ksd_results: Dict[Tuple[float, ...], float],
     param_names: List[str],
@@ -176,6 +322,82 @@ def plot_ksd_line_plots(
                 plt.close(fig)
 
                 print(f"Saved line plot to: {save_path}")
+
+
+def plot_ksd_single_param(
+    ksd_results: Dict[float, float],
+    param_name: str,
+    plot_cfg: DictConfig,
+    output_dir: str,
+) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+
+    latex_param_names = plot_cfg.plot.param_latex_names
+    latex_param_name = plot_cfg.plot.param_latex_names.get(param_name, param_name)
+
+    # Sort the keys for consistent plotting
+    x_vals = np.array(sorted(ksd_results.keys()))
+    y_vals = np.array([ksd_results[x] for x in x_vals])
+
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+    })
+
+    fig, ax = plt.subplots(
+        figsize=(
+            plot_cfg.plot.figure.size.width,
+            plot_cfg.plot.figure.size.height,
+        ),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    ax.plot(x_vals, y_vals, marker='.', color=plot_cfg.plot.color_palette.colors[0])
+
+    ax.set_xlabel(latex_param_name)
+    ksd_latex = latex_param_names.get("estimatedKSDposteriors", "KSD")
+    ylabel = f"log {ksd_latex}" if plot_cfg.plot.y_axis.log_scale else ksd_latex
+    ax.set_ylabel(ylabel)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    if plot_cfg.plot.figure.tight_layout:
+        plt.tight_layout()
+
+    if plot_cfg.plot.y_axis.log_scale:
+        ax.set_yscale("log")
+
+    if getattr(plot_cfg.plot, "show_min_point", False):
+        min_idx = np.argmin(y_vals)
+        min_x = x_vals[min_idx]
+        min_y = y_vals[min_idx]
+        ax.scatter(
+            min_x, min_y,
+            color="black",
+            zorder=5,
+            marker='x',
+            s=50,
+        )
+
+    if getattr(plot_cfg.plot, "show_max_point", False):
+        max_idx = np.argmax(y_vals)
+        max_x = x_vals[max_idx]
+        max_y = y_vals[max_idx]
+        ax.scatter(
+            max_x, max_y,
+            color="red",
+            zorder=6,
+            marker='*',
+            s=50,
+        )
+
+    filename = f"ksd_line_{param_name}.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches='tight')
+    plt.close(fig)
+
+    print(f"Saved line plot to: {save_path}")
 
 
 def plot_ksd_multi_line_plots(
@@ -864,3 +1086,96 @@ def plot_multivariate_priors_densities_by_ksd(all_params, all_ksds, output_dir, 
     fig.savefig(output_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
     print(f"[INFO] Saved multivariate joint prior plot to: {output_path}")
+
+
+def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg, true_theta=None, true_cov=None):
+    """
+    Plots joint KDE contours of multivariate priors, colored by KSD magnitude (no fill).
+    Overlays true density if provided. Uses color map based on config.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Sort results by KSD ascending (low to high)
+    sorted_results = sorted(results, key=lambda x: x[2])
+    ksds = [ksd for (_, _, ksd) in sorted_results]
+    min_ksd, max_ksd = min(ksds), max(ksds)
+
+    # Normalize KSDs
+    norm = Normalize(vmin=min_ksd, vmax=max_ksd)
+
+    # Custom colormap from config
+    color_list = plot_cfg.plot.color_palette.colors
+    cmap = LinearSegmentedColormap.from_list("ksd_cmap", color_list[::-1])
+
+    # Prepare figure
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    fig, ax = plt.subplots(figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height))
+
+    for param_dict, _, ksd_est in sorted_results:
+        mu = param_dict["mu"]
+        cov = param_dict["cov"]
+
+        try:
+            samples = np.random.multivariate_normal(mu, cov, size=1000)
+        except np.linalg.LinAlgError:
+            print(f"[WARN] Skipping invalid covariance matrix: {cov}")
+            continue
+
+        color = cmap(norm(ksd_est))
+
+        sns.kdeplot(
+            x=samples[:, 0],
+            y=samples[:, 1],
+            ax=ax,
+            fill=False,
+            levels=3,
+            linewidths=1.0,
+            color=color,
+            alpha=1.0,
+        )
+
+    # Overlay true density if provided
+    if true_theta is not None and true_cov is not None:
+        try:
+            true_samples = np.random.multivariate_normal(true_theta, true_cov, size=2000)
+            sns.kdeplot(
+                x=true_samples[:, 0],
+                y=true_samples[:, 1],
+                ax=ax,
+                fill=False,
+                levels=4,
+                linewidths=1.2,
+                alpha=0.8,
+                color="black",
+            )
+            ax.plot(true_theta[0], true_theta[1], "ko", markersize=4)
+            ax.axvline(true_theta[0], color="k", linestyle="--", lw=1)
+            ax.axhline(true_theta[1], color="k", linestyle="--", lw=1)
+        except np.linalg.LinAlgError:
+            print(f"[WARN] Skipping true density overlay due to invalid covariance.")
+
+    # Labels and appearance
+    ax.set_xlabel("$\\mu_{01}$")
+    ax.set_ylabel("$\\mu_{02}$")
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    # Colorbar
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+
+    # Save
+    output_path = os.path.join(output_dir, "joint_prior_ksd_contours.pdf")
+    fig.tight_layout()
+    fig.savefig(output_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"[INFO] Saved joint prior KDE (contour) plot to: {output_path}")

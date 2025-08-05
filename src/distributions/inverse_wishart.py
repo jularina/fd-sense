@@ -1,8 +1,11 @@
 import numpy as np
 from scipy.stats import invwishart
-from .base import BaseDistribution
+from numpy.linalg import inv, det
+from typing import Union
 
 from src.utils.typing import ArrayLike
+from .base import BaseDistribution
+from src.utils.checkers import is_symmetric_and_psd
 
 
 class InverseWishart(BaseDistribution):
@@ -22,6 +25,11 @@ class InverseWishart(BaseDistribution):
         self.scale = np.asarray(scale)
         self.d = self.scale.shape[0]
 
+        assert self.scale.shape == (self.dim, self.dim), "Scale matrix shape mismatch."
+        assert is_symmetric_and_psd(self.scale), "Scale matrix is not p.s.d."
+
+        self.scale_inv = inv(self.scale)
+
     def sample(self, n_samples: int = 1) -> np.ndarray:
         return invwishart.rvs(df=self.df, scale=self.scale, size=n_samples)
 
@@ -31,51 +39,53 @@ class InverseWishart(BaseDistribution):
     def log_pdf(self, x: np.ndarray) -> float:
         return invwishart.logpdf(x, df=self.df, scale=self.scale)
 
-    def grad_log_pdf(self, x: np.ndarray) -> np.ndarray:
+    def grad_log_pdf(self, x: Union[np.ndarray, list]) -> np.ndarray:
         """
-        Gradient of log Inverse Wishart density with respect to x (Sigma).
-        Supports both single (d, d) and batched (num_samples, d, d) inputs.
+        Gradient of log-density of the Inverse Wishart distribution.
+        ∇_X log p(X) = ½ X^{-1} Ψ X^{-1} - ½ (ν + d + 1) X^{-1}
 
         Args:
-            x (np.ndarray): Covariance matrix or batch of matrices, shape (d, d) or (num_samples, d, d)
+            x: ndarray of shape (n_samples, d, d), SPD matrices
 
         Returns:
-            np.ndarray: Gradient matrix or batch, shape (d, d) or (num_samples, d, d)
+            grad: ndarray of shape (n_samples, d, d)
         """
-        if x.ndim == 2:
-            # Single matrix case
-            x_inv = np.linalg.inv(x)
-            grad = -0.5 * ((self.df + self.d + 1) * x_inv - x_inv @ self.scale @ x_inv)
-            return grad
+        x = np.atleast_3d(x)
+        n, d, _ = x.shape
+        grad = np.empty_like(x)
 
-        elif x.ndim == 3:
-            # Batched case
-            num_samples, d1, d2 = x.shape
-            assert d1 == self.d and d2 == self.d, "Dimension mismatch in batched Sigma input."
+        for i in range(n):
+            X = x[i]
+            X_inv = np.linalg.inv(X)
+            term1 = 0.5 * X_inv @ self.psi @ X_inv
+            term2 = 0.5 * (self.nu + d + 1) * X_inv
+            grad[i] = term1 - term2
 
-            grads = np.empty_like(x)
-            for i in range(num_samples):
-                x_inv = np.linalg.inv(x[i])
-                grads[i] = -0.5 * ((self.df + self.d + 1) * x_inv - x_inv @ self.scale @ x_inv)
-            return grads
-
-        else:
-            raise ValueError("Input must be of shape (d, d) or (num_samples, d, d).")
+        return grad
 
     def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
         """
-        Jacobian of sufficient statistics T(X) = [X^{-1}, log|X|]
-        Returns an array of shape (d, d+1) flattened
+        Jacobian of sufficient statistics T(X) = [vec(X^{-1}), log|X|]
+        Returns shape (n_samples, d^2, d^2 + 1)
         """
-        X_inv = np.linalg.inv(x)
-        log_det = np.log(np.linalg.det(x))
-        return np.concatenate([X_inv.flatten(), [log_det]])
+        n, d, _ = x.shape
+        d2 = d * d
+        jac = np.zeros((n, d2, d2 + 1))
+
+        for i in range(n):
+            X = x[i]
+            X_inv = np.linalg.inv(X)
+            jac[i, :, :d2] = -np.kron(X_inv.T, X_inv)  # ∇ vec(X^{-1})
+            jac[i, :, d2] = X_inv.T.reshape(-1)  # ∇ log|X|
+
+        return jac
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
         """
         ∇ log h(X) = - (p + 1)/2 * X^{-1}
         """
-        return -0.5 * (self.d + 1) * np.linalg.inv(x)
+        x = np.atleast_2d(x)
+        return np.zeros_like(x)  # shape (..., d)
 
     def grad_pdf(self, x: np.ndarray) -> np.ndarray:
         pass
@@ -83,13 +93,10 @@ class InverseWishart(BaseDistribution):
     def natural_parameters(self) -> np.ndarray:
         """
         Returns the natural parameter vector η = [η1, η2] for the exponential form:
-        η1 = Σ^{-1} μ (shape: d,)
-        η2 = -0.5 * vec(Σ^{-1}) (shape: d^2,)
-        Result shape: (d + d^2,)
         """
-        eta1 = self.cov_inv @ self.mu  # (d,)
-        eta2 = -0.5 * self.cov_inv.flatten()  # vec(Sigma^{-1}) → (d^2,)
-        return np.concatenate([eta1, eta2])  # (d + d^2,)
+        eta1 = -0.5 * self.scale.flatten()  # (d^2,)
+        eta2 = -(self.df+self.d+1)/2  # (1,)
+        return np.concatenate([eta1, eta2])  # (d^2 + 1,)
 
     def augmented_natural_parameters(self) -> np.ndarray:
         """

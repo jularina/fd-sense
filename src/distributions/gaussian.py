@@ -1,9 +1,10 @@
 import numpy as np
 from numpy.linalg import inv, det
-from typing import Union
+from typing import Union, Dict
 from .base import BaseDistribution
 
 from src.utils.typing import ArrayLike
+from src.utils.checkers import is_symmetric_and_psd
 
 
 class Gaussian(BaseDistribution):
@@ -110,7 +111,8 @@ class MultivariateGaussian(BaseDistribution):
         self.mu = np.asarray(mu)
         self.cov = np.asarray(cov)
         self.dim = self.mu.shape[0]
-        # assert self.cov.shape == (self.dim, self.dim), "Covariance shape mismatch."
+        assert self.cov.shape == (self.dim, self.dim), "Covariance shape mismatch."
+        assert is_symmetric_and_psd(self.cov), "Covariance is not p.s.d."
 
         self.cov_inv = inv(self.cov)
         self._norm_const = 1.0 / np.sqrt((2 * np.pi) ** self.dim * det(self.cov))
@@ -155,3 +157,40 @@ class MultivariateGaussian(BaseDistribution):
         Shape: (d + d^2 + 1,)
         """
         return np.append(self.natural_parameters(), 1.0)
+
+
+    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
+        """
+        ∇ log h(x): Gradient of log base measure.
+        For Gaussian, log h(x) = 0 → ∇ log h(x) = 0
+        """
+        x = np.atleast_2d(x)
+        return np.zeros_like(x)  # shape (..., d)
+
+    def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
+        """
+        ∇T(x): Jacobian of sufficient statistics.
+        For multivariate Gaussian: T(x) = [x, vec(xx^T)] → ∇T(x) = [I, 2 x ⊗ I]
+        Returns shape (..., d, d + d^2)
+        """
+        x = np.atleast_2d(x)
+        batch_shape = x.shape[:-1]
+        d = x.shape[-1]
+
+        grad_T = np.zeros(batch_shape + (d, d + d**2))
+        grad_T[..., :, :d] = np.eye(d)
+
+        for i in range(d):
+            for j in range(d):
+                grad_T[..., i, d + i * d + j] = x[..., j]
+                grad_T[..., j, d + i * d + j] += x[..., i]
+
+        return grad_T
+
+
+    @property
+    def parameters_dict(self) -> Dict[str, np.ndarray]:
+        """
+        Returns the original parameters as a dictionary.
+        """
+        return {"mu": self.mu, "cov": self.cov}

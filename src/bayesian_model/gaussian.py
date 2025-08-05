@@ -23,6 +23,7 @@ class SimpleGaussianModel(BayesianModel):
         self.loss_lr = data_config.loss_lr
         self.loss = data_config.loss
         self.prior = data_config.base_prior
+        self.m = data_config.posterior_samples_num
 
     def set_prior_parameters(self, params: Dict[str, float], distribution_cls: Type = Gaussian | LogNormal) -> None:
         """Update prior parameters for optimization.
@@ -32,6 +33,14 @@ class SimpleGaussianModel(BayesianModel):
             distribution_cls (Type): The distribution class to use (default is Gaussian).
         """
         self.prior = distribution_cls(**params)
+
+    def set_lr_parameter(self, params: dict) -> None:
+        """
+        Update the loss.
+        Args:
+            params (dict): {"df": ..., "scale": ...}
+        """
+        self.loss_lr = params["lr"]
 
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
         """
@@ -60,7 +69,7 @@ class SimpleGaussianModel(BayesianModel):
         """
         return self.prior.grad_log_pdf(x)
 
-    def loss_score(self, x: ArrayLike) -> np.ndarray:
+    def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
         """
         Score function of the likelihood, treating x as the latent variable (mean of Gaussian).
         Evaluates the gradient of log-likelihood for observed data.
@@ -72,7 +81,10 @@ class SimpleGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Score values with shape (n_samples, 1)
         """
-        return self.loss_lr * self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)  # Shape (n_samples, 1)
+        if multiply_by_lr:
+            return self.loss_lr * self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)  # Shape (n_samples, 1)
+        else:
+            return self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
 
     def posterior_score(self, x: ArrayLike) -> np.ndarray:
         """Score function of the posterior (prior + likelihood).
@@ -116,6 +128,7 @@ class MultivariateGaussianModel(BayesianModel):
         self.loss_lr = data_config.loss_lr
         self.loss = data_config.loss
         self.prior = data_config.base_prior
+        self.m = data_config.posterior_samples_num
 
     def set_prior_parameters(self, params: Dict[str, np.ndarray],
                              distribution_cls: Type = Gaussian | LogNormal) -> None:
@@ -127,6 +140,14 @@ class MultivariateGaussianModel(BayesianModel):
             distribution_cls (Type): Distribution class to use (default Gaussian).
         """
         self.prior = distribution_cls(**params)
+
+    def set_lr_parameter(self, params: dict) -> None:
+        """
+        Update the loss.
+        Args:
+            params (dict): {"df": ..., "scale": ...}
+        """
+        self.loss_lr = params["lr"]
 
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
         """
@@ -166,7 +187,7 @@ class MultivariateGaussianModel(BayesianModel):
         """
         return self.prior.grad_log_pdf(x)
 
-    def loss_score(self, x: ArrayLike) -> np.ndarray:
+    def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
         """
         Score function (gradient of log likelihood) treating x as the latent mean vector.
 
@@ -176,8 +197,10 @@ class MultivariateGaussianModel(BayesianModel):
         Returns:
             np.ndarray: Score values, shape (n_samples, dim).
         """
-        # Assuming self.loss.grad_log_pdf handles multivariate input: grad w.r.t. mean vector
-        return self.loss_lr * self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
+        if multiply_by_lr:
+            return self.loss_lr * self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
+        else:
+            return self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
 
     def posterior_score(self, x: ArrayLike) -> np.ndarray:
         """
