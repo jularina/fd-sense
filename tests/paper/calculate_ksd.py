@@ -520,7 +520,7 @@ def run_inverse_wishart_priors(cfg) -> None:
 
 
 if __name__ == "__main__":
-    # run_gaussian_priors()
+    run_gaussian_priors()
     # run_gaussian_log_normal_priors()
-    run_multivariate_gaussian_priors()
+    # run_multivariate_gaussian_priors()
     # run_inverse_wishart_priors()

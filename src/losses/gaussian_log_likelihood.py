@@ -32,9 +32,9 @@ class MultivariateGaussianLogLikelihood:
 
     Parameters
     ----------
-    mu : np.ndarray
+    mu : ArrayLike
         Mean vector of shape (d,).
-    cov : np.ndarray
+    cov : ArrayLike
         Full covariance matrix of shape (d, d).
     """
 
@@ -45,7 +45,6 @@ class MultivariateGaussianLogLikelihood:
         assert self.cov.shape[0] == self.cov.shape[1], "Covariance must be square."
         assert self.cov.shape[0] == self.mu.shape[0], "Covariance and mean dimension mismatch."
 
-        # Ensure positive definiteness
         if not np.all(np.linalg.eigvals(self.cov) > 0):
             raise ValueError("Covariance matrix must be positive definite.")
 
@@ -74,6 +73,7 @@ class MultivariateGaussianLogLikelihood:
         """
         diff = x_bar - x
         result = diff @ self.cov_inv.T
+
         return observations_num * result
 
 
@@ -96,10 +96,8 @@ class MultivariateGaussianLogLikelihood:
         """
         n, d = observations.shape
         centered = observations - self.mu
-        S = centered.T @ centered  # empirical scatter matrix (d, d)
-
+        S = centered.T @ centered
         Sigma_inv = np.linalg.inv(Sigma)
-
-        # Gradient: ∇_Σ log p(X | Σ) = 0.5 * (Σ⁻¹ S Σ⁻¹ - n Σ⁻¹)
         grad = 0.5 * (Sigma_inv @ S @ Sigma_inv - n * Sigma_inv)
+
         return grad.reshape(Sigma.shape[0],-1)

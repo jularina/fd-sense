@@ -38,61 +38,27 @@ class Gaussian(BaseDistribution):
         return -0.5 * np.log(2 * np.pi * self.var) - ((x - self.mu) ** 2) / (2 * self.var)
 
     def grad_log_pdf(self, x: Union[float, np.ndarray]) -> np.ndarray:
+        x = np.asarray(x)
         return -(x - self.mu) / self.var
 
-    def grad_pdf(self, x: Union[float, np.ndarray]) -> np.ndarray:
-        return self.grad_log_pdf(x) * self.pdf(x)
-
-    def sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        """
-        T(x): Sufficient statistics for the Gaussian.
-        For univariate Gaussian: T(x) = [x, x^2]
-        Returns shape (..., 2)
-        """
-        x = np.asarray(x)
-        return np.stack([x[..., 0], x[..., 0] ** 2], axis=-1)
-
     def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        """
-        ∇T(x): Jacobian of sufficient statistics.
-        For univariate Gaussian: [1, 2x]
-        Returns shape (..., 1, 2)
-        """
         x = np.asarray(x)
         grad_T1 = np.ones_like(x[..., 0])
         grad_T2 = 2 * x[..., 0]
         grad = np.stack([grad_T1, grad_T2], axis=-1)
-        return grad[..., None, :]  # shape (..., 1, 2)
-
-    def base_measure(self, x: np.ndarray) -> np.ndarray:
-        """
-        h(x): Base measure of the Gaussian distribution.
-        For standard Gaussian in exponential form, h(x) = 1.
-        """
-        return np.ones_like(x[..., 0])
+        return grad[..., None, :]
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
-        """
-        ∇ log h(x): Gradient of log base measure.
-        For Gaussian, log h(x) = 0 → ∇ log h(x) = 0
-        """
-        return np.zeros_like(x)  # shape (..., 1)
+        return np.zeros_like(x)
 
     def natural_parameters(self) -> np.ndarray:
-        """
-        Returns the natural parameter vector η for the exponential form.
-        For univariate Gaussian:
-        η = [mu / sigma^2, -1 / (2 * sigma^2)]
-        """
         eta1 = self.mu / self.var
         eta2 = -0.5 / self.var
         return np.array([eta1, eta2])
 
-    def augmented_natural_parameters(self) -> np.ndarray:
-        """
-        Returns the augmented natural parameter vector: [η; 1]
-        """
-        return np.append(self.natural_parameters(), 1.0)
+    @property
+    def parameters_dict(self) -> Dict[str, float]:
+        return {"mu": self.mu, "sigma": self.sigma}
 
 
 class MultivariateGaussian(BaseDistribution):
@@ -101,9 +67,9 @@ class MultivariateGaussian(BaseDistribution):
 
     Parameters
     ----------
-    mu : list[float]
+    mu : ArrayLike
         Mean vector.
-    cov : list[list[float]]
+    cov : ArrayLike
         Covariance matrix.
     """
 
@@ -137,42 +103,16 @@ class MultivariateGaussian(BaseDistribution):
         dx = x - self.mu
         return - np.einsum("ij,...j->...i", self.cov_inv, dx)
 
-    def grad_pdf(self, x: Union[np.ndarray, list]) -> np.ndarray:
-        return self.grad_log_pdf(x) * self.pdf(x)[..., np.newaxis]
+    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
+        x = np.atleast_2d(x)
+        return np.zeros_like(x)
 
     def natural_parameters(self) -> np.ndarray:
-        """
-        Returns the natural parameter vector η = [η1, η2] for the exponential form:
-        η1 = Σ^{-1} μ (shape: d,)
-        η2 = -0.5 * vec(Σ^{-1}) (shape: d^2,)
-        Result shape: (d + d^2,)
-        """
-        eta1 = self.cov_inv @ self.mu  # (d,)
-        eta2 = -0.5 * self.cov_inv.flatten()  # vec(Sigma^{-1}) → (d^2,)
-        return np.concatenate([eta1, eta2])  # (d + d^2,)
-
-    def augmented_natural_parameters(self) -> np.ndarray:
-        """
-        Returns the augmented natural parameter vector [η; 1].
-        Shape: (d + d^2 + 1,)
-        """
-        return np.append(self.natural_parameters(), 1.0)
-
-
-    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
-        """
-        ∇ log h(x): Gradient of log base measure.
-        For Gaussian, log h(x) = 0 → ∇ log h(x) = 0
-        """
-        x = np.atleast_2d(x)
-        return np.zeros_like(x)  # shape (..., d)
+        eta1 = self.cov_inv @ self.mu
+        eta2 = -0.5 * self.cov_inv.flatten()
+        return np.concatenate([eta1, eta2])
 
     def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        """
-        ∇T(x): Jacobian of sufficient statistics.
-        For multivariate Gaussian: T(x) = [x, vec(xx^T)] → ∇T(x) = [I, 2 x ⊗ I]
-        Returns shape (..., d, d + d^2)
-        """
         x = np.atleast_2d(x)
         batch_shape = x.shape[:-1]
         d = x.shape[-1]
@@ -187,10 +127,6 @@ class MultivariateGaussian(BaseDistribution):
 
         return grad_T
 
-
     @property
     def parameters_dict(self) -> Dict[str, np.ndarray]:
-        """
-        Returns the original parameters as a dictionary.
-        """
         return {"mu": self.mu, "cov": self.cov}

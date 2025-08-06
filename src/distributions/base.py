@@ -1,47 +1,40 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike
 
 
 class BaseDistribution(ABC):
     """
-    Abstract base class for exponential family distributions.
+    Abstract base class for distributions.
     """
 
     @abstractmethod
-    def sample(self, n_samples: int = 1) -> NDArray:
-        """Draw samples from the distribution."""
+    def sample(self, n_samples: int = 1) -> np.ndarray:
         pass
 
     @abstractmethod
-    def pdf(self, x: NDArray) -> NDArray:
-        """Evaluate the probability density function."""
+    def pdf(self, x: ArrayLike) -> np.ndarray:
         pass
 
     @abstractmethod
-    def log_pdf(self, x: NDArray) -> NDArray:
-        """Evaluate the log-density function."""
+    def log_pdf(self, x: ArrayLike) -> np.ndarray:
         pass
 
     @abstractmethod
-    def grad_pdf(self, x: NDArray) -> NDArray:
-        """Gradient of the density."""
+    def grad_log_pdf(self, x: ArrayLike) -> np.ndarray:
         pass
 
     @abstractmethod
-    def grad_log_pdf(self, x: NDArray) -> NDArray:
-        """Gradient of the log-density."""
+    def grad_log_base_measure(self, x: ArrayLike) -> np.ndarray:
         pass
 
-    def augmented_natural_parameters(self) -> NDArray:
-        """Natural parameters plus constant for exponential form."""
+    @abstractmethod
+    def natural_parameters(self) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def grad_sufficient_statistics(self, x: ArrayLike) -> np.ndarray:
+        pass
+
+    def augmented_natural_parameters(self) -> np.ndarray:
         return np.append(self.natural_parameters(), 1.0)
-
-    @abstractmethod
-    def natural_parameters(self) -> NDArray:
-        """Return natural parameters for the exponential form."""
-        pass
-
-    def grad_log_base_measure(self, x: NDArray) -> NDArray:
-        """Gradient of log base measure (default: zero)."""
-        return np.zeros_like(x)
