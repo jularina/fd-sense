@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Tuple
 
 from src.kernels.base import BaseKernel
 from src.discrepancies.ksd import KernelizedSteinDiscrepancy
@@ -14,23 +15,45 @@ class PosteriorKSD:
         kernel: BaseKernel,
     ):
         """
-        Computes Kernelized Stein Discrepancy (KSD) components between posterior samples and candidate posterior.
+        Computes Kernelized Stein Discrepancy (KSD) components between posterior samples
+        and a candidate posterior distribution.
 
         Args:
-            samples: Posterior samples (m, D)
-            model: Bayesian model with score functions
-            kernel: Kernel object with derivative methods
+            samples (ArrayLike): Posterior samples of shape (m, D)
+            model (BayesianModel): Bayesian model providing score functions
+            kernel (BaseKernel): Kernel object with precomputed values and derivatives
         """
-        self.samples = samples
-        self.model = model
-        self.kernel = kernel
-        self.ksd = KernelizedSteinDiscrepancy(model.posterior_score, kernel)
+        self.samples: np.ndarray = samples
+        self.model: BayesianModel = model
+        self.kernel: BaseKernel = kernel
+        self.ksd: KernelizedSteinDiscrepancy = KernelizedSteinDiscrepancy(model.posterior_score, kernel)
 
     def estimate_ksd(self) -> float:
+        """
+        Compute the Kernelized Stein Discrepancy (KSD) between the posterior samples
+        and the candidate posterior.
+
+        Returns:
+            float: Estimated KSD value
+        """
         return self.ksd.compute(self.samples)
 
-    def compute_ksd_quadratic_form_for_prior(self):
-        JT_aug_T = self._compute_augmented_jacobians_for_prior()  # (m, p+1, d)
+    def compute_ksd_quadratic_form_for_prior(
+        self,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+        """
+        Compute components of the KSD quadratic form specific to the prior term.
+
+        Returns:
+            Tuple containing:
+                - Lambda_m: (p+1, p+1) matrix
+                - b_m: (p+1,) vector
+                - b_prior: (p+1,) vector
+                - b_cross: (p+1,) vector
+                - C: scalar constant term
+                - JT_aug_T: (m, p+1, d) Jacobian tensor
+        """
+        JT_aug_T = self._compute_augmented_jacobians_for_prior()
         Lambda_m = self._compute_Lambda_for_prior(JT_aug_T)
         b_prior = self._compute_b_prior(JT_aug_T)
         b_cross = self._compute_b_cross_for_prior(JT_aug_T)
@@ -38,7 +61,19 @@ class PosteriorKSD:
         C = self._compute_C()
         return Lambda_m, b_m, b_prior, b_cross, C, JT_aug_T
 
-    def compute_ksd_quadratic_form_for_loss(self):
+    def compute_ksd_quadratic_form_for_loss(
+        self,
+    ) -> Tuple[float, float, float, float]:
+        """
+        Compute components of the KSD quadratic form specific to the likelihood term.
+
+        Returns:
+            Tuple containing:
+                - Lambda_m: scalar
+                - b_m: scalar
+                - b_loss: scalar
+                - b_cross: scalar
+        """
         scores_loss = self.model.loss_score(self.samples, multiply_by_lr=False)
         scores_prior = self.model.prior_score(self.samples)
         Lambda_m = self._compute_Lambda_for_loss(scores_loss)
@@ -47,7 +82,13 @@ class PosteriorKSD:
         b_m = b_loss + b_cross
         return Lambda_m, b_m, b_loss, b_cross
 
-    def _compute_augmented_jacobians_for_prior(self):
+    def _compute_augmented_jacobians_for_prior(self) -> np.ndarray:
+        """
+        Compute augmented Jacobians including sufficient statistics and base measure gradient.
+
+        Returns:
+            np.ndarray: Augmented Jacobians of shape (m, p+1, d)
+        """
         J_T = self.model.jacobian_sufficient_statistics(self.samples)  # (m, d, p)
         s_h = self.model.grad_log_base_measure(self.samples)  # (m, d)
         JT_aug = np.concatenate([J_T, s_h[..., None]], axis=2)  # (m, d, p+1)
@@ -56,32 +97,34 @@ class PosteriorKSD:
 
     def _compute_Lambda_for_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
         """
-        Computes Lambda_m = (1/m^2) sum_{i,j} J_i @ J_j^T * k(theta_i, theta_j)
+        Compute the Lambda matrix for the prior KSD quadratic form.
+
+        Returns:
+            np.ndarray: Shape (p+1, p+1)
         """
         m, p, d = JT_aug_T.shape
-        Lambda = np.einsum('ij,ipd,jqd->pq', self.kernel.value, JT_aug_T, JT_aug_T)
+        return np.einsum('ij,ipd,jqd->pq', self.kernel.value, JT_aug_T, JT_aug_T) / (m ** 2)
 
-        return Lambda / (m ** 2)
-
-    def _compute_Lambda_for_loss(self, scores: np.ndarray) -> np.ndarray:
+    def _compute_Lambda_for_loss(self, scores: np.ndarray) -> float:
         """
-        Computes Lambda_m = (1/m^2) sum_{i,j} J_i @ J_j^T * k(theta_i, theta_j)
+        Compute Lambda term for the loss KSD quadratic form.
+
+        Returns:
+            float: Scalar Lambda value
         """
         Lambda = np.einsum('ik,jk,ij->ij', scores, scores, self.kernel.value)
-
         return np.sum(Lambda) / (self.model.m ** 2)
 
     def _compute_b_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
         """
-        Computes b_prior = (1/m^2) * sum_{i,j} (J_i^T grad1_{i,j} + J_j^T grad2_{i,j})
-        """
-        m, p1, d = JT_aug_T.shape
-        # First term: sum over i, j of JT_aug_T[i] @ grad1[i, j]
-        term1 = np.einsum("ipd,ijd->p", JT_aug_T, self.kernel.grad_x1)
-        # Second term: sum over i, j of JT_aug_T[j] @ grad2[i, j]
-        term2 = np.einsum("jpd,ijd->p", JT_aug_T, self.kernel.grad_x2)
+        Compute b vector (linear term) for the prior KSD.
 
-        return (term1 + term2) / (m ** 2)
+        Returns:
+            np.ndarray: Shape (p+1,)
+        """
+        term1 = np.einsum("ipd,ijd->p", JT_aug_T, self.kernel.grad_x1)
+        term2 = np.einsum("jpd,ijd->p", JT_aug_T, self.kernel.grad_x2)
+        return (term1 + term2) / (self.model.m ** 2)
 
     def _compute_b_loss(self, scores: np.ndarray) -> np.ndarray:
         """
@@ -94,38 +137,53 @@ class PosteriorKSD:
 
     def _compute_b_cross_for_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
         """
-        Computes b_cross = (2 / m^2) * sum_{i,j} J_i^T (loss_scores[j] * K[i, j])
+        Compute cross-term b vector for the prior KSD.
+
+        Returns:
+            np.ndarray: Shape (p+1,)
         """
-        m, p1, d = JT_aug_T.shape
-        loss_scores = self.model.loss_score(self.samples)  # shape (m, d)
+        loss_scores = self.model.loss_score(self.samples)
         b_cross = np.einsum("ipd,jd,ij->p", JT_aug_T, loss_scores, self.kernel.value)
+        return (2 / self.model.m ** 2) * b_cross
 
-        return (2 / m ** 2) * b_cross
-
-    def _compute_b_cross_for_loss(self, scores_loss: np.ndarray, scores_prior: np.ndarray) -> np.ndarray:
+    def _compute_b_cross_for_loss(self, scores_loss: np.ndarray, scores_prior: np.ndarray) -> float:
         """
-        Computes b_cross = (2 / m^2) * sum_{i,j} J_i^T (loss_scores[j] * K[i, j])
+        Compute cross-term b value for the loss KSD.
+
+        Returns:
+            float: Scalar value
         """
         term = np.einsum('ik,jk,ij->ij', scores_loss, scores_prior, self.kernel.value)
-
         return (2 / self.model.m ** 2) * np.sum(term)
 
-    def _compute_C(self):
+    def _compute_C(self) -> float:
+        """
+        Compute the constant Hessian term in the KSD quadratic form.
+
+        Returns:
+            float: Scalar value
+        """
         return np.sum(self.kernel.hess_xy) / (self.model.m ** 2)
 
-    def compute_ksd_for_loss_term(self):
+    def compute_ksd_for_loss_term(self) -> float:
+        """
+        Direct computation of the KSD value for the loss term.
+
+        Returns:
+            float: KSD value for likelihood component
+        """
         m, d = self.samples.shape
         scores = self.model.loss_score(self.samples)
 
-        K = self.kernel.value          # (m, m)
-        grad1 = self.kernel.grad_x1        # (m, m, d)
-        grad2 = self.kernel.grad_x2        # (m, m, d)
-        hess = self.kernel.hess_xy         # (m, m) or (m, m, d, d)
+        K = self.kernel.value
+        grad1 = self.kernel.grad_x1
+        grad2 = self.kernel.grad_x2
+        hess = self.kernel.hess_xy
 
         if hess.ndim == 2:
-            term4 = hess  # univariate: (m, m)
+            term4 = hess
         elif hess.ndim == 4:
-            term4 = np.trace(hess, axis1=-2, axis2=-1)  # multivariate: (m, m)
+            term4 = np.trace(hess, axis1=-2, axis2=-1)
         else:
             raise ValueError(f"Unexpected hessian shape: {hess.shape}")
 
@@ -133,62 +191,66 @@ class PosteriorKSD:
         term2 = np.einsum('ik,ijk->ij', scores, grad2)
         term3 = np.einsum('jk,ijk->ij', scores, grad1)
 
-        total = term1 + term2 + term3 + term4
+        return np.sum(term1 + term2 + term3 + term4) / (m ** 2)
 
-        return np.sum(total) / (m * m)
+    def compute_ksd_for_prior_term(self) -> float:
+        """
+        Direct computation of the KSD value for the prior term.
 
-    def compute_ksd_for_prior_term(self):
+        Returns:
+            float: KSD value for prior component
+        """
         m, d = self.samples.shape
         scores = self.model.prior_score(self.samples)
 
-        K = self.kernel.value          # (m, m)
-        grad1 = self.kernel.grad_x1        # (m, m, d)
-        grad2 = self.kernel.grad_x2        # (m, m, d)
-        hess = self.kernel.hess_xy         # (m, m) or (m, m, d, d)
+        K = self.kernel.value
+        grad1 = self.kernel.grad_x1
+        grad2 = self.kernel.grad_x2
+        hess = self.kernel.hess_xy
 
         if hess.ndim == 2:
-            term4 = hess  # univariate: (m, m)
+            term4 = hess
         elif hess.ndim == 4:
-            term4 = np.trace(hess, axis1=-2, axis2=-1)  # multivariate: (m, m)
+            term4 = np.trace(hess, axis1=-2, axis2=-1)
         else:
             raise ValueError(f"Unexpected hessian shape: {hess.shape}")
 
         term1 = np.einsum('ik,jk,ij->ij', scores, scores, K)
         term2 = np.einsum('ik,ijk->ij', scores, grad2)
         term3 = np.einsum('jk,ijk->ij', scores, grad1)
-        total = term1 + term2 + term3 + term4
 
-        return np.sum(total) / (m * m)
+        return np.sum(term1 + term2 + term3 + term4) / (m ** 2)
 
     def compute_cross_term(self) -> float:
         """
-        Computes the cross-term of the posterior KSD:
-            (2 / m^2) * sum_{i,j} prior_score[i]^T * loss_score[j] * k(theta_i, theta_j)
+        Compute the cross term of the posterior KSD: 2 * s_pi^T s_l * k
+
+        Returns:
+            float: Scalar value
         """
         m, d = self.samples.shape
-        prior_scores = self.model.prior_score(self.samples)  # shape (m, d)
-        loss_scores = self.model.loss_score(self.samples)    # shape (m, d)
-        K = self.kernel.value                                # shape (m, m)
+        prior_scores = self.model.prior_score(self.samples)
+        loss_scores = self.model.loss_score(self.samples)
+        K = self.kernel.value
 
-        term = np.einsum('ik,jk,ij->ij', prior_scores, loss_scores, K)
-
-        # First cross term: s_pi(i)^T s_l(j) k(i, j)
         term1 = np.einsum('ik,jk,ij->ij', prior_scores, loss_scores, K)
-
-        # Second cross term: s_pi(j)^T s_l(i) k(i, j)
         term2 = np.einsum('ik,jk,ij->ij', loss_scores, prior_scores, K)
 
         return (1.0 / m**2) * np.sum(term1 + term2)
 
     def compute_hessian_term(self) -> float:
+        """
+        Compute the Hessian trace term of the KSD (scalar).
+
+        Returns:
+            float: Scalar value
+        """
         m, d = self.samples.shape
-        hess = self.kernel.hess_xy         # (m, m) or (m, m, d, d)
+        hess = self.kernel.hess_xy
 
         if hess.ndim == 2:
-            term = hess  # univariate: (m, m)
+            return np.sum(hess) / (m ** 2)
         elif hess.ndim == 4:
-            term = np.trace(hess, axis1=-2, axis2=-1)  # multivariate: (m, m)
+            return np.sum(np.trace(hess, axis1=-2, axis2=-1)) / (m ** 2)
         else:
             raise ValueError(f"Unexpected hessian shape: {hess.shape}")
-
-        return np.sum(term) / (m * m)

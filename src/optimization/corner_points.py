@@ -55,10 +55,10 @@ class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
         self.corner_points: List[Dict[str, float]] = self._generate_corner_points()
         self.parameter_grid = self._generate_full_parameter_grid()
 
-        self.Lambda_m_prior, self.b_m_prior, self.b_prior, self.b_cross_prior, self.C_prior, self.JT_aug_T_prior = self.posterior_ksd.compute_ksd_quadratic_form_for_prior()
+        self.Lambda_m_prior, self.b_m_prior, self.b_prior, self.b_cross_prior, self.C, self.JT_aug_T_prior = self.posterior_ksd.compute_ksd_quadratic_form_for_prior()
         self.ksd_for_prior_init = self.posterior_ksd.compute_ksd_for_prior_term()
 
-        self.Lambda_m_loss_lr, self.b_m_loss_lr, self.b_loss_lr, self.b_cross_loss_lr, self.C_loss_lr = self.posterior_ksd.compute_ksd_quadratic_form_for_loss()
+        self.Lambda_m_loss_lr, self.b_m_loss_lr, self.b_loss_lr, self.b_cross_loss_lr = self.posterior_ksd.compute_ksd_quadratic_form_for_loss()
         self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
 
     def _generate_corner_points(self) -> List[Dict[str, float]]:
@@ -114,7 +114,7 @@ class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
         results = []
 
         for corner in self.corner_points:
-            self.model.set_lr_parameter(corner)
+            self.model.set_lr_parameter(corner["lr"])
             lr = self.model.loss_lr
             ksd_est = lr**2 * self.Lambda_m_loss_lr + self.b_m_loss_lr * lr + self.ksd_for_prior_init
             results.append((corner, ksd_est))

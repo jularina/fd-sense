@@ -98,7 +98,7 @@ def plots_across_gaussian_loss_lr_parameters_ranges(cfg, model: BayesianModel, p
     ]
     for values in np.array(np.meshgrid(*param_ranges)).T.reshape(-1, len(param_names)):
         params = dict(zip(param_names, values))
-        model.set_lr_parameter(params)
+        model.set_lr_parameter(params["lr"])
 
         ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
@@ -522,5 +522,5 @@ def run_inverse_wishart_priors(cfg) -> None:
 if __name__ == "__main__":
     # run_gaussian_priors()
     # run_gaussian_log_normal_priors()
-    # run_multivariate_gaussian_priors()
-    run_inverse_wishart_priors()
+    run_multivariate_gaussian_priors()
+    # run_inverse_wishart_priors()
