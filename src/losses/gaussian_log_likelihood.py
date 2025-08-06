@@ -102,4 +102,4 @@ class MultivariateGaussianLogLikelihood:
 
         # Gradient: ∇_Σ log p(X | Σ) = 0.5 * (Σ⁻¹ S Σ⁻¹ - n Σ⁻¹)
         grad = 0.5 * (Sigma_inv @ S @ Sigma_inv - n * Sigma_inv)
-        return grad
+        return grad.reshape(Sigma.shape[0],-1)

@@ -24,6 +24,7 @@ class InverseWishartModel(BayesianModel):
         self.loss_lr = data_config.loss_lr
         self.loss = data_config.loss
         self.prior = data_config.base_prior
+        self.m = data_config.posterior_samples_num
 
     def set_prior_parameters(self, params: dict,
                              distribution_cls: Type = InverseWishart) -> None:
@@ -72,19 +73,21 @@ class InverseWishartModel(BayesianModel):
         """
         Score of the Inverse Wishart prior w.r.t. Sigma
         """
-        if x.ndim == 2:
-            x = x.reshape(x.shape[0], self.prior.d, self.prior.d)
+        x = self.devectorize_samples(x)
         return self.prior.grad_log_pdf(x)
 
 
-    def loss_score(self, x: ArrayLike) -> np.ndarray:
+    def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
         """
         Score of the log-likelihood w.r.t. Sigma for multivariate normal with known mu:
         \nabla_\Sigma \log p(X | mu, Sigma)
         """
-        if x.ndim == 2:
-            x = x.reshape(x.shape[0], self.prior.d, self.prior.d)
-        return self.loss_lr * self.loss.grad_log_pdf_wrt_cov(x, self.observations)
+        x = self.devectorize_samples(x)
+
+        if multiply_by_lr:
+            return self.loss_lr * self.loss.grad_log_pdf_wrt_cov(x, self.observations)
+        else:
+            return self.loss.grad_log_pdf_wrt_cov(x, self.observations)
 
 
     def posterior_score(self, x: ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -93,18 +96,17 @@ class InverseWishartModel(BayesianModel):
         """
         prior_grad = self.prior_score(x)
         loss_grad = self.loss_score(x)
+        total_grad = prior_grad + loss_grad
 
-        prior_grads_vec = prior_grad.reshape(prior_grad.shape[0], -1)
-        loss_grads_vec = loss_grad.reshape(loss_grad.shape[0], -1)
-        total_grads_vec = prior_grads_vec + loss_grads_vec
-
-        return total_grads_vec, prior_grads_vec, loss_grads_vec
+        return total_grad, prior_grad, loss_grad
 
     def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
+        x = self.devectorize_samples(x)
         return self.prior.grad_sufficient_statistics(x)
 
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
+        x = self.devectorize_samples(x)
         return self.prior.grad_log_base_measure(x)
 
 
@@ -120,4 +122,21 @@ class InverseWishartModel(BayesianModel):
             np.ndarray: Array of shape (n_samples, d^2)
         """
         return samples.reshape(samples.shape[0], -1)
+
+    def devectorize_samples(self, vectors: np.ndarray) -> np.ndarray:
+        """
+        Devectorizes a batch of (n_samples, d^2) vectors back into
+        (n_samples, d, d) covariance matrices.
+
+        Args:
+            vectors (np.ndarray): Array of shape (n_samples, d^2)
+
+        Returns:
+            np.ndarray: Array of shape (n_samples, d, d)
+        """
+        n_samples, d_squared = vectors.shape
+        d = int(np.sqrt(d_squared))
+        if d * d != d_squared:
+            raise ValueError("Each vector must represent a square matrix (length must be a perfect square).")
+        return vectors.reshape(n_samples, d, d)
 

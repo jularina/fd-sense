@@ -182,7 +182,7 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
     def _generate_cov_grid(self) -> List[np.ndarray]:
         cov_ranges = self.param_ranges['cov']
         cov_nums = self.param_nums['cov']
-        keys = sorted(cov_ranges.keys())  # e.g., ['0_0', '0_1', '1_0', '1_1']
+        keys = sorted(cov_ranges.keys())
         axes = [
             np.linspace(*cov_ranges[k], cov_nums[k]) for k in keys
         ]
@@ -204,7 +204,12 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
         parameter_grid = {}
 
         for mu, cov in itertools.product(mu_grid, cov_grid):
-            dist = self.distribution_cls(mu=np.array(mu), cov=np.array(cov))
+            try:
+                dist = self.distribution_cls(mu=np.array(mu), cov=np.array(cov))
+            except Exception as e:
+                print(f"Exception: {e} while initializing the distribution with mu={mu}, cov={cov}.")
+                continue
+
             eta = dist.augmented_natural_parameters()
             natural_params.append(eta)
             distributions.append(dist)
@@ -271,13 +276,11 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
             param_dict = dict(zip(self.param_names, values))
             self.model.set_prior_parameters(param_dict, distribution_cls=self.distribution_cls)
             eta_tilde = self.model.prior.augmented_natural_parameters()
-            ksd_for_loss = self.posterior_ksd.compute_ksd_for_loss_term()
-            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + ksd_for_loss
+            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
             results.append((param_dict, eta_tilde, ksd_est))
             print(f"Corner: {param_dict} => Estimated KSD: {ksd_est:.6f}")
 
         results.sort(key=lambda x: x[2], reverse=True)
-
         return results, self.distribution_corner_points
 
 
@@ -313,36 +316,36 @@ class OptimizationCornerPointsInverseWishart(OptimizationCornerPointsBase):
         return df_grid
 
     def _generate_scale_grid(self) -> List[np.ndarray]:
-        cov_ranges = self.param_ranges['cov']
-        cov_nums = self.param_nums['cov']
-        keys = sorted(cov_ranges.keys())  # e.g., ['0_0', '0_1', '1_0', '1_1']
+        scale_ranges = self.param_ranges['scale']
+        scale_nums = self.param_nums['scale']
+        keys = sorted(scale_ranges.keys())
         axes = [
-            np.linspace(*cov_ranges[k], cov_nums[k]) for k in keys
+            np.linspace(*scale_ranges[k], scale_nums[k]) for k in keys
         ]
-        cov_matrices = []
+        scale_matrices = []
         for values in itertools.product(*axes):
-            cov = np.zeros((2, 2))  # assumes 2D, generalize if needed
+            scale = np.zeros((2, 2))  # assumes 2D, generalize if needed
             for idx, k in enumerate(keys):
                 i, j = map(int, k.split('_'))
-                cov[i, j] = values[idx]
-            cov_matrices.append(cov)
-        return cov_matrices
+                scale[i, j] = values[idx]
+            scale_matrices.append(scale)
+        return scale_matrices
 
     def _generate_full_parameter_grid(self) -> Tuple[List[np.ndarray], List[Dict[str, np.ndarray]]]:
-        df_grid = self._generate_nu_grid()
+        df_grid = self._generate_df_grid()
         scale_grid = self._generate_scale_grid()
-
-        natural_params = []
-        distributions = []
         parameter_grid = {}
 
         for df, scale in itertools.product(df_grid, scale_grid):
-            dist = self.distribution_cls(df=df, cov=np.array(scale))
+            try:
+                dist = self.distribution_cls(df=df, scale=np.array(scale))
+            except Exception as e:
+                print(f"Exception: {e} while initializing the distribution with df={df}, scale={scale}.")
+                continue
+
             eta = dist.augmented_natural_parameters()
-            natural_params.append(eta)
-            distributions.append(dist)
-            cov_key = tuple(tuple(row) for row in scale)
-            parameter_grid[(df, cov_key)] = {
+            scale_key = tuple(tuple(row) for row in scale)
+            parameter_grid[(df, scale_key)] = {
                 "natural_parameters": eta,
                 "distribution": dist
             }
@@ -403,11 +406,9 @@ class OptimizationCornerPointsInverseWishart(OptimizationCornerPointsBase):
             param_dict = dict(zip(self.param_names, values))
             self.model.set_prior_parameters(param_dict, distribution_cls=self.distribution_cls)
             eta_tilde = self.model.prior.augmented_natural_parameters()
-            ksd_for_loss = self.posterior_ksd.compute_ksd_for_loss_term()
-            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + ksd_for_loss
+            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
             results.append((param_dict, eta_tilde, ksd_est))
             print(f"Corner: {param_dict} => Estimated KSD: {ksd_est:.6f}")
 
         results.sort(key=lambda x: x[2], reverse=True)
-
         return results, self.distribution_corner_points

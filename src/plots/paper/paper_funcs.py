@@ -9,6 +9,7 @@ import colorsys
 from matplotlib.colors import to_rgb, Normalize, ListedColormap, BoundaryNorm
 import matplotlib.cm as cmx
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.patches import Ellipse
 from typing import Set, FrozenSet
 from matplotlib.ticker import MaxNLocator
 from matplotlib.cm import ScalarMappable
@@ -1092,6 +1093,7 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
     """
     Plots joint KDE contours of multivariate priors, colored by KSD magnitude (no fill).
     Overlays true density if provided. Uses color map based on config.
+    Highlights the distribution with the largest KSD in red.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -1117,7 +1119,16 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
 
     fig, ax = plt.subplots(figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height))
 
-    for param_dict, _, ksd_est in sorted_results:
+    N = 17  # Show top-N and bottom-N KSD priors only
+    subset_results = sorted_results[:N] + sorted_results[-N:]
+
+    # Identify the distribution with the maximum KSD
+    max_ksd_entry = sorted_results[-1]
+    max_ksd_mu = max_ksd_entry[0]["mu"]
+    max_ksd_cov = max_ksd_entry[0]["cov"]
+
+    # Plot all selected priors
+    for param_dict, _, ksd_est in subset_results:
         mu = param_dict["mu"]
         cov = param_dict["cov"]
 
@@ -1127,17 +1138,30 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
             print(f"[WARN] Skipping invalid covariance matrix: {cov}")
             continue
 
-        color = cmap(norm(ksd_est))
+        # If this is the max-KSD distribution, highlight it in red
+        is_max_ksd = np.allclose(mu, max_ksd_mu) and np.allclose(cov, max_ksd_cov)
+
+        if is_max_ksd:
+            color = "red"
+            lw = 2.0
+            alpha = 1.0
+            levels = 3
+            ax.plot(mu[0], mu[1], marker='*', markersize=5, color=color)
+        else:
+            color = cmap(norm(ksd_est))
+            alpha = 0.4 + 0.6 * norm(ksd_est)
+            lw = 0.5 + 1.5 * norm(ksd_est)
+            levels = 3
 
         sns.kdeplot(
             x=samples[:, 0],
             y=samples[:, 1],
             ax=ax,
             fill=False,
-            levels=3,
-            linewidths=1.0,
+            levels=levels,
+            linewidths=lw,
             color=color,
-            alpha=1.0,
+            alpha=alpha,
         )
 
     # Overlay true density if provided
@@ -1149,12 +1173,12 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
                 y=true_samples[:, 1],
                 ax=ax,
                 fill=False,
-                levels=4,
+                levels=3,
                 linewidths=1.2,
-                alpha=0.8,
+                alpha=1.0,
                 color="black",
             )
-            ax.plot(true_theta[0], true_theta[1], "ko", markersize=4)
+            ax.plot(true_theta[0], true_theta[1], "ko", markersize=5)
             ax.axvline(true_theta[0], color="k", linestyle="--", lw=1)
             ax.axhline(true_theta[1], color="k", linestyle="--", lw=1)
         except np.linalg.LinAlgError:
@@ -1179,3 +1203,131 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
     plt.close(fig)
 
     print(f"[INFO] Saved joint prior KDE (contour) plot to: {output_path}")
+
+
+def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, plot_cfg):
+    """
+    Plots 2D ellipses representing inverse Wishart scale matrices,
+    colored by KSD value. Highlights the max-KSD distribution in red.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Sort by KSD (ascending)
+    sorted_results = sorted(results, key=lambda x: x[2])
+    ksds = [ksd for (_, _, ksd) in sorted_results]
+    min_ksd, max_ksd = min(ksds), max(ksds)
+
+    # Normalize KSD values for colormap
+    norm = Normalize(vmin=min_ksd, vmax=max_ksd)
+    color_list = plot_cfg.plot.color_palette.colors
+    cmap = LinearSegmentedColormap.from_list("ksd_cmap", color_list[::-1])
+
+    # Prepare figure and style
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+    fig, ax = plt.subplots(figsize=(plot_cfg.plot.figure.size.width,
+                                    plot_cfg.plot.figure.size.height))
+
+    # Parameters for sampling
+    step_middle = 5  # Pick every 4th from the middle
+
+    # Slice sorted results
+    subset_results = sorted_results[::step_middle] + [sorted_results[-1]]
+    n_ellipses = len(subset_results)
+
+    # Identify max-KSD distribution
+    max_ksd_entry = sorted_results[-1]
+    max_ksd_scale = max_ksd_entry[0]["scale"]
+
+    # Helper to plot ellipses
+    def plot_cov_ellipse(cov, pos, ax, nstd=1.5, **kwargs):
+        vals, vecs = np.linalg.eigh(cov)
+        order = vals.argsort()[::-1]
+        vals, vecs = vals[order], vecs[:, order]
+        angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+        width, height = 2 * nstd * np.sqrt(vals)
+        ellip = Ellipse(xy=pos, width=width, height=height, angle=angle, **kwargs)
+        ax.add_patch(ellip)
+
+    # Layout for ellipses
+    x_spacing = 3.0
+    for idx, (param_dict, _, ksd) in enumerate(subset_results):
+        scale = param_dict["scale"]
+        pos = (idx * x_spacing, 0.0)  # Position ellipses along x-axis
+
+        is_max_ksd = np.allclose(scale, max_ksd_scale)
+        if is_max_ksd:
+            color = "red"
+            lw = 2.5
+            alpha = 1.0
+        else:
+            color = cmap(norm(ksd))
+            lw = 1.0
+            alpha = 0.7
+
+        try:
+            plot_cov_ellipse(scale, pos, ax, edgecolor=color, lw=lw, alpha=alpha, facecolor='none')
+            ax.plot(pos[0], pos[1], 'o', color=color, markersize=3)
+        except np.linalg.LinAlgError:
+            print(f"[WARN] Skipping non-PD matrix: {scale}")
+
+    # Formatting
+    ax.set_aspect('equal')
+    ax.set_xlim(-1, (n_ellipses - 1) * x_spacing + x_spacing)
+    ax.set_ylim(-5, 5)
+    ax.set_ylabel("")
+    ax.set_xticks([])
+
+    # Colorbar
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+
+    # Shrink main plot height to make space for colorbar
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0 + 0.12, box.width, box.height * 0.85])
+
+    # Add horizontal colorbar below the plot
+    cbar_height = 0.012
+    spacing = 0.09  # vertical spacing between colorbars
+    start_y = box.y0 - 0.047  # starting y-position for the first colorbar
+
+    tick_locs = np.linspace(min_ksd+0.01, max_ksd-0.01, 3)
+    tick_label_dict = {
+        0: ["0.61", "0.63", "0.65"],
+        1: ["1.25", "1.4", "1.5"],
+        2: ["2.9", "3.2", "3.5"]
+    }
+    text_labels = {
+        0: "$\\nu_0=5$",
+        1: "$\\nu_0=10$",
+        2: "$\\nu_0=15$"
+    }
+
+    for i in range(3):
+        y_pos = start_y - i * (cbar_height + spacing)
+        cbar_ax = fig.add_axes([box.x0, y_pos + 0.02, box.width, cbar_height])
+        cbar = fig.colorbar(sm, cax=cbar_ax, orientation='horizontal')
+        cbar.set_ticks(tick_locs)
+        cbar.set_ticklabels(tick_label_dict[i])
+        if i == 1:  # Label only the middle colorbar
+            cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors, labelpad=25)
+
+        fig.text(
+            box.x0 - 0.05,  # X position (left of colorbar)
+            0.95 * y_pos + cbar_height / 2,  # Y position (vertical center of bar)
+            text_labels[i],
+            ha='right', va='center',
+            fontsize=plot_cfg.plot.font.size
+        )
+
+    # Save
+    output_path = os.path.join(output_dir, "toy_inverse_wishart.pdf")
+    fig.tight_layout()
+    fig.savefig(output_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"[INFO] Saved Inverse Wishart scale ellipse plot to: {output_path}")

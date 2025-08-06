@@ -1,13 +1,13 @@
 plot:
   font:
-    size: 32  # match Overleaf 10pt font
+    size: 14  # 32 match Overleaf 10pt font
     family: serif  # for LaTeX compatibility
     use_tex: true  # render text with LaTeX
 
   figure:
     size:
-      width: 4  # in inches
-      height: 3.2
+      width: 5  # 4 in inches
+      height: 3.2 # 3.2 in inches
     dpi: 300
     tight_layout: true
 

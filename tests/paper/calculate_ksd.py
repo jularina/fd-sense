@@ -1,12 +1,12 @@
 from statistics import median
-
 import numpy as np
 import hydra
 from hydra.utils import instantiate, get_original_cwd
-import os
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
+import random
+random.seed(27)
 
 from src.discrepancies.posterior_ksd import PosteriorKSD
 from src.plots.paper.paper_funcs import *
@@ -247,6 +247,17 @@ def density_plot_across_multivariate_prior_parameter_sets(
         )
 
 
+def plot_across_inv_wishart_prior_parameter_sets(
+    cfg,
+    qf_across_priors,
+):
+    if cfg.flags.plots.generate_plots.line_plot:
+        plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+        output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+        plot_cfg = load_plot_config(plot_config_path)
+        plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(qf_across_priors, output_dir, plot_cfg)
+
+
 def compute_ksd_for_setting(obs_num, mu_0, cfg_serialized, repeats, fixed_sigma):
     cfg = copy.deepcopy(cfg_serialized)  # each process gets its own copy
     cfg.data.observations_num = obs_num
@@ -475,8 +486,6 @@ def run_multivariate_gaussian_priors(cfg) -> None:
         optimizer = OptimizationCornerPointsMultivariateGaussian(ksd_estimator, cfg.ksd.optimize.prior.MultivariateGaussian, distribution_cls=MultivariateGaussian)
         qf_prior = optimizer.evaluate_all_prior_corners()
         qf_prior_all_combinations, corner_points = optimizer.evaluate_all_prior_combinations()
-
-    if cfg.ksd.optimize:
         density_plot_across_multivariate_prior_parameter_sets(cfg, model, posterior_samples, kernel, qf_across_priors=qf_prior_all_combinations)
 
 
@@ -505,11 +514,13 @@ def run_inverse_wishart_priors(cfg) -> None:
     # Corner points optimization
     if cfg.ksd.optimize:
         optimizer = OptimizationCornerPointsInverseWishart(ksd_estimator, cfg.ksd.optimize.prior.InverseWishart, distribution_cls=InverseWishart)
-        results = optimizer.evaluate_all_corners()
+        qf_prior = optimizer.evaluate_all_prior_corners()
+        qf_prior_all_combinations, corner_points = optimizer.evaluate_all_prior_combinations()
+        plot_across_inv_wishart_prior_parameter_sets(cfg, qf_across_priors=qf_prior_all_combinations)
 
 
 if __name__ == "__main__":
     # run_gaussian_priors()
     # run_gaussian_log_normal_priors()
-    run_multivariate_gaussian_priors()
-    # run_inverse_wishart_priors()
+    # run_multivariate_gaussian_priors()
+    run_inverse_wishart_priors()

@@ -1,7 +1,7 @@
 data:
   base_prior:
     _target_: src.distributions.inverse_wishart.InverseWishart
-    df: 5.0
+    df: 4.0
     scale: [[4.0, 0.0], [0.0, 4.0]]
 
   true_dgp:
@@ -33,19 +33,19 @@ ksd:
       InverseWishart:
         parameters_box_range:
           ranges:
-            df: [5, 15]
+            df: [5, 5]
             scale:
-              "0_0": [2.0, 3.0]
-              "1_1": [2.0, 3.0]
-              "0_1": [0.0, 0.0]
-              "1_0": [0.0, 0.0]
+              "0_0": [2.0, 8.0]
+              "1_1": [2.0, 8.0]
+              "0_1": [0.0, 3.0]
+              "1_0": [0.0, 3.0]
           nums:
-            df: 3
+            df: 1
             scale:
-              "0_0": 2
-              "1_1": 2
-              "0_1": 1
-              "1_0": 1
+              "0_0": 7
+              "1_1": 7
+              "0_1": 4
+              "1_0": 4
 
 flags:
   plots:
