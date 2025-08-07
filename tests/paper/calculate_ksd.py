@@ -8,7 +8,7 @@ import copy
 import random
 random.seed(27)
 
-from src.discrepancies.posterior_ksd import PosteriorKSD
+from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
 from src.plots.paper.paper_funcs import *
 from src.bayesian_model.base import BayesianModel
 from src.kernels.base import BaseKernel
@@ -16,7 +16,10 @@ from src.distributions.gaussian import MultivariateGaussian
 from src.distributions.inverse_wishart import InverseWishart
 from src.utils.files_operations import load_plot_config
 from src.utils.distributions import DISTRIBUTION_MAP
-from src.optimization.corner_points import OptimizationCornerPointsUnivariateGaussian, OptimizationCornerPointsInverseWishart, OptimizationCornerPointsMultivariateGaussian
+from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
+                                            OptimizationCornerPointsInverseWishart,
+                                            OptimizationCornerPointsMultivariateGaussian)
+from src.optimization.nonparametric import OptimizationNonparametricBase
 
 
 def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
@@ -41,7 +44,7 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, pos
         prior_params = dict(zip(param_names, values))
         model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
 
-        ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
         ksd_results[tuple(values)] = ksd
         print(f"Prior: {prior_params}, mu_n: {model.mu_n}, KSD: {ksd:.4f}")
@@ -100,7 +103,7 @@ def plots_across_gaussian_loss_lr_parameters_ranges(cfg, model: BayesianModel, p
         params = dict(zip(param_names, values))
         model.set_lr_parameter(params["lr"])
 
-        ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
         ksd_results[values[0]] = ksd
         print(f"Lr: {params}, KSD: {ksd:.4f}")
@@ -131,7 +134,7 @@ def density_plot_across_gaussian_prior_parameter_set(cfg, model: BayesianModel, 
         prior_params = dict(zip(param_names, values))
         model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
 
-        ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
         ksd_results[tuple(values)] = ksd
         print(f"Prior: {prior_params}, mu_n: {model.mu_n}, KSD: {ksd:.4f}")
@@ -168,7 +171,7 @@ def density_plot_across_prior_parameter_sets(cfg, model: BayesianModel, posterio
             prior_params = dict(zip(param_names, values))
             model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
 
-            ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+            ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
             ksd = ksd_estimator.estimate_ksd()
             dist_ksd_results[tuple(values)] = ksd
             print(f"Dist: {dist_name}, Prior: {prior_params}, mu_n: {model.mu_n}, KSD: {ksd:.4f}")
@@ -217,7 +220,7 @@ def density_plot_across_multivariate_prior_parameter_sets(
 
     for param_dict in param_values:
         model.set_prior_parameters(param_dict, distribution_cls=distribution_cls)
-        ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
 
         key = (tuple(param_dict["mu"].flatten()), tuple(param_dict["cov"].flatten()))
@@ -271,7 +274,7 @@ def compute_ksd_for_setting(obs_num, mu_0, cfg_serialized, repeats, fixed_sigma)
         mu_ns.append(model.mu_n)
         kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
         model.set_prior_parameters({'mu': mu_0, 'sigma': fixed_sigma}, distribution_cls=distribution_cls)
-        ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
         ksd = ksd_estimator.estimate_ksd()
         ksd_list.append(ksd)
 
@@ -356,7 +359,7 @@ def run_ksd_across_various_observations_nums(cfg):
                 kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
 
                 model.set_prior_parameters({'mu': mu_0, 'sigma': fixed_sigma}, distribution_cls=distribution_cls)
-                ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+                ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
                 ksd = ksd_estimator.estimate_ksd()
                 ksd_list.append(ksd)
 
@@ -413,22 +416,26 @@ def run_gaussian_priors(cfg) -> None:
     kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
 
     # Compute initial KSD
-    ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+    ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
-    # Corner points optimization for prior
+    # Optimization
     if cfg.ksd.optimize:
         optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator, cfg.ksd.optimize.prior.Gaussian)
         qf_prior = optimizer.evaluate_all_prior_corners()
         qf_prior_all_combinations, corner_points = optimizer.evaluate_all_prior_combinations()
 
-    # Corner points optimization for loss lr
-    if cfg.ksd.optimize:
-        optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator, cfg.ksd.optimize.loss.GaussianLogLikelihood)
+        # Corner points optimization for loss lr
+        optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator,
+                                                               cfg.ksd.optimize.loss.GaussianLogLikelihood)
         qf_lr = optimizer.evaluate_all_lr_corners()
 
-    # Perform grid search over parameters box ranges if defined
-    if cfg.ksd.optimize:
+        # Nonparametric optimization
+        ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
+        optimizer = OptimizationNonparametricBase(ksd_estimator, cfg.ksd.optimize.prior.nonparametric)
+        optimizer.optimize_through_sdp_relaxation()
+
+        # Plots
         plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples, kernel)
         plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, qf_prior_all_combinations, corner_points)
         density_plot_across_gaussian_prior_parameter_set(cfg, model, posterior_samples, kernel)
@@ -453,7 +460,7 @@ def run_gaussian_log_normal_priors(cfg) -> None:
     kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
 
     # Compute initial KSD
-    ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+    ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
     if cfg.ksd.optimize:
@@ -478,7 +485,7 @@ def run_multivariate_gaussian_priors(cfg) -> None:
     kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
 
     # Compute initial KSD
-    ksd_estimator = PosteriorKSD(samples=posterior_samples, model=model, kernel=kernel)
+    ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
     # Corner points optimization for prior
@@ -508,7 +515,7 @@ def run_inverse_wishart_priors(cfg) -> None:
     kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples_vec)
 
     # Compute initial KSD
-    ksd_estimator = PosteriorKSD(samples=posterior_samples_vec, model=model, kernel=kernel)
+    ksd_estimator = PosteriorKSDParametric(samples=posterior_samples_vec, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
     # Corner points optimization

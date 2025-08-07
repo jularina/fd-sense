@@ -34,6 +34,10 @@ ksd:
             nums:
               mu: 21
               sigma: 4
+      nonparametric:
+        basis_funcs_type: PolynomialBasisFunction
+        basis_funcs_kwargs: {"degree": 3}
+
       LogNormal:
           parameters_box_range:
             ranges:

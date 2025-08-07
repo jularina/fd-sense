@@ -2,13 +2,12 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, Tuple, List, Type
+from typing import Dict, Tuple, List
 from omegaconf import DictConfig
 from matplotlib.colors import LinearSegmentedColormap
 import colorsys
 from matplotlib.colors import to_rgb, Normalize, ListedColormap, BoundaryNorm
 import matplotlib.cm as cmx
-from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.patches import Ellipse
 from typing import Set, FrozenSet
 from matplotlib.ticker import MaxNLocator
