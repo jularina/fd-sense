@@ -12,6 +12,7 @@ from matplotlib.patches import Ellipse
 from typing import Set, FrozenSet
 from matplotlib.ticker import MaxNLocator
 from matplotlib.cm import ScalarMappable
+from scipy.special import logsumexp
 
 from src.distributions.gaussian import Gaussian
 
@@ -1476,7 +1477,7 @@ def plot_sdp_vs_ksd_minimizers(
         f_sdp = phi_x @ psi_sdp
         f_ksd = phi_x @ psi_ksd
 
-        plt.plot(x, f_sdp, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd_sdp:.2e}", linestyle="-")
+        # plt.plot(x, f_sdp, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd_sdp:.2e}", linestyle="-")
         plt.plot(x, f_ksd, label=f"KSD-min (r = {r_label}) | KSD ≈ {ksd_ksd:.2e}", linestyle="--")
 
     plt.plot(x, log_prior, label="True Log Prior", color="black", linewidth=2, linestyle=":")

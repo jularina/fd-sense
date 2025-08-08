@@ -37,7 +37,7 @@ ksd:
               sigma: 4
       nonparametric:
         basis_funcs_type: RBFBasisFunction # RBFBasisFunction
-        basis_funcs_kwargs: {"num_basis_functions": 1, "method": "kmeans", "lengthscale": null} # {"degree": 3} for polynomial
+        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 1.0} # {"degree": 3} for polynomial
         radius_lower_bound: 2.0
         scale_samples: False
 

@@ -108,7 +108,7 @@ class OptimizationNonparametricBase:
 
         # Solve SDP
         problem = cp.Problem(objective, [constraint1, constraint2])
-        problem.solve(solver=cp.MOSEK)
+        problem.solve(solver=cp.MOSEK, verbose=True)
 
         if problem.status not in ["optimal", "optimal_inaccurate"]:
             raise ValueError(f"SDP optimization failed: {problem.status}")
