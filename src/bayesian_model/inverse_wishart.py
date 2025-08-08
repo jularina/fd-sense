@@ -52,4 +52,3 @@ class InverseWishartModel(BayesianModel):
         if d * d != d_squared:
             raise ValueError("Each vector must represent a square matrix.")
         return vectors.reshape(n_samples, d, d)
-

@@ -3,6 +3,7 @@ from typing import Callable
 
 from src.utils.typing import ArrayLike
 
+
 class BayesianModel:
     def __init__(
         self,

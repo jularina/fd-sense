@@ -97,7 +97,6 @@ def plot_ksd_heatmaps(
             if plot_cfg.plot.figure.tight_layout:
                 plt.tight_layout()
 
-
             filename = f"ksd_heatmap_{param_names[i]}_vs_{param_names[j]}.pdf"
             save_path = os.path.join(output_dir, filename)
             fig.savefig(save_path, format="pdf", bbox_inches='tight')
@@ -481,7 +480,7 @@ def plot_ksd_multi_line_plots(
                 color=shaded_rgb,
             )
 
-            if getattr(plot_cfg.plot, "show_min_point", False) and fixed_param_latex == "$\\sigma_0$" and fixed_val==2.0:
+            if getattr(plot_cfg.plot, "show_min_point", False) and fixed_param_latex == "$\\sigma_0$" and fixed_val == 2.0:
                 min_idx = np.argmin(y)
                 min_x = x[min_idx]
                 min_y = y[min_idx]
@@ -493,7 +492,7 @@ def plot_ksd_multi_line_plots(
                     s=50,
                 )
 
-            if getattr(plot_cfg.plot, "show_max_point", False) and fixed_param_latex == "$\\sigma_0$" and fixed_val==2.0:
+            if getattr(plot_cfg.plot, "show_max_point", False) and fixed_param_latex == "$\\sigma_0$" and fixed_val == 2.0:
                 max_idx = np.argmax(y)
                 max_x = x[max_idx]
                 max_y = y[max_idx]
@@ -1181,7 +1180,7 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
             ax.axvline(true_theta[0], color="k", linestyle="--", lw=1)
             ax.axhline(true_theta[1], color="k", linestyle="--", lw=1)
         except np.linalg.LinAlgError:
-            print(f"[WARN] Skipping true density overlay due to invalid covariance.")
+            print("[WARN] Skipping true density overlay due to invalid covariance.")
 
     # Labels and appearance
     ax.set_xlabel("$\\mu_{01}$")
@@ -1330,3 +1329,162 @@ def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, 
     plt.close(fig)
 
     print(f"[INFO] Saved Inverse Wishart scale ellipse plot to: {output_path}")
+
+
+def plot_basis_expansion_with_psi_comparison(
+        basis_function,
+        psi_sdp: np.ndarray,
+        posterior_samples: np.ndarray,
+        prior_distribution,
+        domain: tuple = (-5, 5),
+        resolution: int = 200,
+):
+    """
+    Plot and compare the log prior approximations from:
+      - SDP-constrained optimization (robust worst-case KSD)
+      - Unconstrained optimization (minimum empirical KSD)
+    Also overlay the true log prior and posterior samples (1D only).
+
+    Args:
+        basis_function: Instance of BaseBasisFunction.
+        psi_sdp (np.ndarray): ψ from SDP relaxation.
+        psi_ksd (np.ndarray): ψ from unconstrained KSD minimization.
+        posterior_samples (np.ndarray): Posterior samples (n, d).
+        prior_distribution: Prior with .log_pdf(x).
+        domain (tuple): x-axis range.
+        resolution (int): Number of evaluation points.
+    """
+    if posterior_samples.ndim != 2 or posterior_samples.shape[1] != 1:
+        raise NotImplementedError("Only 1D plotting supported.")
+
+    x = np.linspace(domain[0], domain[1], resolution)[:, None]
+    phi_x = basis_function.evaluate(x)
+    f_sdp = phi_x @ psi_sdp
+    log_prior = prior_distribution.log_pdf(x).flatten()
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(x, f_sdp, label="SDP Relaxation (Robust ψ)", color="tab:blue")
+    plt.plot(x, log_prior, label="True Log Prior", linestyle="--", color="black")
+
+    plt.title("Log Prior Approximation via Basis Expansions")
+    plt.xlabel("x")
+    plt.ylabel("Value")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_sdp_comparisons_multiple_radii(
+    basis_function,
+    psi_sdp_list: list[np.ndarray],
+    radius_labels: list[float],
+    ksd_estimates: list[float],
+    prior_samples: np.ndarray,
+    posterior_samples: np.ndarray,
+    prior_distribution,
+    domain: tuple = (-5, 5),
+    resolution: int = 200,
+):
+    """
+    Plot: (1) prior vs posterior samples and true prior density,
+          (2) log prior approximations via SDP-relaxed ψ for multiple radius lower bounds.
+    """
+    if posterior_samples.ndim != 2 or posterior_samples.shape[1] != 1:
+        raise NotImplementedError("Only 1D plotting supported.")
+
+    x = np.linspace(domain[0], domain[1], resolution)[:, None]
+    phi_x = basis_function.evaluate(x)
+    log_prior = prior_distribution.log_pdf(x).flatten()
+    prior_density = prior_distribution.pdf(x).flatten()
+
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+    axs[0].hist(
+        prior_samples.flatten(),
+        bins=50,
+        alpha=0.6,
+        label="Prior Samples",
+        density=True,
+        color="blue",
+        linewidth=0.5,
+    )
+    axs[0].hist(
+        posterior_samples.flatten(),
+        bins=50,
+        alpha=0.6,
+        label="Posterior Samples",
+        density=True,
+        color="orange",
+        linewidth=0.5,
+    )
+    axs[0].plot(x, prior_density, label="True Prior Density", color="black", linewidth=2)
+    axs[0].set_title("Prior vs Posterior Samples")
+    axs[0].set_xlabel("x")
+    axs[0].set_ylabel("Density")
+    axs[0].grid(True)
+    axs[0].legend()
+
+    for psi, r_label, ksd in zip(psi_sdp_list, radius_labels, ksd_estimates):
+        f_sdp = phi_x @ psi
+        axs[1].plot(x, f_sdp, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd:.2f}")
+
+    axs[1].plot(x, log_prior, label="Base Log Prior", linestyle="--", color="black")
+    axs[1].set_title("Log Prior Approximations")
+    axs[1].set_xlabel("x")
+    axs[1].set_ylabel("Log Prior Value")
+    axs[1].grid(True)
+    axs[1].legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_sdp_vs_ksd_minimizers(
+    basis_function,
+    psi_sdp_list: list[np.ndarray],
+    psi_ksd_list: list[np.ndarray],
+    radius_labels: list[float],
+    ksd_estimates_sdp: list[float],
+    ksd_estimates_ksd: list[float],
+    prior_distribution,
+    domain: tuple = (-5, 5),
+    resolution: int = 200,
+):
+    """
+    Plot log prior approximations: SDP vs KSD-minimizing solutions for multiple radii.
+
+    Args:
+        basis_function: Instance of BaseBasisFunction.
+        psi_sdp_list (list[np.ndarray]): ψ vectors from SDP.
+        psi_ksd_list (list[np.ndarray]): ψ vectors from KSD minimization.
+        radius_labels (list[float]): Radii used for each optimization.
+        ksd_estimates_sdp (list[float]): KSD from SDP solutions.
+        ksd_estimates_ksd (list[float]): KSD from KSD-minimizing solutions.
+        prior_distribution: Prior with .log_pdf(x).
+        domain (tuple): Plotting domain.
+        resolution (int): Number of x-points.
+    """
+    x = np.linspace(domain[0], domain[1], resolution)[:, None]
+    phi_x = basis_function.evaluate(x)
+    log_prior = prior_distribution.log_pdf(x).flatten()
+
+    plt.figure(figsize=(10, 6))
+
+    for psi_sdp, psi_ksd, r_label, ksd_sdp, ksd_ksd in zip(
+        psi_sdp_list, psi_ksd_list, radius_labels, ksd_estimates_sdp, ksd_estimates_ksd
+    ):
+        f_sdp = phi_x @ psi_sdp
+        f_ksd = phi_x @ psi_ksd
+
+        plt.plot(x, f_sdp, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd_sdp:.2e}", linestyle="-")
+        plt.plot(x, f_ksd, label=f"KSD-min (r = {r_label}) | KSD ≈ {ksd_ksd:.2e}", linestyle="--")
+
+    plt.plot(x, log_prior, label="True Log Prior", color="black", linewidth=2, linestyle=":")
+
+    plt.title("SDP vs KSD-Minimizing Log Prior Approximations")
+    plt.xlabel("x")
+    plt.ylabel("Log Prior Value")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()

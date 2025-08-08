@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Type
 import numpy as np
 
 from src.utils.typing import ArrayLike
@@ -17,6 +17,8 @@ class BayesianModel(ABC):
         self.loss_lr: float = data_config.loss_lr
         self.loss: Any = data_config.loss
         self.prior: Any = data_config.base_prior
+        self.prior_init: Any = data_config.base_prior
+        self.loss_lr_init: float = data_config.loss_lr
         self.m: int = data_config.posterior_samples_num
 
     @abstractmethod
@@ -25,6 +27,12 @@ class BayesianModel(ABC):
         Draw samples from the posterior distribution.
         """
         raise NotImplementedError
+
+    def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
+        """
+        Draw samples from the posterior distribution.
+        """
+        return self.prior_init.sample(n_samples)
 
     def set_prior_parameters(self, params: Dict[str, Any], distribution_cls: Type) -> None:
         """
@@ -54,11 +62,11 @@ class BayesianModel(ABC):
         grad = self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
         return self.loss_lr * grad if multiply_by_lr else grad
 
-    def posterior_score(self, x: ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def posterior_score(self, x: ArrayLike) -> np.ndarray:
         """Compute posterior score (prior + likelihood)."""
         prior_grad = self.prior_score(x)
         loss_grad = self.loss_score(x)
-        return prior_grad + loss_grad, prior_grad, loss_grad
+        return prior_grad + loss_grad
 
     def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
         """Return Jacobian of sufficient statistics."""

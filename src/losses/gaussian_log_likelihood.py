@@ -76,7 +76,6 @@ class MultivariateGaussianLogLikelihood:
 
         return observations_num * result
 
-
     def grad_log_pdf_wrt_cov(self, Sigma: np.ndarray, observations: np.ndarray) -> np.ndarray:
         """
         Gradient of the log-likelihood w.r.t. the covariance matrix Sigma,
@@ -100,4 +99,4 @@ class MultivariateGaussianLogLikelihood:
         Sigma_inv = np.linalg.inv(Sigma)
         grad = 0.5 * (Sigma_inv @ S @ Sigma_inv - n * Sigma_inv)
 
-        return grad.reshape(Sigma.shape[0],-1)
+        return grad.reshape(Sigma.shape[0], -1)

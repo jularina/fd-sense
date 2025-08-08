@@ -2,6 +2,7 @@ from typing import Dict, Any
 import yaml
 from omegaconf import OmegaConf
 
+
 def load_config(config_path: str) -> Dict[str, Any]:
     """Load a YAML configuration file.
 
@@ -13,6 +14,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
     """
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
+
 
 def load_plot_config(path: str):
     with open(path, "r") as f:

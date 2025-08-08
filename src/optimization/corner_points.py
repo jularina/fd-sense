@@ -1,5 +1,5 @@
 from itertools import product
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple
 import itertools
 import numpy as np
 
@@ -172,7 +172,6 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
         ]
 
         return selected_distributions
-
 
     def evaluate_all_prior_corners(self) -> List:
         results = []

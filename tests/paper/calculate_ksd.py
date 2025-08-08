@@ -1,3 +1,16 @@
+from src.optimization.nonparametric import OptimizationNonparametricBase
+from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
+                                            OptimizationCornerPointsInverseWishart,
+                                            OptimizationCornerPointsMultivariateGaussian)
+from src.utils.distributions import DISTRIBUTION_MAP
+from src.utils.files_operations import load_plot_config
+from src.distributions.inverse_wishart import InverseWishart
+from src.distributions.gaussian import MultivariateGaussian
+from src.kernels.base import BaseKernel
+from src.bayesian_model.base import BayesianModel
+from src.plots.paper.paper_funcs import *
+from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
+from src.discrepancies.prior_ksd import PriorKSDNonParametric
 from statistics import median
 import numpy as np
 import hydra
@@ -7,19 +20,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
 import random
 random.seed(27)
-
-from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
-from src.plots.paper.paper_funcs import *
-from src.bayesian_model.base import BayesianModel
-from src.kernels.base import BaseKernel
-from src.distributions.gaussian import MultivariateGaussian
-from src.distributions.inverse_wishart import InverseWishart
-from src.utils.files_operations import load_plot_config
-from src.utils.distributions import DISTRIBUTION_MAP
-from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
-                                            OptimizationCornerPointsInverseWishart,
-                                            OptimizationCornerPointsMultivariateGaussian)
-from src.optimization.nonparametric import OptimizationNonparametricBase
 
 
 def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
@@ -159,7 +159,7 @@ def density_plot_across_prior_parameter_sets(cfg, model: BayesianModel, posterio
         kernel (BaseKernel): Kernel.
     """
     all_ksd_results = {}
-    param_values_dict = {"Gaussian":np.array([[-7, 1], [5, 3], [9, 2]]), "LogNormal":np.array([[1, 0.5]])}
+    param_values_dict = {"Gaussian": np.array([[-7, 1], [5, 3], [9, 2]]), "LogNormal": np.array([[1, 0.5]])}
     for dist_name, dist_cfg in cfg.ksd.optimize.prior.items():
         distribution_cls = DISTRIBUTION_MAP[dist_name]
         box_cfg = dist_cfg.parameters_box_range
@@ -194,6 +194,7 @@ def density_plot_across_prior_parameter_sets(cfg, model: BayesianModel, posterio
             plot_cfg=plot_cfg,
             output_dir=output_dir,
         )
+
 
 def density_plot_across_multivariate_prior_parameter_sets(
     cfg,
@@ -239,14 +240,14 @@ def density_plot_across_multivariate_prior_parameter_sets(
             output_dir=output_dir,
             plot_cfg=plot_cfg,
             true_theta=cfg.data.base_prior.mu,
-            true_cov = cfg.data.base_prior.cov
+            true_cov=cfg.data.base_prior.cov
         )
         plot_multivariate_joint_prior_densities_by_ksd(
             results=qf_across_priors,
             output_dir=output_dir,
             plot_cfg=plot_cfg,
             true_theta=cfg.data.base_prior.mu,
-            true_cov = cfg.data.base_prior.cov
+            true_cov=cfg.data.base_prior.cov
         )
 
 
@@ -334,6 +335,7 @@ def run_ksd_across_various_observations_nums_parallel(cfg):
             plot_cfg=plot_cfg,
             output_dir=output_dir,
         )
+
 
 @hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian", version_base="1.3")
 def run_ksd_across_various_observations_nums(cfg):
@@ -431,9 +433,50 @@ def run_gaussian_priors(cfg) -> None:
         qf_lr = optimizer.evaluate_all_lr_corners()
 
         # Nonparametric optimization
+        prior_samples = model.sample_from_base_prior(cfg.data.prior_samples_num)
+        kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
+        ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
         ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
-        optimizer = OptimizationNonparametricBase(ksd_estimator, cfg.ksd.optimize.prior.nonparametric)
-        optimizer.optimize_through_sdp_relaxation()
+
+        psi_sdp_list, ksd_estimates_list, radius_labels, psi_ksd_min_list, ksd_min_estimates_list = [], [], [], [], []
+
+        for radius_lower_bound in [1.0, 2.0, 3.0]:
+            optimizer = OptimizationNonparametricBase(
+                ksd_estimator,
+                ksd_estimator_prior,
+                cfg.ksd.optimize.prior.nonparametric,
+                radius_lower_bound=radius_lower_bound
+            )
+            result_sdp = optimizer.optimize_through_sdp_relaxation()
+            result_ksd_min = optimizer.optimize_minimize_ksd()
+            psi_sdp_list.append(result_sdp["psi_opt"])
+            psi_ksd_min_list.append(result_ksd_min["psi_opt"])
+            ksd_estimates_list.append(result_sdp["ksd_est"])
+            ksd_min_estimates_list.append(result_ksd_min["ksd_est"])
+            radius_labels.append(radius_lower_bound)
+
+        # Plot all in one comparison figure
+        plot_sdp_comparisons_multiple_radii(
+            basis_function=optimizer.basis_function,
+            psi_sdp_list=psi_sdp_list,
+            radius_labels=radius_labels,
+            ksd_estimates=ksd_estimates_list,
+            prior_samples=prior_samples,
+            posterior_samples=posterior_samples,
+            prior_distribution=model.prior_init,
+            domain=(-6, 10),
+            resolution=300
+        )
+
+        plot_sdp_vs_ksd_minimizers(
+            basis_function=optimizer.basis_function,
+            psi_sdp_list=psi_sdp_list,
+            psi_ksd_list=psi_ksd_min_list,
+            radius_labels=radius_labels,
+            ksd_estimates_sdp=ksd_estimates_list,
+            ksd_estimates_ksd=ksd_min_estimates_list,
+            prior_distribution=model.prior_init
+        )
 
         # Plots
         plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples, kernel)
@@ -490,10 +533,12 @@ def run_multivariate_gaussian_priors(cfg) -> None:
 
     # Corner points optimization for prior
     if cfg.ksd.optimize:
-        optimizer = OptimizationCornerPointsMultivariateGaussian(ksd_estimator, cfg.ksd.optimize.prior.MultivariateGaussian, distribution_cls=MultivariateGaussian)
+        optimizer = OptimizationCornerPointsMultivariateGaussian(
+            ksd_estimator, cfg.ksd.optimize.prior.MultivariateGaussian, distribution_cls=MultivariateGaussian)
         qf_prior = optimizer.evaluate_all_prior_corners()
         qf_prior_all_combinations, corner_points = optimizer.evaluate_all_prior_combinations()
-        density_plot_across_multivariate_prior_parameter_sets(cfg, model, posterior_samples, kernel, qf_across_priors=qf_prior_all_combinations)
+        density_plot_across_multivariate_prior_parameter_sets(
+            cfg, model, posterior_samples, kernel, qf_across_priors=qf_prior_all_combinations)
 
 
 @hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="inverse_wishart")
@@ -520,7 +565,8 @@ def run_inverse_wishart_priors(cfg) -> None:
 
     # Corner points optimization
     if cfg.ksd.optimize:
-        optimizer = OptimizationCornerPointsInverseWishart(ksd_estimator, cfg.ksd.optimize.prior.InverseWishart, distribution_cls=InverseWishart)
+        optimizer = OptimizationCornerPointsInverseWishart(
+            ksd_estimator, cfg.ksd.optimize.prior.InverseWishart, distribution_cls=InverseWishart)
         qf_prior = optimizer.evaluate_all_prior_corners()
         qf_prior_all_combinations, corner_points = optimizer.evaluate_all_prior_combinations()
         plot_across_inv_wishart_prior_parameter_sets(cfg, qf_across_priors=qf_prior_all_combinations)

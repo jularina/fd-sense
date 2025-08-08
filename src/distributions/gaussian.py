@@ -27,7 +27,7 @@ class Gaussian(BaseDistribution):
         self._norm_const = 1.0 / np.sqrt(2 * np.pi * self.var)
 
     def sample(self, n_samples: int = 1) -> np.ndarray:
-        return np.random.normal(self.mu, self.sigma, size=n_samples)
+        return np.random.normal(self.mu, self.sigma, size=n_samples).reshape(-1, 1)
 
     def pdf(self, x: Union[float, np.ndarray]) -> np.ndarray:
         x = np.asarray(x)

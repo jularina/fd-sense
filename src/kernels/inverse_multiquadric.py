@@ -111,6 +111,6 @@ class InverseMultivariateMultiquadricKernel(BaseKernel):
         term2 = 4 * self.alpha * (self.alpha + 1) * (1 + self._sq_dist) ** (-self.alpha - 2)
         outer = np.einsum('nmd,nme->nmde', diff, diff)  # (n1, n2, d, d)
         hess = np.einsum('nm,de->nmde', term1, self.L_inv) - \
-               np.einsum('nm,de,nmde->nmde', term2, self.L_inv @ self.L_inv, outer)  # (n1, n2, d, d)
+            np.einsum('nm,de,nmde->nmde', term2, self.L_inv @ self.L_inv, outer)  # (n1, n2, d, d)
 
         return hess

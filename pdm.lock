@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:c55b75683dda3ef15e31b16a08742f636ba4240581c804bc4bd12295c1c5b119"
+content_hash = "sha256:57091485f09478d6e2f654066f60dc3641e483783f55fa6929fc51e1e970bef4"
 
 [[metadata.targets]]
 requires_python = "~=3.12.0"
@@ -609,6 +609,22 @@ dependencies = [
 files = [
     {file = "minikanren-1.0.5-py3-none-any.whl", hash = "sha256:22c24f4fdf009a56e30655787af45c90f0704bcc24e8d3e651378675b4bccb21"},
     {file = "minikanren-1.0.5.tar.gz", hash = "sha256:c030e3e9a3fa5f372f84b66966776a8dc63b16b98768b78be0401982b892e00d"},
+]
+
+[[package]]
+name = "mosek"
+version = "11.0.27"
+requires_python = "<3.14,>=3.9"
+summary = "Python API for Mosek"
+groups = ["default"]
+dependencies = [
+    "numpy",
+]
+files = [
+    {file = "mosek-11.0.27-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1f587643c18d74dbc816678df8f7564d244b556170673ff8423a79ae42754237"},
+    {file = "mosek-11.0.27-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:f9dfc824e4f1894e56e1ae7bb80a642dceeab1c2e5b8d8e27af475935d6bb805"},
+    {file = "mosek-11.0.27-cp39-abi3-manylinux_2_29_aarch64.whl", hash = "sha256:56260bf51499cd3e3d95b08b796bc25169ea64ffe0fc123bdc08387fe5371a05"},
+    {file = "mosek-11.0.27-cp39-abi3-win_amd64.whl", hash = "sha256:67657b34c3a1e1edc94b2c91f6718179d24c366a5c58fc3f624c355ae2d43f78"},
 ]
 
 [[package]]

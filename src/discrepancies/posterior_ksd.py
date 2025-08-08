@@ -253,11 +253,12 @@ class PosteriorKSDNonParametric(PosteriorKSDBase):
     def compute_ksd_quadratic_form_for_nonparametric_prior(
         self,
         basis_func: BaseBasisFunction,
+        scale_samples: bool = False,
     ) -> Tuple:
         """
         Compute components of the KSD quadratic form specific to the nonparametric prior term.
         """
-        grad_phi_T = self._compute_grad_basis_function_for_prior(basis_func)
+        grad_phi_T = self._compute_grad_basis_function_for_prior(basis_func, scale_samples)
         Lambda_m = self._compute_Lambda_for_prior(grad_phi_T)
         b_prior = self._compute_b_prior(grad_phi_T)
         b_cross = self._compute_b_cross_for_prior(grad_phi_T)
@@ -265,11 +266,17 @@ class PosteriorKSDNonParametric(PosteriorKSDBase):
 
         return Lambda_m, b_m, b_prior, b_cross
 
-    def _compute_grad_basis_function_for_prior(self, basis_func: BaseBasisFunction) -> np.ndarray:
+    def _compute_grad_basis_function_for_prior(self, basis_func: BaseBasisFunction, scale_samples: bool = False) -> np.ndarray:
         """
         Compute basis functions gradient.
         """
-        grad_phi = basis_func.gradient(self.samples)  # (m, d, K)
+        if scale_samples:
+            scale = np.max(np.abs(self.samples), axis=0)
+            samples = self.samples / (scale + 1e-8)
+        else:
+            samples = self.samples
+
+        grad_phi = basis_func.gradient(samples)  # (m, d, K)
         grad_phi_T = np.transpose(grad_phi, (0, 2, 1))  # (m, K, d)
 
         return grad_phi_T

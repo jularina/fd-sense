@@ -39,7 +39,7 @@ class KernelizedSteinDiscrepancy:
             The estimated KSD^2 value.
         """
         m, d = samples.shape
-        scores, *_ = self.score_fn(samples)  # shape (m, d)
+        scores = self.score_fn(samples)  # shape (m, d)
 
         K = self.kernel.value           # (m, m)
         grad1 = self.kernel.grad_x1     # (m, m, d)

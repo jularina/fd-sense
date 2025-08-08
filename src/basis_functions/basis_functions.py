@@ -1,3 +1,5 @@
+from typing import Optional
+import warnings
 import numpy as np
 from abc import ABC, abstractmethod
 import sympy as sp
@@ -31,8 +33,8 @@ class BaseBasisFunction(ABC):
         def func(*args):
             x = np.array(args)[None, :]  # shape (1, d)
             try:
-                val = self.evaluate(x)
-                return float(np.sum(val**2))
+                val = self.evaluate(x)[0, 0]  # just the first basis function at the first sample
+                return float(val ** 2)
             except Exception:
                 return np.inf
 
@@ -49,7 +51,6 @@ class PolynomialBasisFunction(BaseBasisFunction):
         self.degree = degree
 
     def evaluate(self, samples: np.ndarray) -> np.ndarray:
-        m, d = samples.shape
         return np.concatenate([samples ** k for k in range(1, self.degree + 1)], axis=1)  # (m, d * degree)
 
     def gradient(self, samples: np.ndarray) -> np.ndarray:
@@ -73,9 +74,40 @@ class PolynomialBasisFunction(BaseBasisFunction):
 
 
 class RBFBasisFunction(BaseBasisFunction):
-    def __init__(self, centers: np.ndarray, lengthscale: float):
-        self.centers = centers  # (B, d)
-        self.lengthscale = lengthscale
+    def __init__(
+        self,
+        samples: np.ndarray,
+        num_basis_functions: int,
+        lengthscale: Optional[float] = None,
+        method: str = "kmeans",  # or "random"
+    ):
+        self.centers = self._select_centers(samples, num_basis_functions, method)
+
+        if lengthscale is None:
+            self.lengthscale = self._estimate_lengthscale(self.centers)
+        else:
+            self.lengthscale = lengthscale
+
+    def _select_centers(self, samples: np.ndarray, num_centers: int, method: str) -> np.ndarray:
+        if method == "kmeans":
+            from sklearn.cluster import KMeans
+            kmeans = KMeans(n_clusters=num_centers, random_state=0).fit(samples)
+            return kmeans.cluster_centers_
+        elif method == "random":
+            idx = np.random.choice(len(samples), num_centers, replace=False)
+            return samples[idx]
+        else:
+            raise ValueError(f"Unknown center selection method: {method}")
+
+    def _estimate_lengthscale(self, centers: np.ndarray) -> float:
+        from scipy.spatial.distance import pdist
+
+        if centers.shape[0] < 2:
+            warnings.warn("Only one RBF center provided; using default lengthscale=1.0.")
+            return 1.0
+
+        pairwise_dists = pdist(centers)
+        return np.median(pairwise_dists)
 
     def evaluate(self, samples: np.ndarray) -> np.ndarray:
         diffs = samples[:, None, :] - self.centers[None, :, :]  # (m, B, d)
