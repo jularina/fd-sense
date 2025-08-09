@@ -28,7 +28,7 @@ class OptimizationNonparametricBase:
 
         if basis_cls_name == "RBFBasisFunction":
             basis_kwargs = OmegaConf.to_container(basis_kwargs, resolve=True)
-            basis_kwargs["samples"] = self.posterior_ksd.samples
+            basis_kwargs["samples"] = self.prior_ksd.samples
 
         self.basis_function = basis_cls(**basis_kwargs)
         self._validate_basis_function(self.posterior_ksd.samples.shape[1])
@@ -43,10 +43,23 @@ class OptimizationNonparametricBase:
             scale_samples=config["scale_samples"]
         )
         self.C_prior = self.prior_ksd.compute_hessian_term()
+
+        # Scale-aware ridge (use trace/D to match the matrix scale)
+        D = self.Lambda_prior.shape[0]
+        avg_prior = np.trace(self.Lambda_prior) / max(D, 1)
+        avg_obj = np.trace(self.Lambda_m_prior) / max(D, 1)
+
+        eps_prior = max(1e-8, 1e-2 * avg_prior)
+        eps_obj = max(1e-12, 1e-4 * avg_obj)
+
+        self.Lambda_prior_reg = self.Lambda_prior + eps_prior * np.eye(D)
+        self.Lambda_m_prior_reg = self.Lambda_m_prior + eps_obj * np.eye(D)
+
         self.r = self._compute_min_radius() + radius_lower_bound
+        self.prior_ksd_val = self.prior_ksd.estimate_ksd()
 
     def _evaluate_prior_qf_ksd(self, eta_tilde: np.ndarray) -> float:
-        return eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
+        return eta_tilde @ self.Lambda_m_prior_reg @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
 
     def _validate_basis_function(self, dim: int):
         if not self.basis_function.check_C1(dim):
@@ -57,10 +70,10 @@ class OptimizationNonparametricBase:
     def _compute_min_radius(self) -> float:
         """
         Compute the minimum value of the radius r satisfying:
-            -1/4 * b_prior.T @ inv(Lambda_m_prior) @ b_prior + C_prior < r
+            -1/4 * b_prior.T @ inv(Lambda_prior) @ b_prior + C_prior < r
         """
         try:
-            Lambda_inv = np.linalg.inv(self.Lambda_prior)
+            Lambda_inv = np.linalg.inv(self.Lambda_prior_reg)
         except np.linalg.LinAlgError:
             raise ValueError("Lambda_prior is not invertible.")
 
@@ -81,14 +94,13 @@ class OptimizationNonparametricBase:
         Psi = cp.Variable((D, D), symmetric=True)
 
         # Objective:
-        #   tr(-Lambda_m Psi) - b_m^T psi - C_m
         objective = cp.Minimize(
-            cp.trace(-self.Lambda_m_prior @ Psi) - self.b_m_prior @ psi - self.ksd_for_loss_init
+            cp.trace(-self.Lambda_m_prior_reg @ Psi) - self.b_m_prior @ psi
         )
 
         # Constraint 1: Quadratic constraint
         constraint1 = (
-            cp.trace(self.Lambda_prior @ Psi)
+            cp.trace(self.Lambda_prior_reg @ Psi)
             + self.b_prior @ psi
             + self.C_prior
             <= self.r
@@ -101,19 +113,25 @@ class OptimizationNonparametricBase:
         ])
         constraint2 = schur_matrix >> 0  # LMI constraint
 
-        print("Condition number of Lambda_m_prior:", np.linalg.cond(self.Lambda_m_prior))
-        print("Condition number of Lambda_prior:", np.linalg.cond(self.Lambda_prior))
+        print("Condition number of Lambda_m_prior:", np.linalg.cond(self.Lambda_m_prior_reg))
+        print("Condition number of Lambda_prior:", np.linalg.cond(self.Lambda_prior_reg))
         print("Norm of b_prior:", np.linalg.norm(self.b_prior))
         print("Min radius:", self.r)
 
+        print("eig Λ_prior:", np.linalg.eigvalsh(self.Lambda_prior_reg)[:5], "… min:",
+              np.min(np.linalg.eigvalsh(self.Lambda_prior_reg)))
+
         # Solve SDP
         problem = cp.Problem(objective, [constraint1, constraint2])
-        problem.solve(solver=cp.MOSEK, verbose=True)
+        problem.solve(solver=cp.MOSEK)
 
         if problem.status not in ["optimal", "optimal_inaccurate"]:
             raise ValueError(f"SDP optimization failed: {problem.status}")
 
         ksd_est = self._evaluate_prior_qf_ksd(psi.value)
+        gap = np.linalg.norm(Psi.value - np.outer(psi.value, psi.value), ord='fro')
+        print("||Ψ - ψψ^T||_F:", gap)
+        print("Eigenvalues of Psi:", np.linalg.eigvalsh(Psi.value))
 
         return {
             "objective_val": problem.value,
@@ -131,7 +149,7 @@ class OptimizationNonparametricBase:
             A dict with optimal ψ, KSD value, and the Lambda matrix used.
         """
         try:
-            Lambda_inv = np.linalg.inv(self.Lambda_m_prior)
+            Lambda_inv = np.linalg.inv(self.Lambda_m_prior_reg)
         except np.linalg.LinAlgError:
             raise ValueError("Lambda_m_prior is not invertible.")
 

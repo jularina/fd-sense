@@ -51,7 +51,12 @@ class KernelizedSteinDiscrepancy:
         term3 = self._compute_term3(scores, grad1)
         term4 = self._compute_term4(hess)
 
-        return np.sum(term1 + term2 + term3 + term4) / (m ** 2)
+        val = np.sum(term1 + term2 + term3 + term4) / (m ** 2)
+
+        if val < 0.0:
+            raise ValueError("KSD^2 estimation is negative and failed.")
+        else:
+            return val
 
     @staticmethod
     def _compute_term1(scores: np.ndarray, K: np.ndarray) -> np.ndarray:

@@ -181,8 +181,9 @@ class PosteriorKSDBase:
         Returns:
             np.ndarray: Shape (p+1,)
         """
-        term1 = np.einsum("ipd,ijd->p", JT_aug_T, self.kernel.grad_x1)
-        term2 = np.einsum("jpd,ijd->p", JT_aug_T, self.kernel.grad_x2)
+        term1 = np.einsum("jpd,ijd->p", JT_aug_T, self.kernel.grad_x1)
+        term2 = np.einsum("ipd,ijd->p", JT_aug_T, self.kernel.grad_x2)
+
         return (term1 + term2) / (self.model.m ** 2)
 
     def _compute_b_cross_for_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
@@ -259,6 +260,7 @@ class PosteriorKSDNonParametric(PosteriorKSDBase):
         Compute components of the KSD quadratic form specific to the nonparametric prior term.
         """
         grad_phi_T = self._compute_grad_basis_function_for_prior(basis_func, scale_samples)
+        J = grad_phi_T
         Lambda_m = self._compute_Lambda_for_prior(grad_phi_T)
         b_prior = self._compute_b_prior(grad_phi_T)
         b_cross = self._compute_b_cross_for_prior(grad_phi_T)
@@ -271,12 +273,80 @@ class PosteriorKSDNonParametric(PosteriorKSDBase):
         Compute basis functions gradient.
         """
         if scale_samples:
-            scale = np.max(np.abs(self.samples), axis=0)
-            samples = self.samples / (scale + 1e-8)
+            mean = np.mean(self.samples, axis=0)
+            std = np.std(self.samples, axis=0)
+            samples = (self.samples - mean) / (std + 1e-8)
         else:
             samples = self.samples
 
+        phi = basis_func.evaluate(samples)  # (m, d, K)
         grad_phi = basis_func.gradient(samples)  # (m, d, K)
+
+        # plot_basis_stuff(self.samples, phi, grad_phi)
+
         grad_phi_T = np.transpose(grad_phi, (0, 2, 1))  # (m, K, d)
 
         return grad_phi_T
+
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_basis_stuff(samples, phi, grad_phi):
+    samples = np.asarray(samples)
+    phi = np.asarray(phi)
+    grad_phi = np.asarray(grad_phi)
+
+    if samples.ndim != 2 or samples.shape[1] != 1:
+        raise ValueError(f"samples should be (m, 1); got {samples.shape}")
+    if phi.ndim != 3 or phi.shape[1] != 1:
+        raise ValueError(f"phi should be (m, 1, K); got {phi.shape}")
+    if grad_phi.ndim != 3 or grad_phi.shape[1] != 1:
+        raise ValueError(f"grad_phi should be (m, 1, K); got {grad_phi.shape}")
+
+    m = samples.shape[0]
+    K = phi.shape[2]
+
+    samples_1d = samples.squeeze(1)    # (m,)
+    phi_K = phi.squeeze(1)             # (m, K)
+    grad_phi_K = grad_phi.squeeze(1)   # (m, K)
+
+    # Sort by sample value for smooth lines
+    sort_idx = np.argsort(samples_1d)
+    xs = samples_1d[sort_idx]
+    phi_sorted = phi_K[sort_idx]
+    grad_phi_sorted = grad_phi_K[sort_idx]
+
+    # 1) Samples scatter (just points along x-axis)
+    plt.figure()
+    plt.scatter(samples_1d, np.zeros_like(samples_1d), marker='o', s=20)
+    plt.title("Samples")
+    plt.xlabel("Sample value")
+    plt.yticks([])
+    plt.grid(True)
+
+    # 2) Phi with sample positions marked
+    plt.figure()
+    for k in range(K):
+        plt.plot(xs, phi_sorted[:, k], label=f"Basis {k}")
+    plt.scatter(samples_1d, np.zeros_like(samples_1d), color='black', marker='x', s=30, label="Samples")
+    plt.title("Basis Functions (phi)")
+    plt.xlabel("Sample value")
+    plt.ylabel("phi value")
+    plt.grid(True)
+    plt.legend()
+
+    # 3) Grad Phi with sample positions marked
+    plt.figure()
+    for k in range(K):
+        plt.plot(xs, grad_phi_sorted[:, k], label=f"Basis {k}")
+    plt.scatter(samples_1d, np.zeros_like(samples_1d), color='black', marker='x', s=30, label="Samples")
+    plt.title("Gradients of Basis Functions (grad_phi)")
+    plt.xlabel("Sample value")
+    plt.ylabel("Gradient value")
+    plt.grid(True)
+    plt.legend()
+
+    plt.show()
+

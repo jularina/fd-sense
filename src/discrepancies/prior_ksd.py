@@ -50,8 +50,9 @@ class PriorKSDNonParametric:
         Compute basis functions gradient.
         """
         if scale_samples:
-            scale = np.max(np.abs(self.samples), axis=0)
-            samples = self.samples / (scale + 1e-8)
+            mean = np.mean(self.samples, axis=0)
+            std = np.std(self.samples, axis=0)
+            samples = (self.samples - mean) / (std + 1e-8)
         else:
             samples = self.samples
         grad_phi = basis_func.gradient(samples)  # (m, d, K)
@@ -66,8 +67,7 @@ class PriorKSDNonParametric:
         Returns:
             np.ndarray: Shape (p+1, p+1)
         """
-        m, p, d = JT_aug_T.shape
-        return np.einsum('ij,ipd,jqd->pq', self.kernel.value, JT_aug_T, JT_aug_T) / (m ** 2)
+        return np.einsum('ij,ipd,jqd->pq', self.kernel.value, JT_aug_T, JT_aug_T) / (self.model.m_prior ** 2)
 
     def _compute_b_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
         """
@@ -76,9 +76,10 @@ class PriorKSDNonParametric:
         Returns:
             np.ndarray: Shape (p+1,)
         """
-        term1 = np.einsum("ipd,ijd->p", JT_aug_T, self.kernel.grad_x1)
-        term2 = np.einsum("jpd,ijd->p", JT_aug_T, self.kernel.grad_x2)
-        return (term1 + term2) / (self.model.m ** 2)
+        term1 = np.einsum("jpd,ijd->p", JT_aug_T, self.kernel.grad_x1)
+        term2 = np.einsum("ipd,ijd->p", JT_aug_T, self.kernel.grad_x2)
+
+        return (term1 + term2) / (self.model.m_prior ** 2)
 
     def compute_hessian_term(self) -> float:
         """
@@ -87,12 +88,11 @@ class PriorKSDNonParametric:
         Returns:
             float: Scalar value
         """
-        m, d = self.samples.shape
         hess = self.kernel.hess_xy
 
         if hess.ndim == 2:
-            return np.sum(hess) / (m ** 2)
+            return np.sum(hess) / (self.model.m_prior ** 2)
         elif hess.ndim == 4:
-            return np.sum(np.trace(hess, axis1=-2, axis2=-1)) / (m ** 2)
+            return np.sum(np.trace(hess, axis1=-2, axis2=-1)) / (self.model.m_prior ** 2)
         else:
             raise ValueError(f"Unexpected hessian shape: {hess.shape}")

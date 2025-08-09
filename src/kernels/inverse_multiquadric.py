@@ -17,7 +17,7 @@ class InverseUnivariateMultiquadricKernel(BaseKernel):
             raise ValueError("Computed IMQ kernel value is not symmetric.")
 
         self.grad_x1 = self.compute_grad_x1()
-        self.grad_x2 = -self.grad_x1
+        self.grad_x2 = np.swapaxes(self.grad_x1, 0, 1)
         self.hess_xy = self.compute_hess_xy()
 
     def _squared_distance(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
@@ -49,7 +49,7 @@ class InverseUnivariateMultiquadricKernel(BaseKernel):
         diff = self._X1[:, np.newaxis, :] - self._X2[np.newaxis, :, :]
         scale2 = self.lengthscale ** 2
         term1 = (2 * self.alpha / scale2) * (1 + self._sq_dist) ** (-self.alpha - 1)
-        term2 = (-4 * self.alpha * (self.alpha + 1) / scale2 ** 2) * \
+        term2 = (4 * self.alpha * (self.alpha + 1) / scale2 ** 2) * \
                 (1 + self._sq_dist) ** (-self.alpha - 2) * np.sum(diff ** 2, axis=-1)
 
         return term1 - term2  # shape: (n1, n2)

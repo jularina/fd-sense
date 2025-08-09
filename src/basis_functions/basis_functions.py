@@ -1,5 +1,5 @@
 from typing import Optional
-import warnings
+from scipy.spatial.distance import pdist
 import numpy as np
 from abc import ABC, abstractmethod
 import sympy as sp
@@ -33,7 +33,7 @@ class BaseBasisFunction(ABC):
         def func(*args):
             x = np.array(args)[None, :]  # shape (1, d)
             try:
-                val = self.evaluate(x)[0, 0]  # just the first basis function at the first sample
+                val = self.evaluate(x)[0, 0, 0]  # just the first basis function at the first sample
                 return float(val ** 2)
             except Exception:
                 return np.inf
@@ -51,7 +51,13 @@ class PolynomialBasisFunction(BaseBasisFunction):
         self.degree = degree
 
     def evaluate(self, samples: np.ndarray) -> np.ndarray:
-        return np.concatenate([samples ** k for k in range(1, self.degree + 1)], axis=1)  # (m, d * degree)
+        m, d = samples.shape
+        values = np.zeros((m, d, self.degree))
+
+        for k in range(1, self.degree + 1):
+            values[:, :, k - 1] = samples ** k
+
+        return values  # (m, d, degree)
 
     def gradient(self, samples: np.ndarray) -> np.ndarray:
         m, d = samples.shape
@@ -84,7 +90,7 @@ class RBFBasisFunction(BaseBasisFunction):
         self.centers = self._select_centers(samples, num_basis_functions, method)
 
         if lengthscale is None:
-            self.lengthscale = self._estimate_lengthscale(self.centers)
+            self.lengthscale = self._estimate_lengthscale(centers=self.centers, samples=samples)
         else:
             self.lengthscale = lengthscale
 
@@ -99,25 +105,32 @@ class RBFBasisFunction(BaseBasisFunction):
         else:
             raise ValueError(f"Unknown center selection method: {method}")
 
-    def _estimate_lengthscale(self, centers: np.ndarray) -> float:
-        from scipy.spatial.distance import pdist
-
+    def _estimate_lengthscale(self, centers: np.ndarray, samples: np.ndarray,
+                              source: str = "samples", multiplier: float = 1.0,
+                              floor_frac: float = 0.1) -> float:
         if centers.shape[0] < 2:
-            warnings.warn("Only one RBF center provided; using default lengthscale=1.0.")
             return 1.0
+        if source == "samples":
+            m = np.median(pdist(samples.reshape(-1, samples.shape[-1])))
+        else:
+            m = np.median(pdist(centers))
 
-        pairwise_dists = pdist(centers)
-        return np.median(pairwise_dists)
+        ell = multiplier * m
+        floor = floor_frac * np.std(samples, axis=0).mean()
+        return float(max(ell, floor))
 
     def evaluate(self, samples: np.ndarray) -> np.ndarray:
-        diffs = samples[:, None, :] - self.centers[None, :, :]  # (m, B, d)
-        squared = np.sum(diffs ** 2, axis=-1)
-        return np.exp(-squared / (2 * self.lengthscale ** 2))  # (m, B)
+        diffs = samples[:, None, :] - self.centers[None, :, :]
+        squared = diffs ** 2
+        squared = np.transpose(squared, (0, 2, 1))
+
+        return np.exp(-squared / (2 * self.lengthscale ** 2))  # (m, d, B)
 
     def gradient(self, samples: np.ndarray) -> np.ndarray:
         diffs = samples[:, None, :] - self.centers[None, :, :]  # (m, B, d)
         rbf_vals = np.exp(-np.sum(diffs ** 2, axis=-1) / (2 * self.lengthscale ** 2))  # (m, B)
         grad = (-1 / self.lengthscale ** 2) * (diffs * rbf_vals[:, :, None])  # (m, B, d)
+
         return np.transpose(grad, (0, 2, 1))  # (m, d, B)
 
     def symbolic_expression(self, dim: int) -> sp.Expr:

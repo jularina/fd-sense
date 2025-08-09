@@ -20,6 +20,7 @@ class BayesianModel(ABC):
         self.prior_init: Any = data_config.base_prior
         self.loss_lr_init: float = data_config.loss_lr
         self.m: int = data_config.posterior_samples_num
+        self.m_prior: int = data_config.prior_samples_num
 
     @abstractmethod
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:

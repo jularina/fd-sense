@@ -1427,7 +1427,8 @@ def plot_sdp_comparisons_multiple_radii(
 
     for psi, r_label, ksd in zip(psi_sdp_list, radius_labels, ksd_estimates):
         f_sdp = phi_x @ psi
-        axs[1].plot(x, f_sdp, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd:.2f}")
+        c = np.mean(log_prior - f_sdp)  # best L2 shift on the grid
+        axs[1].plot(x, f_sdp + c, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd:.2f}")
 
     axs[1].plot(x, log_prior, label="Base Log Prior", linestyle="--", color="black")
     axs[1].set_title("Log Prior Approximations")

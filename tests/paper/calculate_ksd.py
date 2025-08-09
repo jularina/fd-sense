@@ -286,7 +286,7 @@ def compute_ksd_for_setting(obs_num, mu_0, cfg_serialized, repeats, fixed_sigma)
     return (obs_num, mu_0), ksd_list
 
 
-@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian", version_base="1.3")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_ksd_across_various_observations_nums_parallel(cfg):
     obs_nums = [50, 100, 200]
     mu_vals = np.round(np.linspace(-10, 10, 21), 2)
@@ -337,7 +337,7 @@ def run_ksd_across_various_observations_nums_parallel(cfg):
         )
 
 
-@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian", version_base="1.3")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_ksd_across_various_observations_nums(cfg):
     obs_nums = [50, 100, 200]
     mu_vals = np.round(np.linspace(-10, 10, 21), 2)
@@ -400,7 +400,7 @@ def run_ksd_across_various_observations_nums(cfg):
         )
 
 
-@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_gaussian_priors(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
@@ -437,7 +437,6 @@ def run_gaussian_priors(cfg) -> None:
         kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
         ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
         ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
-
         psi_sdp_list, ksd_estimates_list, radius_labels, psi_ksd_min_list, ksd_min_estimates_list = [], [], [], [], []
 
         for radius_lower_bound in [1.0, 2.0, 3.0]:
@@ -468,15 +467,15 @@ def run_gaussian_priors(cfg) -> None:
             resolution=300
         )
 
-        plot_sdp_vs_ksd_minimizers(
-            basis_function=optimizer.basis_function,
-            psi_sdp_list=psi_sdp_list,
-            psi_ksd_list=psi_ksd_min_list,
-            radius_labels=radius_labels,
-            ksd_estimates_sdp=ksd_estimates_list,
-            ksd_estimates_ksd=ksd_min_estimates_list,
-            prior_distribution=model.prior_init
-        )
+        # plot_sdp_vs_ksd_minimizers(
+        #     basis_function=optimizer.basis_function,
+        #     psi_sdp_list=psi_sdp_list,
+        #     psi_ksd_list=psi_ksd_min_list,
+        #     radius_labels=radius_labels,
+        #     ksd_estimates_sdp=ksd_estimates_list,
+        #     ksd_estimates_ksd=ksd_min_estimates_list,
+        #     prior_distribution=model.prior_init
+        # )
 
         # Plots
         plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples, kernel)
@@ -485,7 +484,7 @@ def run_gaussian_priors(cfg) -> None:
         plots_across_gaussian_loss_lr_parameters_ranges(cfg, model, posterior_samples, kernel)
 
 
-@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_gaussian_log_normal_priors(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
@@ -510,7 +509,7 @@ def run_gaussian_log_normal_priors(cfg) -> None:
         density_plot_across_prior_parameter_sets(cfg, model, posterior_samples, kernel)
 
 
-@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
 def run_multivariate_gaussian_priors(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
@@ -541,7 +540,7 @@ def run_multivariate_gaussian_priors(cfg) -> None:
             cfg, model, posterior_samples, kernel, qf_across_priors=qf_prior_all_combinations)
 
 
-@hydra.main(config_path="../../configs/paper/ksd_calculation/toy/", config_name="inverse_wishart")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="inverse_wishart")
 def run_inverse_wishart_priors(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
