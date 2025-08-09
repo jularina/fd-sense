@@ -12,7 +12,6 @@ from matplotlib.patches import Ellipse
 from typing import Set, FrozenSet
 from matplotlib.ticker import MaxNLocator
 from matplotlib.cm import ScalarMappable
-from scipy.special import logsumexp
 
 from src.distributions.gaussian import Gaussian
 

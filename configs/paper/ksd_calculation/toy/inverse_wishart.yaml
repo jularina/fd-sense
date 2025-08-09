@@ -17,6 +17,7 @@ data:
   loss_lr: 1
   observations_num: 500
   posterior_samples_num: 5000
+  prior_samples_num: 5000
 
 model:
   _target_: src.bayesian_model.inverse_wishart.InverseWishartModel

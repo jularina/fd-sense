@@ -161,6 +161,8 @@ def density_plot_across_prior_parameter_sets(cfg, model: BayesianModel, posterio
     all_ksd_results = {}
     param_values_dict = {"Gaussian": np.array([[-7, 1], [5, 3], [9, 2]]), "LogNormal": np.array([[1, 0.5]])}
     for dist_name, dist_cfg in cfg.ksd.optimize.prior.items():
+        if dist_name not in DISTRIBUTION_MAP:
+            continue
         distribution_cls = DISTRIBUTION_MAP[dist_name]
         box_cfg = dist_cfg.parameters_box_range
         param_names = list(box_cfg.ranges.keys())
@@ -572,7 +574,7 @@ def run_inverse_wishart_priors(cfg) -> None:
 
 
 if __name__ == "__main__":
-    run_gaussian_priors()
+    # run_gaussian_priors()
     # run_gaussian_log_normal_priors()
     # run_multivariate_gaussian_priors()
-    # run_inverse_wishart_priors()
+    run_inverse_wishart_priors()

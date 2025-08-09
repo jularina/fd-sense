@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 from typing import Tuple
 
@@ -289,10 +290,6 @@ class PosteriorKSDNonParametric(PosteriorKSDBase):
         return grad_phi_T
 
 
-
-import numpy as np
-import matplotlib.pyplot as plt
-
 def plot_basis_stuff(samples, phi, grad_phi):
     samples = np.asarray(samples)
     phi = np.asarray(phi)
@@ -349,4 +346,3 @@ def plot_basis_stuff(samples, phi, grad_phi):
     plt.legend()
 
     plt.show()
-
