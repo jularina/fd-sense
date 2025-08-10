@@ -58,7 +58,13 @@ This is a living guide for users to understand which objects they can pick in co
 - **LogNormal**: `src.distributions.log_normal.LogNormal`
 - **InverseWishart**: `src.distributions.inverse_wishart.InverseWishart`
 
-**Config shape (example):**
+You can run 
+```bash
+python -m playground.zoo
+```
+to explore the zoo of all supported distributions/kernels etc.
+
+### Config structure example
 ```yaml
 data:
   base_prior:
@@ -123,14 +129,14 @@ Your kernel should accept `reference_data` in the constructor.
 ### Example run
 ```bash
 # Parametric (corner points)
-python playground/parametric_cli.py \
+python playground/run_parametric_cli.py \
   --config-path configs/paper/ksd_calculation/toy \
   --config-name univariate_gaussian \
   playground.posterior_path=data/posterior.npy \
   playground.output_prefix=param_run
 
 # Nonparametric (SDP)
-python playground/nonparametric_cli.py \
+python playground/run_nonparametric_cli.py \
   --config-path configs/paper/ksd_calculation/toy \
   --config-name univariate_gaussian \
   playground.posterior_path=data/posterior.npy \
