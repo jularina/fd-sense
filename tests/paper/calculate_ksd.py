@@ -418,6 +418,10 @@ def run_gaussian_priors(cfg) -> None:
 
     # Sample from the posterior
     posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+    output_dir = os.path.join(get_original_cwd(), "data")
+    os.makedirs(output_dir, exist_ok=True)
+    np.save(output_dir+"/posterior_samples.npy", posterior_samples)
+    np.save(output_dir + "/observations.npy", model.observations)
 
     # Instantiate the kernel
     kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
@@ -463,6 +467,13 @@ def run_gaussian_priors_nonparametric(cfg) -> None:
     if cfg.ksd.optimize:
         # Nonparametric optimization
         prior_samples = model.sample_from_base_prior(cfg.data.prior_samples_num)
+
+        output_dir = os.path.join(get_original_cwd(), "data")
+        os.makedirs(output_dir, exist_ok=True)
+        np.save(output_dir + "/posterior_samples.npy", posterior_samples)
+        np.save(output_dir + "/prior_samples.npy", prior_samples)
+        np.save(output_dir + "/observations.npy", model.observations)
+
         kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
         ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
         ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)

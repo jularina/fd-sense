@@ -1,8 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Type
 import numpy as np
+import os
+import warnings
+from hydra.utils import get_original_cwd
+from typing import Optional
 
 from src.utils.typing import ArrayLike
+from src.utils.files_operations import load_numpy_array
 
 
 class BayesianModel(ABC):
@@ -11,9 +16,6 @@ class BayesianModel(ABC):
         Base class for Bayesian models.
         """
         self.true_dgp = data_config.true_dgp
-        self.observations_num: int = data_config.observations_num
-        self.observations: np.ndarray = self.true_dgp.sample(self.observations_num)
-        self.x_bar: np.ndarray = np.mean(self.observations, axis=0)
         self.loss_lr: float = data_config.loss_lr
         self.loss: Any = data_config.loss
         self.prior: Any = data_config.base_prior
@@ -21,6 +23,68 @@ class BayesianModel(ABC):
         self.loss_lr_init: float = data_config.loss_lr
         self.m: int = data_config.posterior_samples_num
         self.m_prior: int = data_config.prior_samples_num
+
+        # Prepare observations
+        self.observations = self._prepare_observations(data_config)
+        self.observations_num = self.observations.shape[0]
+        self.x_bar: np.ndarray = np.mean(self.observations, axis=0)
+        self.posterior_samples_init = self._prepare_array_from_presaved_samples(
+            getattr(data_config, "posterior_samples_path", None),
+            name="posterior"
+        )
+        self.prior_samples_init = self._prepare_array_from_presaved_samples(
+            getattr(data_config, "prior_samples_path", None),
+            name="prior"
+        )
+
+    def _prepare_observations(self, data_config: Any) -> np.ndarray:
+        """
+        Prepare observations: either provided directly, loaded from file, or sampled from true_dgp.
+        """
+        obs = getattr(data_config, "observations", None)
+        obs_path = getattr(data_config, "observations_path", None)
+
+        if obs is not None and obs_path is not None:
+            warnings.warn("Both observations and observations_path provided; using observations.")
+
+        # Load from path if given
+        if obs is None and obs_path is not None:
+            path = obs_path
+            if not os.path.isabs(path):
+                path = os.path.join(get_original_cwd(), path)
+            obs = load_numpy_array(path)
+
+        # Sample from true_dgp if no data provided
+        if obs is None:
+            if self.true_dgp is None:
+                raise ValueError("Provide data.observations(_path) or set data.true_dgp to sample from.")
+            observations_num = int(getattr(data_config, "observations_num", 0))
+            if observations_num <= 0:
+                raise ValueError("data.observations_num must be > 0 when sampling from true_dgp.")
+            obs = self.true_dgp.sample(observations_num)
+
+        obs = np.asarray(obs)
+        if obs.ndim == 1:
+            obs = obs.reshape(-1, 1)  # enforce (n, d) shape
+        return obs
+
+    def _prepare_array_from_presaved_samples(self, path: Optional[str], name: str) -> Optional[np.ndarray]:
+        """
+        Generic helper to load an array from a given path in config.
+        Returns None if no path is given.
+        """
+        if path is None:
+            return None
+        if not os.path.isabs(path):
+            path = os.path.join(get_original_cwd(), path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"{name.capitalize()} samples file not found: {path}")
+
+        arr = load_numpy_array(path)
+        arr = np.asarray(arr)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        return arr
 
     @abstractmethod
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:

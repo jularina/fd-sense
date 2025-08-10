@@ -8,11 +8,11 @@ from src.bayesian_model.base import BayesianModel
 from src.kernels.base import BaseKernel
 from src.discrepancies.posterior_ksd import PosteriorKSDParametric
 from src.utils.choosers import pick_optimizer
-from  src.utils.files_operations import get_outdir, save_json, save_csv, load_numpy_array
+from src.utils.files_operations import get_outdir, save_json, save_csv
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def main(cfg: DictConfig) -> None:
     """
     Example:
@@ -28,14 +28,9 @@ def main(cfg: DictConfig) -> None:
     print("=== Parametric KSD (corner points) ===")
     print("Config overrides:" + OmegaConf.to_yaml(cfg.get("playground", {})))
 
-    posterior_path = cfg.playground.get("posterior_path")
-    if not posterior_path:
-        raise ValueError("Please provide playground.posterior_path=<path-to-npy>")
-
-    posterior_samples = load_numpy_array(posterior_path)
-
     # Instantiate model & kernel
     model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    posterior_samples = model.posterior_samples_init
     kernel: BaseKernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
 
     # KSD
@@ -49,11 +44,10 @@ def main(cfg: DictConfig) -> None:
 
     # Serialize results
     rows = []
-    for key, val in qf_corners.items():
-        # 'key' is a tuple of prior parameter values defining a corner
+    for corners in qf_corners:
         rows.append({
-            "prior_corner": list(key) if not isinstance(key, dict) else key,
-            "value": float(val),
+            "prior_corner": list(corners[0]) if not isinstance(corners[0], dict) else corners[0],
+            "value": float(corners[2]),
         })
 
     prefix = cfg.playground.get("output_prefix", "param")
