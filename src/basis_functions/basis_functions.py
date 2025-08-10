@@ -117,7 +117,10 @@ class RBFBasisFunction(BaseBasisFunction):
 
         ell = multiplier * m
         floor = floor_frac * np.std(samples, axis=0).mean()
-        return float(max(ell, floor))
+        ls = float(max(ell, floor))
+        print(f"Selected lengthscale for RBF basis function: {ls}.")
+
+        return ls
 
     def evaluate(self, samples: np.ndarray) -> np.ndarray:
         diffs = samples[:, None, :] - self.centers[None, :, :]

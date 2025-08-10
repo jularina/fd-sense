@@ -1,3 +1,16 @@
+from src.discrepancies.prior_ksd import PriorKSDNonParametric
+from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
+from src.plots.paper.paper_funcs import *
+from src.bayesian_model.base import BayesianModel
+from src.kernels.base import BaseKernel
+from src.distributions.gaussian import MultivariateGaussian
+from src.distributions.inverse_wishart import InverseWishart
+from src.utils.files_operations import load_plot_config
+from src.utils.distributions import DISTRIBUTION_MAP
+from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
+                                            OptimizationCornerPointsInverseWishart,
+                                            OptimizationCornerPointsMultivariateGaussian)
+from src.optimization.nonparametric import OptimizationNonparametricBase
 import warnings
 import os
 from statistics import median
@@ -10,20 +23,6 @@ import copy
 import random
 random.seed(27)
 warnings.filterwarnings("ignore", category=UserWarning)
-
-from src.optimization.nonparametric import OptimizationNonparametricBase
-from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
-                                            OptimizationCornerPointsInverseWishart,
-                                            OptimizationCornerPointsMultivariateGaussian)
-from src.utils.distributions import DISTRIBUTION_MAP
-from src.utils.files_operations import load_plot_config
-from src.distributions.inverse_wishart import InverseWishart
-from src.distributions.gaussian import MultivariateGaussian
-from src.kernels.base import BaseKernel
-from src.bayesian_model.base import BayesianModel
-from src.plots.paper.paper_funcs import *
-from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
-from src.discrepancies.prior_ksd import PriorKSDNonParametric
 
 
 def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
@@ -438,59 +437,6 @@ def run_gaussian_priors(cfg) -> None:
         plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, qf_prior_all_combinations, corner_points)
         density_plot_across_gaussian_prior_parameter_set(cfg, model, posterior_samples, kernel)
 
-        # Corner points optimization for loss lr
-        # optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator,
-        #                                                        cfg.ksd.optimize.loss.GaussianLogLikelihood)
-        # qf_lr = optimizer.evaluate_all_lr_corners()
-
-        # # Nonparametric optimization
-        # prior_samples = model.sample_from_base_prior(cfg.data.prior_samples_num)
-        # kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
-        # ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
-        # ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
-        # psi_sdp_list, ksd_estimates_list, radius_labels, psi_ksd_min_list, ksd_min_estimates_list = [], [], [], [], []
-
-        # for radius_lower_bound in [1.0, 2.0, 3.0]:
-        #     optimizer = OptimizationNonparametricBase(
-        #         ksd_estimator,
-        #         ksd_estimator_prior,
-        #         cfg.ksd.optimize.prior.nonparametric,
-        #         radius_lower_bound=radius_lower_bound
-        #     )
-        #     result_sdp = optimizer.optimize_through_sdp_relaxation()
-        #     result_ksd_min = optimizer.optimize_minimize_ksd()
-        #     psi_sdp_list.append(result_sdp["psi_opt"])
-        #     psi_ksd_min_list.append(result_ksd_min["psi_opt"])
-        #     ksd_estimates_list.append(result_sdp["ksd_est"])
-        #     ksd_min_estimates_list.append(result_ksd_min["ksd_est"])
-        #     radius_labels.append(radius_lower_bound)
-
-        # Plot all in one comparison figure
-        # plot_sdp_comparisons_multiple_radii(
-        #     basis_function=optimizer.basis_function,
-        #     psi_sdp_list=psi_sdp_list,
-        #     radius_labels=radius_labels,
-        #     ksd_estimates=ksd_estimates_list,
-        #     prior_samples=prior_samples,
-        #     posterior_samples=posterior_samples,
-        #     prior_distribution=model.prior_init,
-        #     domain=(-6, 10),
-        #     resolution=300
-        # )
-
-        # plot_sdp_vs_ksd_minimizers(
-        #     basis_function=optimizer.basis_function,
-        #     psi_sdp_list=psi_sdp_list,
-        #     psi_ksd_list=psi_ksd_min_list,
-        #     radius_labels=radius_labels,
-        #     ksd_estimates_sdp=ksd_estimates_list,
-        #     ksd_estimates_ksd=ksd_min_estimates_list,
-        #     prior_distribution=model.prior_init
-        # )
-
-        # Plots
-        # plots_across_gaussian_loss_lr_parameters_ranges(cfg, model, posterior_samples, kernel)
-
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_gaussian_priors_nonparametric(cfg) -> None:
@@ -538,14 +484,17 @@ def run_gaussian_priors_nonparametric(cfg) -> None:
             radius_labels.append(radius_lower_bound)
 
         # Plot all in one comparison figure
+        plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+        output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+        plot_cfg = load_plot_config(plot_config_path)
         plot_sdp_comparisons_multiple_radii(
             basis_function=optimizer.basis_function,
             psi_sdp_list=psi_sdp_list,
             radius_labels=radius_labels,
             ksd_estimates=ksd_estimates_list,
-            prior_samples=prior_samples,
-            posterior_samples=posterior_samples,
             prior_distribution=model.prior_init,
+            plot_cfg=plot_cfg,
+            output_dir=output_dir,
             domain=(-6, 10),
             resolution=300
         )

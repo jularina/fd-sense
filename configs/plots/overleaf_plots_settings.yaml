@@ -35,6 +35,7 @@ plot:
     context: "paper"
 
   param_latex_names:
+    theta: "$\\theta$"
     mu: "$\\mu$"
     sigma: "$\\sigma$"
     mu_0: "$\\mu_0$"
@@ -42,6 +43,9 @@ plot:
     alpha: "$\\alpha$"
     beta: "$\\beta$"
     prior: "$\\pi(\\mu_0)$"
+    log_prior: "$\\log\\pi$"
+    baseprior: "$\\Pi_\\text{ref}$"
+    logbaseprior: "$\\log\\Pi_\\text{ref}$"
     estimatedKSD: "$\\widehat{\\mathrm{KSD}}^2$"
     estimatedposterior: "$\\tilde{\\Pi}^m_\\text{ref}$"
     candidateposterior: "$\\tilde{\\Pi}$"

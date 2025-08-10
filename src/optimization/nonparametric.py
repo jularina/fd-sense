@@ -108,8 +108,8 @@ class OptimizationNonparametricBase:
 
         # Constraint 2: Schur complement LMI: [[Psi, psi], [psi.T, 1]] ⪰ 0
         schur_matrix = cp.bmat([
-            [Psi, cp.reshape(psi, (D, 1))],
-            [cp.reshape(psi, (1, D)), cp.Constant([[1]])]
+            [Psi, cp.reshape(psi, (D, 1), order='C')],
+            [cp.reshape(psi, (1, D), order='C'), cp.Constant([[1]])]
         ])
         constraint2 = schur_matrix >> 0  # LMI constraint
 

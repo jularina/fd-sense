@@ -1331,113 +1331,118 @@ def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, 
     print(f"[INFO] Saved Inverse Wishart scale ellipse plot to: {output_path}")
 
 
-def plot_basis_expansion_with_psi_comparison(
-        basis_function,
-        psi_sdp: np.ndarray,
-        posterior_samples: np.ndarray,
-        prior_distribution,
-        domain: tuple = (-5, 5),
-        resolution: int = 200,
-):
-    """
-    Plot and compare the log prior approximations from:
-      - SDP-constrained optimization (robust worst-case KSD)
-      - Unconstrained optimization (minimum empirical KSD)
-    Also overlay the true log prior and posterior samples (1D only).
-
-    Args:
-        basis_function: Instance of BaseBasisFunction.
-        psi_sdp (np.ndarray): ψ from SDP relaxation.
-        psi_ksd (np.ndarray): ψ from unconstrained KSD minimization.
-        posterior_samples (np.ndarray): Posterior samples (n, d).
-        prior_distribution: Prior with .log_pdf(x).
-        domain (tuple): x-axis range.
-        resolution (int): Number of evaluation points.
-    """
-    if posterior_samples.ndim != 2 or posterior_samples.shape[1] != 1:
-        raise NotImplementedError("Only 1D plotting supported.")
-
-    x = np.linspace(domain[0], domain[1], resolution)[:, None]
-    phi_x = basis_function.evaluate(x)
-    f_sdp = phi_x @ psi_sdp
-    log_prior = prior_distribution.log_pdf(x).flatten()
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(x, f_sdp, label="SDP Relaxation (Robust ψ)", color="tab:blue")
-    plt.plot(x, log_prior, label="True Log Prior", linestyle="--", color="black")
-
-    plt.title("Log Prior Approximation via Basis Expansions")
-    plt.xlabel("x")
-    plt.ylabel("Value")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-
 def plot_sdp_comparisons_multiple_radii(
     basis_function,
     psi_sdp_list: list[np.ndarray],
     radius_labels: list[float],
     ksd_estimates: list[float],
-    prior_samples: np.ndarray,
-    posterior_samples: np.ndarray,
     prior_distribution,
+    plot_cfg: DictConfig,
+    output_dir: str,
     domain: tuple = (-5, 5),
     resolution: int = 200,
-):
+) -> None:
     """
-    Plot: (1) prior vs posterior samples and true prior density,
-          (2) log prior approximations via SDP-relaxed ψ for multiple radius lower bounds.
-    """
-    if posterior_samples.ndim != 2 or posterior_samples.shape[1] != 1:
-        raise NotImplementedError("Only 1D plotting supported.")
+    Plot log prior and its SDP-relaxed approximations for multiple radius lower bounds.
+    Saves a single-panel figure to PDF.
 
+    Notes:
+        - Only 1D plotting is supported (basis on x ∈ R).
+        - prior_samples / posterior_samples are accepted for backwards-compat, but unused.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # LaTeX + fonts (align with your other plots)
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    # Figure
+    fig, ax = plt.subplots(
+        figsize=(
+            plot_cfg.plot.figure.size.width*1.3,
+            plot_cfg.plot.figure.size.height,
+        ),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    # Grid on x and target log prior
     x = np.linspace(domain[0], domain[1], resolution)[:, None]
     phi_x = basis_function.evaluate(x)
     log_prior = prior_distribution.log_pdf(x).flatten()
-    prior_density = prior_distribution.pdf(x).flatten()
 
-    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
-    axs[0].hist(
-        prior_samples.flatten(),
-        bins=50,
-        alpha=0.6,
-        label="Prior Samples",
-        density=True,
-        color="blue",
-        linewidth=0.5,
+    # Colors (cycle through palette for each radius curve)
+    palette = list(getattr(plot_cfg.plot.color_palette, "colors", []))
+    if not palette:
+        palette = ["C0", "C1", "C2", "C3", "C4", "C5"]  # matplotlib defaults fallback
+
+    # Plot SDP approximations (shifted by best constant to match mean on grid)
+    names = plot_cfg.plot.param_latex_names
+    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    approx_sym = r"$\approx$"
+    geq_sym = r"$\geq$"
+
+    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+        f_sdp = (phi_x @ psi).flatten()
+        c = float(np.mean(log_prior - f_sdp))
+        color = palette[i % len(palette)]
+        label = rf"r {geq_sym} {r_label} ({approx_sym} {ksd:.2f})"
+
+        ax.plot(
+            x.flatten(),
+            f_sdp + c,
+            label=label,
+            linewidth=1.5,
+            color=color,
+        )
+
+    # Plot base (true) log prior
+    ax.plot(
+        x.flatten(),
+        log_prior,
+        label=names.get("logbaseprior", "log Base Log Prior"),
+        linestyle="--",
+        linewidth=1.5,
+        color="black",
     )
-    axs[0].hist(
-        posterior_samples.flatten(),
-        bins=50,
-        alpha=0.6,
-        label="Posterior Samples",
-        density=True,
-        color="orange",
-        linewidth=0.5,
+
+    # Labels and styling from latex name map
+    ax.set_xlabel(names.get("theta", "theta"))
+
+    ax.grid(True, alpha=0.3)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    leg = ax.legend(
+        title=ksd_label,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+        borderaxespad=0.0,
+        frameon=False,
+        handlelength=2,
+        handletextpad=0.8,
+        borderpad=0.6,
     )
-    axs[0].plot(x, prior_density, label="True Prior Density", color="black", linewidth=2)
-    axs[0].set_title("Prior vs Posterior Samples")
-    axs[0].set_xlabel("x")
-    axs[0].set_ylabel("Density")
-    axs[0].grid(True)
-    axs[0].legend()
 
-    for psi, r_label, ksd in zip(psi_sdp_list, radius_labels, ksd_estimates):
-        f_sdp = phi_x @ psi
-        c = np.mean(log_prior - f_sdp)  # best L2 shift on the grid
-        axs[1].plot(x, f_sdp + c, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd:.2f}")
+    # Align legend title with labels
+    leg.get_title().set_ha("right")
+    leg._legend_box.align = "right"
 
-    axs[1].plot(x, log_prior, label="Base Log Prior", linestyle="--", color="black")
-    axs[1].set_title("Log Prior Approximations")
-    axs[1].set_xlabel("x")
-    axs[1].set_ylabel("Log Prior Value")
-    axs[1].grid(True)
-    axs[1].legend()
+    plt.setp(leg.get_texts(), fontsize=plt.rcParams["font.size"] * 0.9)
+    plt.setp(leg.get_title(), fontsize=plt.rcParams["font.size"] * 0.95)
 
-    plt.tight_layout()
-    plt.show()
+    if getattr(plot_cfg.plot.figure, "tight_layout", False):
+        plt.tight_layout()
+
+    # Save and close
+    filename = "toy_gaussian_model_nonparametric_optimisation.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved SDP log prior comparison plot: {save_path}")
 
 
 def plot_sdp_vs_ksd_minimizers(
