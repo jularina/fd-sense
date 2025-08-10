@@ -1,18 +1,12 @@
 import numpy as np
 
 from src.utils.typing import ArrayLike
+from src.losses.base import BaseLoss
 
 
-class GaussianLogLikelihood:
+class GaussianLogLikelihood(BaseLoss):
     """
     Univariate Gaussian distribution.
-
-    Parameters
-    ----------
-    mu : float
-        Mean.
-    sigma : float
-        Standard deviation.
     """
 
     def __init__(self, mu: float, sigma: float):
@@ -26,16 +20,9 @@ class GaussianLogLikelihood:
         return observations_num * (x_bar-x) / self.var
 
 
-class MultivariateGaussianLogLikelihood:
+class MultivariateGaussianLogLikelihood(BaseLoss):
     """
     Multivariate Gaussian log-likelihood with full covariance.
-
-    Parameters
-    ----------
-    mu : ArrayLike
-        Mean vector of shape (d,).
-    cov : ArrayLike
-        Full covariance matrix of shape (d, d).
     """
 
     def __init__(self, mu: ArrayLike, cov: ArrayLike):

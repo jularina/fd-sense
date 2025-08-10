@@ -26,7 +26,7 @@ class OptimizationNonparametricBase:
         basis_cls = BASIS_FUNCTIONS_REGISTRY[basis_cls_name]
         basis_kwargs = config.get("basis_funcs_kwargs", {})
 
-        if basis_cls_name == "RBFBasisFunction":
+        if basis_cls_name == "RBFBasisFunction" or basis_cls_name == "SigmoidBasisFunction":
             basis_kwargs = OmegaConf.to_container(basis_kwargs, resolve=True)
             basis_kwargs["samples"] = self.prior_ksd.samples
 
