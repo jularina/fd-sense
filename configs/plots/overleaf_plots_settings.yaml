@@ -17,7 +17,7 @@ plot:
       - "#5A051A"  # cherry
 #      - "#D20A2E"  # red
 #      - "#EE1E52"  # pink
-#      - "#6E3D6F" # darker purple
+      - "#6E3D6F" # darker purple
       - "#7c397d" # purple
 #      - "#FF6B90"  # light-pink
 #      - "#1f77b4"  # blue
@@ -45,7 +45,7 @@ plot:
     estimatedKSD: "$\\widehat{\\mathrm{KSD}}^2$"
     estimatedposterior: "$\\tilde{\\Pi}^m_\\text{ref}$"
     candidateposterior: "$\\tilde{\\Pi}$"
-    estimatedKSDposteriors: "$\\widehat{\\mathrm{KSD}}^2(\\tilde{\\Pi}^m_\\text{ref}, \\tilde{\\Pi})$"
+    estimatedKSDposteriors: "$\\widehat{\\mathrm{KSD}}^2(\\tilde{\\Pi}^m_{\\mathrm{ref}},\\ \\tilde{\\Pi})$"
     estimatedKSDposteriorsQuadraticForm: "$L_m(\\gamma)$"
     lr: "lr"
 

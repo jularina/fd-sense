@@ -1,39 +1,46 @@
 # Bayesian sensitivity analysis toolkit
 
-**stein-sense** is a Python toolkit for **Bayesian sensitivity analysis** using the **Kernel Stein Discrepancy (KSD)**.  
+A Python-based toolkit for **Bayesian sensitivity analysis** using the **Kernel Stein Discrepancy (KSD)**.
 It provides a modular framework for:
 - Computing prior and posterior KSD
-- Performing parametric and nonparametric sensitivity analysis
-- Optimizing perturbations to priors subject to KSD constraints
+- Performing parametric and nonparametric sensitivity analysis to the loss learning rates and priors
 - Visualizing sensitivity results
 
 ---
 
-## 📚 Features
+## Features
 
-- **Bayesian model definitions**  
-  Support for Gaussian, inverse-Wishart, log-normal priors, and extensible to custom distributions.
+- **Distributions Support**
+  - Gaussian (both univariate and multivariate)
+  - Inverse-Wishart
+  - Log-normal
+  - can be extended to custom distributions
 
-- **Kernel Stein Discrepancy computations**  
-  - Posterior KSD
-  - Prior KSD
-  - Flexible kernel selection (e.g., inverse multiquadric)
+- **KSD computations**
+  - KSD between posterior samples and candidate posterior
+  - KSD between prior samples and candidate prior
 
-- **Optimization tools**
+- **Kernels**
+  - Inverse multiquadric
+
+- **Optimization tools for sensitivity analysis**
   - Parametric corner-point search
-  - Nonparametric basis expansions (e.g., RBFs, polynomials)
-  - Semidefinite programming (SDP) relaxation for non-convex QCQP problems
-  - KSD-minimizing solutions
+  - Nonparametric basis expansions (e.g., RBFs, polynomials) with SDP relaxation for non-convex QCQP problems
 
-- **Plotting utilities**  
-  Visualizations for:
+- **Plotting utilities**
   - Prior vs posterior samples
   - Log prior approximations for different optimization settings
   - Comparisons between SDP and direct KSD minimization
 
-- **Configuration-driven**  
-  Uses [Hydra](https://hydra.cc/) for flexible experiment configuration via YAML files.
+- **Configuration-driven**
+   [Hydra](https://hydra.cc/) for flexible experiment configuration via YAML files.
 
 ---
 
+## Contributions
 
+We are happy with any help in adding distributions, kernels and models to the project!
+
+---
+
+## License

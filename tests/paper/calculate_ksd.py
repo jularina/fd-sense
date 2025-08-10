@@ -1,3 +1,16 @@
+import warnings
+import os
+from statistics import median
+import numpy as np
+import hydra
+from hydra.utils import instantiate, get_original_cwd
+from tqdm import tqdm
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import copy
+import random
+random.seed(27)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 from src.optimization.nonparametric import OptimizationNonparametricBase
 from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
                                             OptimizationCornerPointsInverseWishart,
@@ -11,15 +24,6 @@ from src.bayesian_model.base import BayesianModel
 from src.plots.paper.paper_funcs import *
 from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
 from src.discrepancies.prior_ksd import PriorKSDNonParametric
-from statistics import median
-import numpy as np
-import hydra
-from hydra.utils import instantiate, get_original_cwd
-from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import copy
-import random
-random.seed(27)
 
 
 def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
@@ -429,11 +433,88 @@ def run_gaussian_priors(cfg) -> None:
         qf_prior = optimizer.evaluate_all_prior_corners()
         qf_prior_all_combinations, corner_points = optimizer.evaluate_all_prior_combinations()
 
-        # Corner points optimization for loss lr
-        optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator,
-                                                               cfg.ksd.optimize.loss.GaussianLogLikelihood)
-        qf_lr = optimizer.evaluate_all_lr_corners()
+        # Plots
+        plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples, kernel)
+        plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, qf_prior_all_combinations, corner_points)
+        density_plot_across_gaussian_prior_parameter_set(cfg, model, posterior_samples, kernel)
 
+        # Corner points optimization for loss lr
+        # optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator,
+        #                                                        cfg.ksd.optimize.loss.GaussianLogLikelihood)
+        # qf_lr = optimizer.evaluate_all_lr_corners()
+
+        # # Nonparametric optimization
+        # prior_samples = model.sample_from_base_prior(cfg.data.prior_samples_num)
+        # kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
+        # ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
+        # ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
+        # psi_sdp_list, ksd_estimates_list, radius_labels, psi_ksd_min_list, ksd_min_estimates_list = [], [], [], [], []
+
+        # for radius_lower_bound in [1.0, 2.0, 3.0]:
+        #     optimizer = OptimizationNonparametricBase(
+        #         ksd_estimator,
+        #         ksd_estimator_prior,
+        #         cfg.ksd.optimize.prior.nonparametric,
+        #         radius_lower_bound=radius_lower_bound
+        #     )
+        #     result_sdp = optimizer.optimize_through_sdp_relaxation()
+        #     result_ksd_min = optimizer.optimize_minimize_ksd()
+        #     psi_sdp_list.append(result_sdp["psi_opt"])
+        #     psi_ksd_min_list.append(result_ksd_min["psi_opt"])
+        #     ksd_estimates_list.append(result_sdp["ksd_est"])
+        #     ksd_min_estimates_list.append(result_ksd_min["ksd_est"])
+        #     radius_labels.append(radius_lower_bound)
+
+        # Plot all in one comparison figure
+        # plot_sdp_comparisons_multiple_radii(
+        #     basis_function=optimizer.basis_function,
+        #     psi_sdp_list=psi_sdp_list,
+        #     radius_labels=radius_labels,
+        #     ksd_estimates=ksd_estimates_list,
+        #     prior_samples=prior_samples,
+        #     posterior_samples=posterior_samples,
+        #     prior_distribution=model.prior_init,
+        #     domain=(-6, 10),
+        #     resolution=300
+        # )
+
+        # plot_sdp_vs_ksd_minimizers(
+        #     basis_function=optimizer.basis_function,
+        #     psi_sdp_list=psi_sdp_list,
+        #     psi_ksd_list=psi_ksd_min_list,
+        #     radius_labels=radius_labels,
+        #     ksd_estimates_sdp=ksd_estimates_list,
+        #     ksd_estimates_ksd=ksd_min_estimates_list,
+        #     prior_distribution=model.prior_init
+        # )
+
+        # Plots
+        # plots_across_gaussian_loss_lr_parameters_ranges(cfg, model, posterior_samples, kernel)
+
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+def run_gaussian_priors_nonparametric(cfg) -> None:
+    """
+    Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    # Instantiate the Bayesian model with runtime overrides
+    model = instantiate(cfg.model, data_config=cfg.data)
+
+    # Sample from the posterior
+    posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+
+    # Instantiate the kernel
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+
+    # Compute initial KSD
+    ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+    print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+
+    # Optimization
+    if cfg.ksd.optimize:
         # Nonparametric optimization
         prior_samples = model.sample_from_base_prior(cfg.data.prior_samples_num)
         kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
@@ -441,7 +522,7 @@ def run_gaussian_priors(cfg) -> None:
         ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
         psi_sdp_list, ksd_estimates_list, radius_labels, psi_ksd_min_list, ksd_min_estimates_list = [], [], [], [], []
 
-        for radius_lower_bound in [1.0, 2.0, 3.0]:
+        for radius_lower_bound in [1.0, 2.0, 3.0, 4.5, 5.0]:
             optimizer = OptimizationNonparametricBase(
                 ksd_estimator,
                 ksd_estimator_prior,
@@ -479,10 +560,36 @@ def run_gaussian_priors(cfg) -> None:
         #     prior_distribution=model.prior_init
         # )
 
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+def run_gaussian_lr(cfg) -> None:
+    """
+    Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    # Instantiate the Bayesian model with runtime overrides
+    model = instantiate(cfg.model, data_config=cfg.data)
+
+    # Sample from the posterior
+    posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+
+    # Instantiate the kernel
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+
+    # Compute initial KSD
+    ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+    print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+
+    # Optimization
+    if cfg.ksd.optimize:
+        # Corner points optimization for loss lr
+        optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator,
+                                                               cfg.ksd.optimize.loss.GaussianLogLikelihood)
+        qf_lr = optimizer.evaluate_all_lr_corners()
+
         # Plots
-        plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples, kernel)
-        plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, qf_prior_all_combinations, corner_points)
-        density_plot_across_gaussian_prior_parameter_set(cfg, model, posterior_samples, kernel)
         plots_across_gaussian_loss_lr_parameters_ranges(cfg, model, posterior_samples, kernel)
 
 
@@ -575,6 +682,8 @@ def run_inverse_wishart_priors(cfg) -> None:
 
 if __name__ == "__main__":
     # run_gaussian_priors()
+    # run_gaussian_lr()
     # run_gaussian_log_normal_priors()
     # run_multivariate_gaussian_priors()
-    run_inverse_wishart_priors()
+    # run_inverse_wishart_priors()
+    run_gaussian_priors_nonparametric()
