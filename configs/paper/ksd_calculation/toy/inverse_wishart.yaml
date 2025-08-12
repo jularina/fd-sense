@@ -3,7 +3,10 @@ data:
     _target_: src.distributions.inverse_wishart.InverseWishart
     df: 4.0
     scale: [[4.0, 0.0], [0.0, 4.0]]
-
+  candidate_prior:
+    _target_: src.distributions.inverse_wishart.InverseWishart
+    df: 4.0
+    scale: [[4.0, 0.0], [0.0, 4.0]]
   true_dgp:
     _target_: src.distributions.gaussian.MultivariateGaussian
     mu: [2.0, 3.0]

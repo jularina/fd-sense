@@ -3,7 +3,10 @@ data:
     _target_: src.distributions.gaussian.MultivariateGaussian
     mu: [2.0, 3.0]
     cov: [[4.0, 0.0], [0.0, 4.0]]
-
+  candidate_prior:
+    _target_: src.distributions.gaussian.MultivariateGaussian
+    mu: [2.0, 3.0]
+    cov: [[4.0, 0.0], [0.0, 4.0]]
   true_dgp:
     _target_: src.distributions.gaussian.MultivariateGaussian
     mu: [3.0, 3.0]
@@ -15,6 +18,9 @@ data:
     cov: [[4.0, 0.0], [0.0, 4.0]]
 
   loss_lr: 1
+  observations_path: null # data/observations.npy
+  posterior_samples_path: null # data/posterior_samples.npy
+  prior_samples_path: null # data/prior_samples.npy
   observations_num: 500
   posterior_samples_num: 5000
   prior_samples_num: 5000

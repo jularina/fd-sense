@@ -1,0 +1,64 @@
+data:
+  base_prior:
+    _target_: src.distributions.hierarchical.Hierarchical
+    m_mu: 0.0
+    s_mu: 5.0
+    s_tau: 5.0
+  candidate_prior:
+    _target_: src.distributions.hierarchical.Hierarchical
+    m_mu: 0.0
+    s_mu: 5.0
+    s_tau: 5.0
+  true_dgp:
+    _target_: src.distributions.gaussian.Gaussian
+    mu:
+    sigma:
+
+  loss:
+    _target_: src.losses.gaussian_log_likelihood.MultivariateGaussianLogLikelihood
+    mu:
+    sigma:
+
+  loss_lr: 1
+  observations_path: null # from posteriordb
+  posterior_samples_path: null # from posteriordb
+  prior_samples_path: null # from posteriordb
+  observations_num: null
+  posterior_samples_num: null
+  prior_samples_num: null
+
+model:
+  _target_: src.bayesian_model.eight_schools.EightSchoolsModel
+
+ksd:
+  kernel:
+    _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
+    lengthscale: ${eval:"[[1.0 if i==j else 0.0 for j in range(10)] for i in range(10)]"}
+    alpha: 0.5
+    heuristic: false
+
+  optimize:
+    prior:
+      EightSchoolsHyperPrior:
+        parameters_box_range:
+          ranges:
+            m_mu: [-5.0, 5.0]
+            s_mu: [0.5, 10.0]
+            s_tau: [0.5, 10.0]
+          nums:
+            m_mu: 5
+            s_mu: 4
+            s_tau: 4
+
+flags:
+  plots:
+    generate_plots:
+      heatmap: false
+      line_plot: false
+      density_plot: true
+    output_dir: outputs/paper/plots/eight_schools
+
+playground:
+  output_prefix: eight_schools_param
+  save_json: true
+  save_csv: true

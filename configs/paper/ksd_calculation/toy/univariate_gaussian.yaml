@@ -3,6 +3,10 @@ data:
     _target_: src.distributions.gaussian.Gaussian
     mu: 2
     sigma: 4
+  candidate_prior:
+    _target_: src.distributions.gaussian.Gaussian
+    mu: 2
+    sigma: 4
   true_dgp:
     _target_: src.distributions.gaussian.Gaussian
     mu: 3
@@ -13,9 +17,9 @@ data:
     sigma: 2
   loss_lr: 1
   observations_num: 500
-  observations_path: data/observations.npy
-  posterior_samples_path: data/posterior_samples.npy
-  prior_samples_path: data/prior_samples.npy
+  observations_path: null # data/observations.npy
+  posterior_samples_path: null # data/posterior_samples.npy
+  prior_samples_path: null # data/prior_samples.npy
   posterior_samples_num: 5000
   prior_samples_num: 5000
 
@@ -39,9 +43,9 @@ ksd:
               mu: 21
               sigma: 4
       nonparametric:
-        basis_funcs_type: SigmoidBasisFunction # PolynomialBasisFunction RBFBasisFunction SigmoidBasisFunction
-        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "scale": null, "scale_multiplier": 1.0} # {"degree": 3} for polynomial, {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 5.0} for rbf, {"num_basis_functions": 5, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0} for sigmoid
-        radius_lower_bound: 2.0
+        basis_funcs_type: PolynomialBasisFunction # PolynomialBasisFunction RBFBasisFunction SigmoidBasisFunction
+        basis_funcs_kwargs: {"degree": 2} # {"degree": 3} for polynomial, {"num_basis_functions": 15, "method": "kmeans", "lengthscale": null, "estimation_samples_source": "prior", scale_multiplier:1.0} for rbf, {"num_basis_functions": 10, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0, "estimation_samples_source": "prior"} for sigmoid
+        radius_lower_bound: null
         scale_samples: False
 
       LogNormal:
