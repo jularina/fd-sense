@@ -12,6 +12,8 @@ from matplotlib.patches import Ellipse
 from typing import Set, FrozenSet
 from matplotlib.ticker import MaxNLocator
 from matplotlib.cm import ScalarMappable
+from scipy.special import logsumexp
+from pathlib import Path
 
 from src.distributions.gaussian import Gaussian
 
@@ -414,9 +416,7 @@ def plot_ksd_multi_line_plots(
         "font.size": plot_cfg.plot.font.size,
         "font.family": plot_cfg.plot.font.family,
         "text.usetex": plot_cfg.plot.font.use_tex,
-        "text.latex.preamble": r"""
-            \usepackage{amsmath}
-        """,
+        "text.latex.preamble": r"\usepackage{amsmath}",
     })
 
     param_values = np.array(list(ksd_results.keys()))
@@ -555,9 +555,7 @@ def plot_gaussian_prior_densities_by_ksd(
         "font.size": plot_cfg.plot.font.size,
         "font.family": plot_cfg.plot.font.family,
         "text.usetex": plot_cfg.plot.font.use_tex,
-        "text.latex.preamble": r"""
-            \usepackage{amsmath}
-        """,
+        "text.latex.preamble": r"\usepackage{amsmath}\usepackage{type1cm}",
     })
 
     fig, ax = plt.subplots(
@@ -1410,7 +1408,8 @@ def plot_sdp_comparisons_multiple_radii(
     )
 
     # Labels and styling from latex name map
-    ax.set_xlabel(names.get("theta", "theta"))
+    ax.set_xlabel(names.get("mu_0", "theta"))
+    ax.set_ylabel(names.get("log_prior", "log_prior"))
 
     ax.grid(True, alpha=0.3)
     ax.spines["top"].set_visible(False)
@@ -1418,21 +1417,23 @@ def plot_sdp_comparisons_multiple_radii(
 
     leg = ax.legend(
         title=ksd_label,
-        loc="upper left",
-        bbox_to_anchor=(1.02, 1.0),
-        borderaxespad=0.0,
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
         frameon=False,
-        handlelength=2,
-        handletextpad=0.8,
-        borderpad=0.6,
+        labelspacing=0.4,  # tighter vertical space
+        handlelength=1.8,
+        handletextpad=0.5,
+        borderpad=0.4,
     )
+    for t in leg.get_texts():
+        t.set_wrap(True)
 
     # Align legend title with labels
     leg.get_title().set_ha("right")
     leg._legend_box.align = "right"
 
     plt.setp(leg.get_texts(), fontsize=plt.rcParams["font.size"] * 0.9)
-    plt.setp(leg.get_title(), fontsize=plt.rcParams["font.size"] * 0.95)
+    plt.setp(leg.get_title(), fontsize=plt.rcParams["font.size"] * 0.9)
 
     if getattr(plot_cfg.plot.figure, "tight_layout", False):
         plt.tight_layout()
@@ -1445,52 +1446,285 @@ def plot_sdp_comparisons_multiple_radii(
     print(f"[INFO] Saved SDP log prior comparison plot: {save_path}")
 
 
-def plot_sdp_vs_ksd_minimizers(
+def _deep_get(cfg, path, default=None):
+    """Safe nested getter that works with dicts or OmegaConf/objects."""
+    if cfg is None:
+        return default
+    cur = cfg
+    for key in path.split('.'):
+        if cur is None:
+            return default
+        if isinstance(cur, dict):
+            cur = cur.get(key, None)
+        else:
+            cur = getattr(cur, key, None)
+    return default if cur is None else cur
+
+def plot_sdp_densities_only(
     basis_function,
     psi_sdp_list: list[np.ndarray],
-    psi_ksd_list: list[np.ndarray],
     radius_labels: list[float],
-    ksd_estimates_sdp: list[float],
-    ksd_estimates_ksd: list[float],
+    ksd_estimates: list[float],
     prior_distribution,
+    plot_cfg,
+    output_dir: str,
     domain: tuple = (-5, 5),
     resolution: int = 200,
-):
+) -> None:
     """
-    Plot log prior approximations: SDP vs KSD-minimizing solutions for multiple radii.
+    Plot true prior density and normalized SDP densities (no samples).
+    Matches styling (legend, colors, fonts, LaTeX) used in plot_sdp_comparisons_multiple_radii.
+    Saves a single-panel figure to PDF.
+    """
+    os.makedirs(output_dir, exist_ok=True)
 
-    Args:
-        basis_function: Instance of BaseBasisFunction.
-        psi_sdp_list (list[np.ndarray]): ψ vectors from SDP.
-        psi_ksd_list (list[np.ndarray]): ψ vectors from KSD minimization.
-        radius_labels (list[float]): Radii used for each optimization.
-        ksd_estimates_sdp (list[float]): KSD from SDP solutions.
-        ksd_estimates_ksd (list[float]): KSD from KSD-minimizing solutions.
-        prior_distribution: Prior with .log_pdf(x).
-        domain (tuple): Plotting domain.
-        resolution (int): Number of x-points.
-    """
+    # LaTeX + fonts (align with your other plots)
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    # Figure
+    fig, ax = plt.subplots(
+        figsize=(
+            plot_cfg.plot.figure.size.width*1.3,
+            plot_cfg.plot.figure.size.height,
+        ),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    # Grid + features
     x = np.linspace(domain[0], domain[1], resolution)[:, None]
-    phi_x = basis_function.evaluate(x)
-    log_prior = prior_distribution.log_pdf(x).flatten()
+    dx = float(x[1, 0] - x[0, 0])
+    Phi_x = basis_function.evaluate(x)  # (resolution, D)
 
-    plt.figure(figsize=(10, 6))
+    # True prior density
+    prior_density = prior_distribution.pdf(x).flatten()
 
-    for psi_sdp, psi_ksd, r_label, ksd_sdp, ksd_ksd in zip(
-        psi_sdp_list, psi_ksd_list, radius_labels, ksd_estimates_sdp, ksd_estimates_ksd
-    ):
-        f_sdp = phi_x @ psi_sdp
-        f_ksd = phi_x @ psi_ksd
+    # Colors (cycle through palette for each radius curve)
+    palette = list(getattr(plot_cfg.plot.color_palette, "colors", []))
+    if not palette:
+        palette = ["C0", "C1", "C2", "C3", "C4", "C5"]  # fallback
 
-        # plt.plot(x, f_sdp, label=f"SDP (r ≥ {r_label}) | KSD ≈ {ksd_sdp:.2e}", linestyle="-")
-        plt.plot(x, f_ksd, label=f"KSD-min (r = {r_label}) | KSD ≈ {ksd_ksd:.2e}", linestyle="--")
+    # Names/labels map
+    names = plot_cfg.plot.param_latex_names
+    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    xlabel = names.get("mu_0", "theta")
+    ylabel = names.get("nonparametric_prior", "Density")
+    true_label = names.get("logbaseprior", "True Prior Density")
+    approx_sym = r"$\approx$"
+    geq_sym = r"$\geq$"
 
-    plt.plot(x, log_prior, label="True Log Prior", color="black", linewidth=2, linestyle=":")
+    # Plot SDP densities (normalized on grid)
+    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+        f = (Phi_x @ psi).flatten()
+        logZ = logsumexp(f) + np.log(dx)
+        p_hat = np.exp(f - logZ)
+        color = palette[i % len(palette)]
+        label = rf"r {geq_sym} {r_label} ({approx_sym} {ksd:.2f})"
+        ax.plot(
+            x.flatten(),
+            p_hat,
+            label=label,
+            linewidth=1.5,
+            color=color,
+        )
 
-    plt.title("SDP vs KSD-Minimizing Log Prior Approximations")
-    plt.xlabel("x")
-    plt.ylabel("Log Prior Value")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    # Plot true prior density (on top/last or first as you prefer)
+    ax.plot(
+        x.flatten(),
+        prior_density,
+        label=true_label,
+        linestyle="--",
+        linewidth=1.5,
+        color="black",
+    )
+
+    # Axes labels & styling
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.3)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Legend styling identical to your other function
+    leg = ax.legend(
+        title=ksd_label,
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+        frameon=False,
+        labelspacing=0.4,
+        handlelength=1.8,
+        handletextpad=0.5,
+        borderpad=0.4,
+    )
+    for t in leg.get_texts():
+        t.set_wrap(True)
+    leg.get_title().set_ha("right")
+    leg._legend_box.align = "right"
+
+    plt.setp(leg.get_texts(), fontsize=plt.rcParams["font.size"] * 0.9)
+    plt.setp(leg.get_title(), fontsize=plt.rcParams["font.size"] * 0.9)
+
+    if getattr(plot_cfg.plot.figure, "tight_layout", False):
+        plt.tight_layout()
+
+    # Save and close
+    filename = "toy_gaussian_model_nonparametric_optimisation_densities.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved SDP densities plot: {save_path}")
+
+
+def plot_sdp_densities_and_logprior(
+    basis_function,
+    psi_sdp_list: list[np.ndarray],
+    radius_labels: list[float],
+    ksd_estimates: list[float],
+    prior_distribution,
+    plot_cfg,
+    output_dir: str,
+    domain: tuple = (-5, 5),
+    resolution: int = 200,
+) -> None:
+    """
+    Combined plot: top = densities, bottom = log prior.
+    Single shared legend (same styling as plot_sdp_comparisons_multiple_radii).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # --- rcParams (LaTeX + font) ---
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    # --- Grid & features ---
+    x = np.linspace(domain[0], domain[1], resolution)[:, None]
+    dx = float(x[1, 0] - x[0, 0])
+    Phi_x = basis_function.evaluate(x)  # (resolution, D)
+    prior_density_true = prior_distribution.pdf(x).flatten()
+    log_prior_true = prior_distribution.log_pdf(x).flatten()
+
+    # --- Colors ---
+    palette = list(getattr(plot_cfg.plot.color_palette, "colors", []))
+    if not palette:
+        palette = ["C0", "C1", "C2", "C3", "C4", "C5"]
+
+    # --- Names & labels ---
+    names = plot_cfg.plot.param_latex_names
+    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    xlabel = names.get("mu_0", "theta")
+    ylabel_density = names.get("nonparametric_prior", "Density")
+    ylabel_logprior = names.get("log_prior", "log_prior")
+    true_density_label = names.get("logbaseprior", "True Prior Density")
+    true_logprior_label = names.get("logbaseprior", "True Log Prior")
+    approx_sym = r"$\approx$"
+    geq_sym = r"$\geq$"
+
+    # --- Figure & Axes ---
+    fig, (ax_density, ax_log) = plt.subplots(
+        2, 1,
+        figsize=(plot_cfg.plot.figure.size.width*1.3,
+                 plot_cfg.plot.figure.size.height*2.0),
+        dpi=plot_cfg.plot.figure.dpi,
+        sharex=True
+    )
+
+    # ===== Top panel: densities =====
+    # SDP densities
+    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+        f = (Phi_x @ psi).flatten()
+        logZ = logsumexp(f) + np.log(dx)
+        p_hat = np.exp(f - logZ)
+        color = palette[i % len(palette)]
+        label = rf"r {geq_sym} {r_label} ({approx_sym} {ksd:.2f})"
+        ax_density.plot(
+            x.flatten(),
+            p_hat,
+            label=label,
+            linewidth=1.5,
+            color=color,
+        )
+
+    ax_density.set_ylabel(ylabel_density)
+    ax_density.grid(True, alpha=0.3)
+    ax_density.spines["top"].set_visible(False)
+    ax_density.spines["right"].set_visible(False)
+
+    # True prior density
+    ax_density.plot(
+        x.flatten(),
+        prior_density_true,
+        label=true_density_label,
+        linestyle="--",
+        linewidth=1.5,
+        color="black",
+    )
+
+    # ===== Bottom panel: log prior =====
+
+    # SDP log prior approximations (centered)
+    for i, (psi, r_label, _) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+        f = (Phi_x @ psi).flatten()
+        c = float(np.mean(log_prior_true - f))  # match mean
+        color = palette[i % len(palette)]
+        label = rf"r {geq_sym} {r_label}"
+        ax_log.plot(
+            x.flatten(),
+            f + c,
+            label=label,
+            linewidth=1.5,
+            color=color,
+        )
+
+    ax_log.set_xlabel(xlabel)
+    ax_log.set_ylabel(ylabel_logprior)
+    ax_log.grid(True, alpha=0.3)
+    ax_log.spines["top"].set_visible(False)
+    ax_log.spines["right"].set_visible(False)
+
+    # True log prior
+    ax_log.plot(
+        x.flatten(),
+        log_prior_true,
+        label=true_logprior_label,
+        linestyle="--",
+        linewidth=1.5,
+        color="black",
+    )
+
+    # ===== Shared legend =====
+    handles, labels = ax_density.get_legend_handles_labels()
+    leg = fig.legend(
+        handles, labels,
+        title=ksd_label,
+        loc="center left",
+        bbox_to_anchor=(0.95, 0.5),
+        frameon=False,
+        labelspacing=0.4,
+        handlelength=1.8,
+        handletextpad=0.5,
+        borderpad=0.4,
+    )
+    for t in leg.get_texts():
+        t.set_wrap(True)
+    leg.get_title().set_ha("right")
+    leg._legend_box.align = "right"
+    plt.setp(leg.get_texts(), fontsize=plt.rcParams["font.size"] * 0.9)
+    plt.setp(leg.get_title(), fontsize=plt.rcParams["font.size"] * 0.9)
+
+    if getattr(plot_cfg.plot.figure, "tight_layout", False):
+        plt.tight_layout(rect=[0, 0, 0.95, 1])
+
+    # ===== Save =====
+    filename = "toy_gaussian_model_nonparametric_optimisation_densities_logprior.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved combined densities/logprior plot: {save_path}")

@@ -62,11 +62,17 @@ class InverseMultivariateMultiquadricKernel(BaseKernel):
     """
 
     def __init__(self, lengthscale: ArrayLike, alpha: float = 1.0, heuristic: bool = False, reference_data: np.ndarray = None):
-        super().__init__(lengthscale=lengthscale, heuristic=heuristic, reference_data=reference_data)
+        super().__init__(lengthscale=lengthscale, heuristic=False, reference_data=reference_data)
         self.alpha = alpha
-        self.lengthscale = np.asarray(self.lengthscale)
-        self.L_inv = self._compute_inverse_scale_matrix()
 
+        if heuristic:
+            if reference_data is None:
+                raise ValueError("reference_data must be provided when heuristic=True")
+            self.lengthscale = self._median_heuristic_per_dim(np.asarray(reference_data))
+        else:
+            self.lengthscale = np.asarray(lengthscale)
+
+        self.L_inv = self._compute_inverse_scale_matrix()
         self._X1 = self._X2 = np.asarray(reference_data)
         self._sq_dist = self._squared_distance(self._X1, self._X2)
         self.value = (1 + self._sq_dist) ** -self.alpha
@@ -75,11 +81,11 @@ class InverseMultivariateMultiquadricKernel(BaseKernel):
             raise ValueError("Computed IMQ kernel value is not symmetric.")
 
         self.grad_x1 = self.compute_grad_x1()
-        self.grad_x2 = -self.grad_x1
+        self.grad_x2 = np.swapaxes(self.grad_x1, 0, 1)
         self.hess_xy = self.compute_hess_xy()
 
     def _compute_inverse_scale_matrix(self) -> np.ndarray:
-        if np.isscalar(self.lengthscale):
+        if self.lengthscale.ndim == 0:
             return np.eye(1) / self.lengthscale**2
         elif self.lengthscale.ndim == 1:
             return np.diag(1.0 / (self.lengthscale ** 2))

@@ -64,7 +64,7 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, pos
         plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
         output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
         plot_cfg = load_plot_config(plot_config_path)
-        plot_ksd_line_plots(ksd_results, param_names, plot_cfg, output_dir)
+        # plot_ksd_line_plots(ksd_results, param_names, plot_cfg, output_dir)
         plot_ksd_multi_line_plots(ksd_results, param_names, plot_cfg, output_dir)
 
 
@@ -477,9 +477,9 @@ def run_gaussian_priors_nonparametric(cfg) -> None:
         kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
         ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
         ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
-        psi_sdp_list, ksd_estimates_list, radius_labels, psi_ksd_min_list, ksd_min_estimates_list = [], [], [], [], []
+        psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
 
-        for radius_lower_bound in [1.0, 2.0, 3.0, 4.5, 5.0]:
+        for radius_lower_bound in [0.1, 0.5, 2.0, 4.0, 6.0]:
             optimizer = OptimizationNonparametricBase(
                 ksd_estimator,
                 ksd_estimator_prior,
@@ -487,18 +487,39 @@ def run_gaussian_priors_nonparametric(cfg) -> None:
                 radius_lower_bound=radius_lower_bound
             )
             result_sdp = optimizer.optimize_through_sdp_relaxation()
-            result_ksd_min = optimizer.optimize_minimize_ksd()
             psi_sdp_list.append(result_sdp["psi_opt"])
-            psi_ksd_min_list.append(result_ksd_min["psi_opt"])
             ksd_estimates_list.append(result_sdp["ksd_est"])
-            ksd_min_estimates_list.append(result_ksd_min["ksd_est"])
             radius_labels.append(radius_lower_bound)
 
         # Plot all in one comparison figure
         plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
         output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
         plot_cfg = load_plot_config(plot_config_path)
-        plot_sdp_comparisons_multiple_radii(
+        # plot_sdp_comparisons_multiple_radii(
+        #     basis_function=optimizer.basis_function,
+        #     psi_sdp_list=psi_sdp_list,
+        #     radius_labels=radius_labels,
+        #     ksd_estimates=ksd_estimates_list,
+        #     prior_distribution=model.prior_init,
+        #     plot_cfg=plot_cfg,
+        #     output_dir=output_dir,
+        #     domain=(-6, 10),
+        #     resolution=300
+        # )
+        #
+        # plot_sdp_densities_only(
+        #     basis_function=optimizer.basis_function,
+        #     psi_sdp_list=psi_sdp_list,
+        #     radius_labels=radius_labels,
+        #     ksd_estimates=ksd_estimates_list,
+        #     prior_distribution=model.prior_init,
+        #     plot_cfg=plot_cfg,
+        #     output_dir=output_dir,
+        #     domain=(-6, 10),
+        #     resolution=300
+        # )
+
+        plot_sdp_densities_and_logprior(
             basis_function=optimizer.basis_function,
             psi_sdp_list=psi_sdp_list,
             radius_labels=radius_labels,
@@ -509,16 +530,6 @@ def run_gaussian_priors_nonparametric(cfg) -> None:
             domain=(-6, 10),
             resolution=300
         )
-
-        # plot_sdp_vs_ksd_minimizers(
-        #     basis_function=optimizer.basis_function,
-        #     psi_sdp_list=psi_sdp_list,
-        #     psi_ksd_list=psi_ksd_min_list,
-        #     radius_labels=radius_labels,
-        #     ksd_estimates_sdp=ksd_estimates_list,
-        #     ksd_estimates_ksd=ksd_min_estimates_list,
-        #     prior_distribution=model.prior_init
-        # )
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")

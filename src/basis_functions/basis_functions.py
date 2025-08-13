@@ -1,9 +1,10 @@
-from typing import Optional
-from scipy.spatial.distance import pdist
+from typing import Optional, Literal
+from scipy.spatial.distance import pdist, cdist
 import numpy as np
 from abc import ABC, abstractmethod
 import sympy as sp
 from scipy.integrate import nquad
+from sklearn.cluster import KMeans
 
 
 class BaseBasisFunction(ABC):
@@ -82,28 +83,91 @@ class PolynomialBasisFunction(BaseBasisFunction):
 class RBFBasisFunction(BaseBasisFunction):
     def __init__(
         self,
-        samples: np.ndarray,
+        posterior_samples: np.ndarray,
         num_basis_functions: int,
+        prior_samples: Optional[np.ndarray] = None,
         lengthscale: Optional[float] = None,
-        method: str = "kmeans",  # or "random"
+        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        estimation_samples_source: Optional[str] = "prior",
+        scale_multiplier: float = 1.0,
     ):
-        self.centers = self._select_centers(samples, num_basis_functions, method)
+        self.rng = np.random.default_rng(None)
+
+        if estimation_samples_source == "prior":
+            estimation_samples = prior_samples
+        else:
+            estimation_samples = posterior_samples
+
+        self.centers = self._select_centers(
+            posterior_samples=posterior_samples,
+            prior_samples=prior_samples,
+            num_centers=num_basis_functions,
+            method=method,
+        )
 
         if lengthscale is None:
-            self.lengthscale = self._estimate_lengthscale(centers=self.centers, samples=samples)
+            self.lengthscale = self._estimate_lengthscale(
+                centers=self.centers,
+                samples=estimation_samples,
+                multiplier=scale_multiplier,
+            )
         else:
-            self.lengthscale = lengthscale
+            self.lengthscale = float(lengthscale)
 
-    def _select_centers(self, samples: np.ndarray, num_centers: int, method: str) -> np.ndarray:
-        if method == "kmeans":
-            from sklearn.cluster import KMeans
-            kmeans = KMeans(n_clusters=num_centers, random_state=0).fit(samples)
-            return kmeans.cluster_centers_
-        elif method == "random":
-            idx = np.random.choice(len(samples), num_centers, replace=False)
-            return samples[idx]
+    def _select_centers(
+        self,
+        posterior_samples: np.ndarray,
+        prior_samples: Optional[np.ndarray],
+        num_centers: int,
+        method: str,
+    ) -> np.ndarray:
+        if prior_samples is not None:
+            X = np.asarray(prior_samples, dtype=float)
         else:
-            raise ValueError(f"Unknown center selection method: {method}")
+            X = np.asarray(posterior_samples, dtype=float)
+
+        m, d = X.shape
+
+        if method == "kmeans":
+            n = min(num_centers, m)
+            return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
+
+        if method == "random":
+            n = min(num_centers, m)
+            idx = self.rng.choice(m, n, replace=False)
+            return X[idx]
+
+        if method == "farthest":
+            return self._farthest_point_sampling(X, min(num_centers, m))
+
+        if method == "kmeans_mix":
+            Xp = np.asarray(prior_samples, dtype=float)
+            Xpost = np.asarray(posterior_samples, dtype=float)
+            m_post = min(len(Xpost), max(1, num_centers * 50))
+            m_prior = min(len(Xp), max(1, num_centers * 50))
+            Xmix = np.vstack([
+                Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
+                Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
+            ])
+
+            return KMeans(n_clusters=min(num_centers, len(Xmix)), random_state=0).fit(Xmix).cluster_centers_
+
+        raise ValueError(f"Unknown center selection method: {method}")
+
+    def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
+        n = X.shape[0]
+        if k <= 0:
+            return np.empty((0, X.shape[1]))
+        if k == 1:
+            return X[[self.rng.integers(0, n)]]
+        idx0 = int(self.rng.integers(0, n))
+        centers_idx = [idx0]
+        dist = cdist(X[[idx0]], X).reshape(-1)
+        for _ in range(1, k):
+            i = int(np.argmax(dist))
+            centers_idx.append(i)
+            dist = np.minimum(dist, cdist(X[[i]], X).reshape(-1))
+        return X[np.array(centers_idx)]
 
     def _estimate_lengthscale(self, centers: np.ndarray, samples: np.ndarray,
                               source: str = "samples", multiplier: float = 1.0,
@@ -145,41 +209,92 @@ class RBFBasisFunction(BaseBasisFunction):
 class SigmoidBasisFunction(BaseBasisFunction):
     def __init__(
         self,
-        samples: np.ndarray,
+        posterior_samples: np.ndarray,
         num_basis_functions: int,
+        prior_samples: Optional[np.ndarray] = None,
         scale: Optional[float] = None,
-        method: str = "kmeans",
-        scale_source: str = "samples",
+        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        estimation_samples_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
-        scale_floor_frac: float = 0.1,
     ):
-        self.centers = self._select_centers(samples, num_basis_functions, method)
+        self.rng = np.random.default_rng(None)
+
+        if estimation_samples_source == "prior":
+            estimation_samples = prior_samples
+        else:
+            estimation_samples = posterior_samples
+
+        self.centers = self._select_centers(
+            posterior_samples=posterior_samples,
+            prior_samples=prior_samples,
+            num_centers=num_basis_functions,
+            method=method,
+        )
 
         if scale is None:
             self.scale = self._estimate_scale(
                 centers=self.centers,
-                samples=samples,
-                source=scale_source,
+                samples=estimation_samples,
                 multiplier=scale_multiplier,
-                floor_frac=scale_floor_frac,
             )
             print(f"Selected scale for Sigmoid basis function: {self.scale}.")
         else:
             self.scale = float(scale)
 
-    def _select_centers(self, samples: np.ndarray, num_centers: int, method: str) -> np.ndarray:
-        if method == "kmeans":
-            from sklearn.cluster import KMeans
-            try:
-                kmeans = KMeans(n_clusters=num_centers, random_state=0, n_init="auto").fit(samples)
-            except TypeError:
-                kmeans = KMeans(n_clusters=num_centers, random_state=0).fit(samples)
-            return kmeans.cluster_centers_
-        elif method == "random":
-            idx = np.random.choice(len(samples), num_centers, replace=False)
-            return samples[idx]
+    def _select_centers(
+        self,
+        posterior_samples: np.ndarray,
+        prior_samples: Optional[np.ndarray],
+        num_centers: int,
+        method: str,
+    ) -> np.ndarray:
+        if prior_samples is not None:
+            X = np.asarray(prior_samples, dtype=float)
         else:
-            raise ValueError(f"Unknown center selection method: {method}")
+            X = np.asarray(posterior_samples, dtype=float)
+
+        m, d = X.shape
+
+        if method == "kmeans":
+            n = min(num_centers, m)
+            return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
+
+        if method == "random":
+            n = min(num_centers, m)
+            idx = self.rng.choice(m, n, replace=False)
+            return X[idx]
+
+        if method == "farthest":
+            return self._farthest_point_sampling(X, min(num_centers, m))
+
+        if method == "kmeans_mix":
+            Xp = np.asarray(prior_samples, dtype=float)
+            Xpost = np.asarray(posterior_samples, dtype=float)
+            m_post = min(len(Xpost), max(1, num_centers * 50))
+            m_prior = min(len(Xp), max(1, num_centers * 50))
+            Xmix = np.vstack([
+                Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
+                Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
+            ])
+
+            return KMeans(n_clusters=min(num_centers, len(Xmix)), random_state=0).fit(Xmix).cluster_centers_
+
+        raise ValueError(f"Unknown center selection method: {method}")
+
+    def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
+        n = X.shape[0]
+        if k <= 0:
+            return np.empty((0, X.shape[1]))
+        if k == 1:
+            return X[[self.rng.integers(0, n)]]
+        idx0 = int(self.rng.integers(0, n))
+        centers_idx = [idx0]
+        dist = cdist(X[[idx0]], X).reshape(-1)
+        for _ in range(1, k):
+            i = int(np.argmax(dist))
+            centers_idx.append(i)
+            dist = np.minimum(dist, cdist(X[[i]], X).reshape(-1))
+        return X[np.array(centers_idx)]
 
     def _estimate_scale(
         self,
@@ -229,9 +344,8 @@ class SigmoidBasisFunction(BaseBasisFunction):
         return np.transpose(grad_mBd, (0, 2, 1))                # (m, d, B)
 
     def symbolic_expression(self, dim: int) -> sp.Expr:
-        # Just validate a representative component against the first center
         x = sp.symbols(f"x0:{dim}")
         c = self.centers[0]
         s = sp.Float(self.scale)
-        # one component (sum over dims mirrors the scalar used in other classes)
+
         return 1 / (1 + sp.exp(-(sum((x[i] - c[i]) for i in range(dim)) / s)))

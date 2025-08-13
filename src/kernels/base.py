@@ -19,7 +19,6 @@ class BaseKernel(ABC):
                 raise ValueError("reference_data must be provided when heuristic=True")
             self.lengthscale = self._median_heuristic(reference_data)
 
-        # Store internal kernel characteristics
         self._X1: Union[None, np.ndarray] = None
         self._X2: Union[None, np.ndarray] = None
         self._sq_dist: Union[None, np.ndarray] = None
@@ -49,3 +48,22 @@ class BaseKernel(ABC):
         pairwise_sq_dists = self._squared_distance_unscaled(x, x)
         upper_tri = pairwise_sq_dists[np.triu_indices_from(pairwise_sq_dists, k=1)]
         return np.sqrt(np.median(upper_tri))
+
+    def _median_heuristic_per_dim(self, x: np.ndarray, *, jitter: float = 1e-12) -> np.ndarray:
+        """
+        Per-dimension median heuristic.
+        Returns a vector of lengthscales l = sqrt(median_{i<j} (x_i - x_j)^2) per dimension.
+        """
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 2:
+            raise ValueError("reference_data must be a 2D array of shape (n, d).")
+        n, d = x.shape
+        if n < 2:
+            return np.sqrt(np.var(x, axis=0) + jitter)
+
+        diffs = x[:, None, :] - x[None, :, :]
+        iu = np.triu_indices(n, k=1)
+        diffs = diffs[iu]
+
+        med_sq = np.median(diffs**2, axis=0)
+        return np.sqrt(med_sq + jitter)

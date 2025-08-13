@@ -55,7 +55,6 @@ def main(cfg: DictConfig) -> None:
         "radius_lower_bound": cfg.ksd.optimize.prior.nonparametric.radius_lower_bound,
         "ksd_est": float(result.get("ksd_est", np.nan)),
     }
-
     outdir = get_outdir(cfg)
     prefix = cfg.playground.get("output_prefix", "np")
 

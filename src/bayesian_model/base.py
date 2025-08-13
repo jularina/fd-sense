@@ -18,7 +18,7 @@ class BayesianModel(ABC):
         self.true_dgp = data_config.true_dgp
         self.loss_lr: float = data_config.loss_lr
         self.loss: Any = data_config.loss
-        self.prior: Any = data_config.base_prior
+        self.prior: Any = data_config.candidate_prior
         self.prior_init: Any = data_config.base_prior
         self.loss_lr_init: float = data_config.loss_lr
         self.m: int = data_config.posterior_samples_num

@@ -1,24 +1,38 @@
 data:
   base_prior:
-    _target_: src.distributions.hierarchical.Hierarchical
-    m_mu: 0.0
-    s_mu: 5.0
-    s_tau: 5.0
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 9.31
+        sigma: 100
+      beta:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 0.03
+      sigma:
+        _target_: src.distributions.uniform.Uniform
+        low: 0
+        high: inf
   candidate_prior:
-    _target_: src.distributions.hierarchical.Hierarchical
-    m_mu: 0.0
-    s_mu: 5.0
-    s_tau: 5.0
-  true_dgp:
-    _target_: src.distributions.gaussian.Gaussian
-    mu:
-    sigma:
-
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 9.31
+        sigma: 100
+      beta:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0.0
+        sigma: 0.333
+      sigma:
+        _target_: src.distributions.log_normal.LogNormal
+        mu_log: 0
+        sigma_log: 1.0
+  true_dgp: null
   loss:
-    _target_: src.losses.gaussian_log_likelihood.MultivariateGaussianLogLikelihood
-    mu:
-    sigma:
-
+    _target_: src.losses.gaussian_log_likelihood.GaussianLinearRegressionLogLikelihood
+    scale: sigma
   loss_lr: 1
   observations_path: null # from posteriordb
   posterior_samples_path: null # from posteriordb
@@ -26,16 +40,19 @@ data:
   observations_num: null
   posterior_samples_num: null
   prior_samples_num: null
+  warmup: 0
+  pdb_path: "/Users/arinaodv/Desktop/folder/study_phd/code/posteriordb/posterior_database"
+  pdb_model_name: kilpisjarvi_mod-kilpisjarvi
 
 model:
-  _target_: src.bayesian_model.eight_schools.EightSchoolsModel
+  _target_: src.bayesian_model.posteriordb.kilpisjarvi.KilpisjarviBayesianModel
 
 ksd:
   kernel:
     _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
-    lengthscale: ${eval:"[[1.0 if i==j else 0.0 for j in range(10)] for i in range(10)]"}
+    lengthscale: null
     alpha: 0.5
-    heuristic: false
+    heuristic: True
 
   optimize:
     prior:
@@ -59,6 +76,6 @@ flags:
     output_dir: outputs/paper/plots/eight_schools
 
 playground:
-  output_prefix: eight_schools_param
+  output_prefix: kilpisjarvi_param
   save_json: true
   save_csv: true
