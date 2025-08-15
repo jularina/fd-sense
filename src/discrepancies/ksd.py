@@ -50,7 +50,6 @@ class KernelizedSteinDiscrepancy:
         term2 = self._compute_term2(scores, grad2)
         term3 = self._compute_term3(scores, grad1)
         term4 = self._compute_term4(hess)
-
         val = np.sum(term1 + term2 + term3 + term4) / (m ** 2)
 
         if val < 0.0:

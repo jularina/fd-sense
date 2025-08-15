@@ -1,0 +1,122 @@
+data:
+  base_prior:
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta1:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta2:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta3:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta4:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta5:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      sigma:
+        _target_: src.distributions.cauchy.Cauchy
+        x0: 0
+        gamma: 2.5
+  candidate_prior:
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta1:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta2:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta3:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta4:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      beta5:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
+      sigma:
+        _target_: src.distributions.cauchy.Cauchy
+        x0: 0
+        gamma: 2.5
+  true_dgp: null
+  loss:
+    _target_: src.losses.gaussian_log_likelihood.GaussianARLogLikelihood
+    scale: sigma
+  loss_lr: 1
+  observations_path: null # from posteriordb
+  posterior_samples_path: null # from posteriordb
+  prior_samples_path: null # from posteriordb
+  observations_num: null
+  posterior_samples_num: null
+  prior_samples_num: null
+  warmup: 100
+  pdb_path: "/Users/arinaodv/Desktop/folder/study_phd/code/posteriordb/posterior_database"
+  pdb_model_name: arK-arK
+
+model:
+  _target_: src.bayesian_model.posteriordb.ark.ArkBayesianModel
+
+ksd:
+  kernel:
+    _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
+    lengthscale: null
+    alpha: 0.5
+    heuristic: True
+  optimize:
+    prior:
+      Composite:
+        combine_rule: product
+        components:
+          - name: beta1
+            family: LogNormal
+            parameters_box_range:
+              ranges:
+                mu_log:    [2, 20]
+                sigma_log: [2,  5]
+              nums:
+                mu_log: 19
+                sigma_log:  4
+          - name: sigma
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [0, 2]
+                sigma: [0.5, 1.5]
+              nums:
+                mu: 3
+                sigma: 3
+flags:
+  plots:
+    generate_plots:
+      heatmap: false
+      line_plot: false
+      density_plot: true
+    output_dir: outputs/paper/plots/ark
+
+playground:
+  output_prefix: ark_param
+  save_json: true
+  save_csv: true

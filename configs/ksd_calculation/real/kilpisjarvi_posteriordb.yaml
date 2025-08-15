@@ -54,26 +54,13 @@ ksd:
     alpha: 0.5
     heuristic: True
 
-  optimize:
-    prior:
-      EightSchoolsHyperPrior:
-        parameters_box_range:
-          ranges:
-            m_mu: [-5.0, 5.0]
-            s_mu: [0.5, 10.0]
-            s_tau: [0.5, 10.0]
-          nums:
-            m_mu: 5
-            s_mu: 4
-            s_tau: 4
-
 flags:
   plots:
     generate_plots:
       heatmap: false
       line_plot: false
       density_plot: true
-    output_dir: outputs/paper/plots/eight_schools
+    output_dir: outputs/paper/plots/kilpisjarvi
 
 playground:
   output_prefix: kilpisjarvi_param

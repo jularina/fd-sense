@@ -57,66 +57,86 @@ class InverseUnivariateMultiquadricKernel(BaseKernel):
 
 class InverseMultivariateMultiquadricKernel(BaseKernel):
     """
-    Inverse multiquadric kernel with matrix (Mahalanobis) lengthscale.
-    K(x, x') = (1 + (x - x')^T L^{-1} (x - x'))^(-alpha)
+    IMQ kernel: K(x, y) = (1 + r^2)^(-alpha),  r^2 = (x - y)^T M (x - y),  M = L^{-1}
+
+    ∇_x K = -2 alpha (1 + r^2)^(-alpha-1) M (x - y)
+    ∇_y K =  2 alpha (1 + r^2)^(-alpha-1) M (x - y)  = -∇_x K
+
+    ∇_x ∇_y K = 2 alpha (1 + r^2)^(-alpha-1) M
+                - 4 alpha (alpha + 1) (1 + r^2)^(-alpha-2) [M(x - y)][M(x - y)]^T
+
+    trace(∇_x ∇_y K) = 2 alpha (1 + r^2)^(-alpha-1) tr(M)
+                        - 4 alpha (alpha + 1) (1 + r^2)^(-alpha-2) ||M(x - y)||^2
     """
 
-    def __init__(self, lengthscale: ArrayLike, alpha: float = 1.0, heuristic: bool = False, reference_data: np.ndarray = None):
+    def __init__(self, lengthscale: ArrayLike, alpha: float = 1.0,
+                 heuristic: bool = False, reference_data: np.ndarray = None,
+                 compute_full_hessian: bool = False):
         super().__init__(lengthscale=lengthscale, heuristic=False, reference_data=reference_data)
-        self.alpha = alpha
+        if reference_data is None:
+            raise ValueError("reference_data must be provided")
+        self.alpha = float(alpha)
+
+        X = np.asarray(reference_data, dtype=np.float64)
+        self._X1 = self._X2 = X
+        n, d = X.shape
 
         if heuristic:
-            if reference_data is None:
-                raise ValueError("reference_data must be provided when heuristic=True")
-            self.lengthscale = self._median_heuristic_per_dim(np.asarray(reference_data))
+            self.lengthscale = self._median_heuristic_per_dim(X)
         else:
-            self.lengthscale = np.asarray(lengthscale)
+            self.lengthscale = np.asarray(lengthscale, dtype=np.float64)
 
-        self.L_inv = self._compute_inverse_scale_matrix()
-        self._X1 = self._X2 = np.asarray(reference_data)
-        self._sq_dist = self._squared_distance(self._X1, self._X2)
-        self.value = (1 + self._sq_dist) ** -self.alpha
+        self.M = self._compute_inverse_scale_matrix(d)
+
+        self.X1M = self._X1 @ self.M
+        self.X2M = self._X2 @ self.M
+
+        self._sq_dist = self._squared_distance(self._X1, self._X2, self.X1M, self.X2M)
+        self.value = (1.0 + self._sq_dist) ** (-self.alpha)
 
         if not is_symmetric(self.value):
             raise ValueError("Computed IMQ kernel value is not symmetric.")
 
         self.grad_x1 = self.compute_grad_x1()
         self.grad_x2 = np.swapaxes(self.grad_x1, 0, 1)
-        self.hess_xy = self.compute_hess_xy()
 
-    def _compute_inverse_scale_matrix(self) -> np.ndarray:
-        if self.lengthscale.ndim == 0:
-            return np.eye(1) / self.lengthscale**2
-        elif self.lengthscale.ndim == 1:
-            return np.diag(1.0 / (self.lengthscale ** 2))
-        elif self.lengthscale.ndim == 2:
-            return np.linalg.inv(self.lengthscale @ self.lengthscale.T)
-        else:
-            raise ValueError("Lengthscale must be a scalar, 1D array, or 2D matrix.")
+        # always present (n, n), works with your ndim check
+        self.hess_xy = self.compute_hess_xy_trace()
 
-    def _squared_distance(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
-        diff = X1[:, np.newaxis, :] - X2[np.newaxis, :, :]  # shape: (n1, n2, d)
+        # optional full tensor if you need it
+        self.hess_xy_full = self.compute_hess_xy_full() if compute_full_hessian else None
 
-        return np.einsum('nmd,dd,nmd->nm', diff, self.L_inv, diff)
+    def _compute_inverse_scale_matrix(self, d: int) -> np.ndarray:
+        ls = self.lengthscale
+        if np.ndim(ls) == 0:
+            return np.eye(d, dtype=np.float64) / (float(ls) ** 2)
+        if np.ndim(ls) == 1:
+            return np.diag(1.0 / (np.asarray(ls, dtype=np.float64) ** 2))
+        if np.ndim(ls) == 2:
+            return np.asarray(np.linalg.inv(ls), dtype=np.float64)
+        raise ValueError("Lengthscale must be scalar, 1D array, or 2D SPD matrix.")
+
+    def _squared_distance(self, X1: np.ndarray, X2: np.ndarray,
+                          X1M: np.ndarray, X2M: np.ndarray) -> np.ndarray:
+        s1 = np.einsum("ij,ij->i", X1, X1M)
+        s2 = np.einsum("ij,ij->i", X2, X2M)
+        cross = X1M @ X2.T
+        return s1[:, None] + s2[None, :] - 2.0 * cross
 
     def compute_grad_x1(self) -> np.ndarray:
-        if self._sq_dist is None:
-            raise ValueError("Kernel must be evaluated before calling grad_x1.")
+        factor = -2.0 * self.alpha * (1.0 + self._sq_dist) ** (-self.alpha - 1.0)
+        Mdiff = self.X1M[:, None, :] - self.X2M[None, :, :]
+        return factor[..., None] * Mdiff
 
-        diff = self._X1[:, np.newaxis, :] - self._X2[np.newaxis, :, :]  # (n1, n2, d)
-        factor = -2 * self.alpha * (1 + self._sq_dist) ** (-self.alpha - 1)  # (n1, n2)
+    def compute_hess_xy_trace(self) -> np.ndarray:
+        term1 = 2.0 * self.alpha * (1.0 + self._sq_dist) ** (-self.alpha - 1.0)
+        term2 = 4.0 * self.alpha * (self.alpha + 1.0) * (1.0 + self._sq_dist) ** (-self.alpha - 2.0)
+        Mdiff = self.X1M[:, None, :] - self.X2M[None, :, :]
+        norm_Mdiff_sq = np.sum(Mdiff * Mdiff, axis=-1)
+        return term1 * np.trace(self.M) - term2 * norm_Mdiff_sq
 
-        return np.einsum('nm,dd,nmd->nmd', factor, self.L_inv, diff)  # (n1, n2, d)
-
-    def compute_hess_xy(self) -> np.ndarray:
-        if self._sq_dist is None:
-            raise ValueError("Kernel must be evaluated before calling hess_xy.")
-
-        diff = self._X1[:, np.newaxis, :] - self._X2[np.newaxis, :, :]  # (n1, n2, d)
-        term1 = 2 * self.alpha * (1 + self._sq_dist) ** (-self.alpha - 1)
-        term2 = 4 * self.alpha * (self.alpha + 1) * (1 + self._sq_dist) ** (-self.alpha - 2)
-        outer = np.einsum('nmd,nme->nmde', diff, diff)  # (n1, n2, d, d)
-        hess = np.einsum('nm,de->nmde', term1, self.L_inv) - \
-            np.einsum('nm,de,nmde->nmde', term2, self.L_inv @ self.L_inv, outer)  # (n1, n2, d, d)
-
-        return hess
+    def compute_hess_xy_full(self) -> np.ndarray:
+        term1 = 2.0 * self.alpha * (1.0 + self._sq_dist) ** (-self.alpha - 1.0)
+        term2 = 4.0 * self.alpha * (self.alpha + 1.0) * (1.0 + self._sq_dist) ** (-self.alpha - 2.0)
+        Mdiff = self.X1M[:, None, :] - self.X2M[None, :, :]
+        return term1[..., None, None] * self.M - term2[..., None, None] * (Mdiff[..., :, None] * Mdiff[..., None, :])

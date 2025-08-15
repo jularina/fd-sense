@@ -12,6 +12,7 @@ def _instantiate_from_target_str(target: str, kwargs: Dict[str, Any]):
     cls = getattr(module, cls_name)
     return cls(**kwargs)
 
+
 def _is_basedistribution(obj) -> bool:
     """Best-effort check to recognize a BaseDistribution instance without hard import deps."""
     try:
@@ -25,6 +26,7 @@ def _is_basedistribution(obj) -> bool:
         )
         return all(hasattr(obj, m) for m in required)
 
+
 def _maybe_build_component(spec: Union["BaseDistribution", Dict[str, Any]]):
     """Accept an instantiated distribution or a Hydra-style spec with _target_."""
     if isinstance(spec, dict) and "_target_" in spec:
@@ -34,6 +36,7 @@ def _maybe_build_component(spec: Union["BaseDistribution", Dict[str, Any]]):
     if _is_basedistribution(spec):
         return spec
     raise ValueError("Each component must be a BaseDistribution instance or a dict with a '_target_' key.")
+
 
 class CompositeProduct(BaseDistribution):
     """
@@ -135,58 +138,97 @@ class CompositeProduct(BaseDistribution):
             grads.append(gk)
         return np.concatenate(grads, axis=1)  # (m, d_k)
 
-    def grad_log_base_measure(self, x: Union[np.ndarray, list, float]) -> np.ndarray:
-        xb = self._as_batch(x)
-        xs = self._split(xb)
-        grads = []
+    def grad_log_base_measure(self, x):
+        xb = self._as_batch(x)  # (m, d_total)
+        xs = self._split(xb)  # list of (m, d_k)
+        parts = []
         for name, dist, xk in zip(self.names, self.components, xs):
-            try:
-                gk = dist.grad_log_base_measure(xk)
-            except NotImplementedError as e:
-                raise NotImplementedError(f"Component '{name}' grad_log_base_measure unavailable: {e}")
-            gk = np.asarray(gk)
+            gk = np.asarray(dist.grad_log_base_measure(xk))
+            m = xb.shape[0]
             if gk.ndim == 1:
-                gk = gk.reshape(xb.shape[0], -1)
-            elif gk.ndim == 2 and gk.shape[0] != xb.shape[0]:
-                gk = gk.reshape(xb.shape[0], -1)
-            grads.append(gk)
-        return np.concatenate(grads, axis=1)
+                gk = gk.reshape(m, -1)
+            elif gk.ndim != 2:
+                gk = gk.reshape(m, -1)
+            parts.append(gk)  # each (m, d_k)
+        return np.concatenate(parts, axis=1)  # (m, d_total)
 
     def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        xb = self._as_batch(x)
-        xs = self._split(xb)
-        grads = []
-        for name, dist, xk in zip(self.names, self.components, xs):
-            try:
-                gk = dist.grad_sufficient_statistics(xk)
-            except NotImplementedError as e:
-                raise NotImplementedError(f"Component '{name}' grad_sufficient_statistics unavailable: {e}")
-            gk = np.asarray(gk)
-            if gk.ndim == 1:
-                gk = gk.reshape(xb.shape[0], -1)
-            elif gk.ndim == 2 and gk.shape[0] != xb.shape[0]:
-                gk = gk.reshape(xb.shape[0], -1)
-            grads.append(gk)
-        return np.concatenate(grads, axis=1)
+        xb = self._as_batch(x)  # (m, d_total)
+        xs = self._split(xb)  # list of (m, d_k)
+        m, d_total = xb.shape
+        gks = []
+        pk_list = []
 
-    def augmented_natural_parameters(self) -> np.ndarray:
-        out = None
-        for name, dist in zip(self.names, self.components):
-            try:
-                lk = dist.augmented_natural_parameters()
-            except NotImplementedError as e:
-                raise NotImplementedError(f"Component '{name}' log_pdf unavailable: {e}")
-            lk = np.asarray(lk)
-            out = lk if out is None else (out + lk)
-        return out
+        # Collect per-component Jacobians and sizes
+        for name, dist, xk in zip(self.names, self.components, xs):
+            gk = np.asarray(dist.grad_sufficient_statistics(xk))
+            # Accept (m, p_k), (m, 1, p_k), or (m, d_k, p_k)
+            if gk.ndim == 1:
+                gk = gk.reshape(m, 1, -1)
+            elif gk.ndim == 2:
+                gk = gk.reshape(m, 1, -1)
+            elif gk.ndim != 3:
+                gk = gk.reshape(m, 1, -1)
+            d_k = xk.shape[1]
+            if gk.shape[1] not in (1, d_k):
+                raise ValueError(
+                    f"Component '{name}' grad_sufficient_statistics has shape {gk.shape}; "
+                    f"expected (m,{d_k},p_k) or (m,1,p_k)."
+                )
+            gks.append(gk)
+            pk_list.append(gk.shape[2])
+
+        p_total = int(np.sum(pk_list))
+        J = np.zeros((m, d_total, p_total), dtype=np.float64)
+
+        # Fill block-diagonal: rows for this component's dims, cols for its stats
+        col = 0
+        for (name, dist, xk), gk, p_k, s in zip(
+                zip(self.names, self.components, xs), gks, pk_list, self._slices
+        ):
+            d_k = xk.shape[1]
+            if gk.shape[1] == 1:
+                if d_k != 1:
+                    raise ValueError(
+                        f"Component '{name}' is {d_k}-dimensional but returned (m,1,p_k); "
+                        "please return (m,d_k,p_k) from grad_sufficient_statistics."
+                    )
+                J[:, s, col:col + p_k] = gk  # (m,1,p_k) -> rows s
+            else:
+                J[:, s, col:col + p_k] = gk  # (m,d_k,p_k)
+            col += p_k
+
+        return J  # shape (m, d_total, p_total)
+
+    # def augmented_natural_parameters(self) -> np.ndarray:
+    #     parts = []
+    #     for name, dist in zip(self.names, self.components):
+    #         try:
+    #             v = dist.augmented_natural_parameters()
+    #         except NotImplementedError as e:
+    #             raise NotImplementedError(f"Component '{name}' augmented_natural_parameters unavailable: {e}")
+    #         v = np.asarray(v).reshape(-1)
+    #         parts.append(v)
+    #     return np.concatenate(parts, axis=0)
+    #
+    # def natural_parameters(self) -> np.ndarray:
+    #     parts = []
+    #     for name, dist in zip(self.names, self.components):
+    #         try:
+    #             v = dist.natural_parameters()
+    #         except NotImplementedError as e:
+    #             raise NotImplementedError(f"Component '{name}' natural_parameters unavailable: {e}")
+    #         v = np.asarray(v).reshape(-1)
+    #         parts.append(v)
+    #     return np.concatenate(parts, axis=0)
 
     def natural_parameters(self) -> np.ndarray:
-        out = None
+        parts = []
         for name, dist in zip(self.names, self.components):
-            try:
-                lk = dist.natural_parameters()
-            except NotImplementedError as e:
-                raise NotImplementedError(f"Component '{name}' log_pdf unavailable: {e}")
-            lk = np.asarray(lk)
-            out = lk if out is None else (out + lk)
-        return out
+            v = np.asarray(dist.natural_parameters()).reshape(-1)
+            parts.append(v)
+        return np.concatenate(parts, axis=0)
+
+    def augmented_natural_parameters(self) -> np.ndarray:
+        eta = self.natural_parameters()  # length = sum_k p_k
+        return np.concatenate([eta, np.array([1.0])], axis=0)  # length = sum_k p_k + 1

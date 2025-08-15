@@ -1,8 +1,8 @@
 import numpy as np
 from numpy.linalg import inv, det
 from typing import Union, Dict
-from .base import BaseDistribution
 
+from .base import BaseDistribution
 from src.utils.typing import ArrayLike
 from src.utils.checkers import is_symmetric_and_psd
 

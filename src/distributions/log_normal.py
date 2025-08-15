@@ -22,8 +22,6 @@ class LogNormal(BaseDistribution):
         self.var = self.sigma ** 2
         self._norm_const = 1.0 / (np.sqrt(2 * np.pi * self.var))
 
-
-
     def sample(self, n_samples: int = 1) -> np.ndarray:
         return np.random.lognormal(self.mu, self.sigma, size=n_samples)
 

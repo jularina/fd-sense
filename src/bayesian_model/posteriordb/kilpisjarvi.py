@@ -1,5 +1,5 @@
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Dict, List, Tuple, Type
 import numpy as np
 import pandas as pd
@@ -118,14 +118,14 @@ class KilpisjarviBayesianModel(ABC):
         code_stan = posterior.model.code("stan")
 
         datavals = posterior.data.values()
-        observations = self._prepare_observations(datavals)
+        # observations = self._prepare_observations(datavals)
 
         reference_df = pd.DataFrame(posterior.reference_draws())
         posterior_samples, colnames = self._prepare_posterior_draws(
             reference_df,
             warmup=self.warmup,
         )
-        return observations, posterior_samples, colnames
+        # return observations, posterior_samples, colnames
 
     def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
         """
@@ -142,7 +142,6 @@ class KilpisjarviBayesianModel(ABC):
             distribution_cls: Distribution class to instantiate the prior.
         """
         self.prior = distribution_cls(**params)
-
 
     def set_lr_parameter(self, lr: float) -> None:
         """

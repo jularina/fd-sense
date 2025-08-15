@@ -18,6 +18,7 @@ def load_plot_config(path: str):
         plot_cfg = yaml.safe_load(f)
     return OmegaConf.create(plot_cfg)
 
+
 def get_outdir(cfg: DictConfig) -> str:
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     os.makedirs(output_dir, exist_ok=True)
@@ -48,3 +49,11 @@ def load_numpy_array(path: str) -> np.ndarray:
     if not isinstance(arr, np.ndarray):
         raise ValueError(f"Expected numpy array in {path}")
     return arr
+
+
+def instantiate_from_target_str(target: str, kwargs: Dict[str, Any]):
+    module_name, cls_name = target.rsplit(".", 1)
+    import importlib
+    module = importlib.import_module(module_name)
+    cls = getattr(module, cls_name)
+    return cls(**kwargs)
