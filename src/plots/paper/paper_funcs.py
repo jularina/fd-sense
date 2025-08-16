@@ -1,19 +1,17 @@
+from collections import defaultdict
+from typing import List, Tuple, Dict, FrozenSet
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, Tuple, List
 from omegaconf import DictConfig
 from matplotlib.colors import LinearSegmentedColormap
 import colorsys
 from matplotlib.colors import to_rgb, Normalize, ListedColormap, BoundaryNorm
 import matplotlib.cm as cmx
 from matplotlib.patches import Ellipse
-from typing import Set, FrozenSet
-from matplotlib.ticker import MaxNLocator
 from matplotlib.cm import ScalarMappable
 from scipy.special import logsumexp
-from pathlib import Path
 
 from src.distributions.gaussian import Gaussian
 
@@ -217,9 +215,6 @@ def plot_ksd_heatmaps(
 #
 #     print(f"Saved 3D eta surface with annotations to: {save_path}")
 
-from typing import List, Tuple, Dict, Set, FrozenSet
-
-from typing import List, Tuple, Dict, Set, FrozenSet
 
 def plot_ksd_eta_surface(
     results: List[Tuple[Dict[str, float], np.ndarray, float]],
@@ -231,7 +226,7 @@ def plot_ksd_eta_surface(
     import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
-    from matplotlib.ticker import MaxNLocator, LinearLocator  # <-- added LinearLocator
+    from matplotlib.ticker import LinearLocator  # <-- added LinearLocator
 
     os.makedirs(output_dir, exist_ok=True)
     latex_param_names = plot_cfg.plot.param_latex_names
@@ -272,7 +267,7 @@ def plot_ksd_eta_surface(
     base_fs = int(plot_cfg.plot.font.size)
     corner_num_fs = max(7, int(base_fs * 1.25))
     legend_title_fs = max(7, int(base_fs * 1.05))
-    legend_line_fs  = max(7, int(base_fs * 1.00))
+    legend_line_fs = max(7, int(base_fs * 1.00))
     corner_dot_size = max(10, int(base_fs * 1.4))  # <-- smaller black dots
     y_label_fs = max(base_fs + 2, int(base_fs * 1.25))  # <-- larger y-label
 
@@ -285,12 +280,15 @@ def plot_ksd_eta_surface(
         if len(eta_tilde) < 2:
             continue
         eta0, eta1 = float(eta_tilde[0]), float(eta_tilde[1])
-        x.append(eta0); y.append(eta1)
+        x.append(eta0)
+        y.append(eta1)
         z_val = float(np.log10(ksd_est) if plot_cfg.plot.y_axis.log_scale else ksd_est)
         z.append(z_val)
         coords_by_key[_key_from_params(prior_params)] = (eta0, eta1, z_val)
 
-    x = np.array(x); y = np.array(y); z = np.array(z)
+    x = np.array(x)
+    y = np.array(y)
+    z = np.array(z)
 
     # ---------- colormap & surface ----------
     palette_colors = plot_cfg.plot.color_palette.colors[::-1]
@@ -350,7 +348,8 @@ def plot_ksd_eta_surface(
     tol_y = 1e-6 * max(1.0, (ylim[1] - ylim[0]))
     tol_z = 1e-6 * max(1.0, (zlim[1] - zlim[0]))
     for (cx, cy, cz) in corner_coords_ordered:
-        is_max_corner = (abs(cx - max_pt[0]) < tol_x) and (abs(cy - max_pt[1]) < tol_y) and (abs(cz - max_pt[2]) < tol_z)
+        is_max_corner = (abs(cx - max_pt[0]) < tol_x) and (abs(cy - max_pt[1])
+                                                           < tol_y) and (abs(cz - max_pt[2]) < tol_z)
         if not is_max_corner:
             ax.scatter(cx, cy, cz, color="black", s=corner_dot_size, zorder=11)
 
@@ -376,7 +375,7 @@ def plot_ksd_eta_surface(
         s = f"{x:.2f}".rstrip('0').rstrip('.')
         return s
 
-    from matplotlib.ticker import MaxNLocator, LinearLocator, FuncFormatter
+    from matplotlib.ticker import LinearLocator, FuncFormatter
     _tickfmt = FuncFormatter(_fmt_two_decimals)
     ax.xaxis.set_major_formatter(_tickfmt)
     ax.yaxis.set_major_formatter(_tickfmt)
@@ -397,7 +396,8 @@ def plot_ksd_eta_surface(
     ax.view_init(elev=30, azim=50)
     ksd_qf_latex = getattr(latex_param_names, "estimatedKSDposteriorsQuadraticForm", "KSD")
     zmin, zmax = ax.get_zlim()
-    xmid = np.max(ax.get_xlim()); ymin = np.min(ax.get_ylim())
+    xmid = np.max(ax.get_xlim())
+    ymin = np.min(ax.get_ylim())
     ax.text(xmid, ymin - 0.05, zmax - 0.03, ksd_qf_latex,
             rotation=90, fontsize=base_fs, va="bottom", ha="left")
 
@@ -406,8 +406,8 @@ def plot_ksd_eta_surface(
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved 3D eta surface with straight path, smaller black corner points, 3 ticks/axis, and legend to: {save_path}")
-
+    print(
+        f"Saved 3D eta surface with straight path, smaller black corner points, 3 ticks/axis, and legend to: {save_path}")
 
 
 def plot_ksd_line_plots(
@@ -1646,6 +1646,7 @@ def _deep_get(cfg, path, default=None):
             cur = getattr(cur, key, None)
     return default if cur is None else cur
 
+
 def plot_sdp_densities_only(
     basis_function,
     psi_sdp_list: list[np.ndarray],
@@ -1914,3 +1915,234 @@ def plot_sdp_densities_and_logprior(
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
     print(f"[INFO] Saved combined densities/logprior plot: {save_path}")
+
+def plot_runtime_parametric_nonparametric(
+    times_list_parametric: list[tuple[int, float]],
+    times_list_nonparametric: list[tuple[int, int, float]],
+    plot_cfg: DictConfig,
+    output_dir: str,
+) -> None:
+    """
+    Plot execution time vs number of samples:
+      - Left: Parametric KSD runtime
+      - Right: Non-parametric KSD runtime (one line per basis size)
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Helper
+    def _deep_get(cfg, path, default=None):
+        cur = cfg
+        for key in path.split('.'):
+            if cur is None: return default
+            if isinstance(cur, dict):
+                cur = cur.get(key, None)
+            else:
+                cur = getattr(cur, key, None)
+        return default if cur is None else cur
+
+    # Matplotlib rc from config
+    plt.rcParams.update({
+        "font.size": _deep_get(plot_cfg, "plot.font.size", 12),
+        "font.family": _deep_get(plot_cfg, "plot.font.family", "serif"),
+        "text.usetex": bool(_deep_get(plot_cfg, "plot.font.use_tex", False)),
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    fig_w = float(_deep_get(plot_cfg, "plot.figure.size.width", 6.0))
+    fig_h = float(_deep_get(plot_cfg, "plot.figure.size.height", 4.0))  # one row, two columns
+    fig_dpi = int(_deep_get(plot_cfg, "plot.figure.dpi", 150))
+    lw = float(_deep_get(plot_cfg, "plot.line.width", 2.0))
+    marker = _deep_get(plot_cfg, "plot.marker.style", "o")
+    ms = float(_deep_get(plot_cfg, "plot.marker.size", 4.5))
+    grid_alpha = float(_deep_get(plot_cfg, "plot.grid.alpha", 0.7))
+    tight = bool(_deep_get(plot_cfg, "plot.figure.tight_layout", True))
+
+    names = _deep_get(plot_cfg, "plot.param_latex_names", {}) or {}
+    x_label = names.get("numPosteriorSamples", r"\# of Posterior Samples")
+    y_label = names.get("runtimeSeconds", "Time (sec.)")
+    legend_title = names.get("legendBasisFunctions", r"\# of basis functions")
+    filename = _deep_get(plot_cfg, "plot.filenames.runtime_param_nonparam", "runtime_parametric_nonparametric.pdf")
+
+    # Fine-tuning for spacing and sup xlabel height (lowered)
+    bottom_margin = float(_deep_get(plot_cfg, "plot.figure.bottom_margin", 0.1))
+    supxlabel_y = float(_deep_get(plot_cfg, "plot.figure.suplabel_y", 0.004))
+
+    # Colors
+    palette = list(getattr(_deep_get(plot_cfg, "plot.color_palette", {}), "colors", []))
+    if not palette:
+        palette = [f"C{i}" for i in range(10)]
+
+    # Parametric
+    if times_list_parametric:
+        sample_sizes_param, times_param = zip(*times_list_parametric)
+    else:
+        sample_sizes_param, times_param = [], []
+
+    # Nonparametric grouped by basis size
+    by_basis = defaultdict(list)
+    for s, b, t in times_list_nonparametric:
+        by_basis[int(b)].append((int(s), float(t)))
+    for b in by_basis:
+        by_basis[b].sort(key=lambda x: x[0])
+
+    # Figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(fig_w, fig_h), dpi=fig_dpi, sharex=True)
+
+    # Left panel: Parametric
+    if sample_sizes_param:
+        ax1.plot(sample_sizes_param, times_param, marker=marker, markersize=ms, linewidth=lw)
+    ax1.set_ylabel(y_label)
+    ax1.grid(True, alpha=grid_alpha)
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
+
+    # Right panel: Non-parametric
+    for i, (b, pts) in enumerate(sorted(by_basis.items())):
+        s_vals = [p[0] for p in pts]
+        t_vals = [p[1] for p in pts]
+        ax2.plot(
+            s_vals, t_vals,
+            marker=marker, markersize=ms, linewidth=lw,
+            label=rf"{b}",
+            color=palette[i % len(palette)],
+        )
+    ax2.grid(True, alpha=grid_alpha)
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+
+    leg = ax2.legend(
+        title=legend_title,
+        loc="lower left",
+        bbox_to_anchor=(0.02, 0.5),
+        frameon=True,
+        fancybox=True,
+        framealpha=0.95,
+        borderpad=0.4,
+        handlelength=1.2,
+        handletextpad=0.4,
+        labelspacing=0.25,
+    )
+    leg.get_title().set_ha("left")
+    leg._legend_box.align = "left"
+
+    if tight:
+        fig.tight_layout(rect=(0, bottom_margin, 1, 1))
+    fig.supxlabel(x_label, y=supxlabel_y, ha="center")
+
+    # Save
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved runtime plot: {save_path}")
+
+
+def plot_sdp_densities_by_basis_functions(
+    basis_functions,
+    basis_funcs_num_list: list[int],
+    psi_sdp_list: list[np.ndarray],           # len matches basis_funcs_num_list
+    ksd_estimates: list[float],               # len matches basis_funcs_num_list
+    prior_distribution,                       # must have .pdf(x) or .log_pdf(x)
+    plot_cfg: DictConfig,
+    output_dir: str,
+    domain: tuple = (-5, 5),
+    resolution: int = 200,
+) -> None:
+    """
+    Plot true prior density and normalized SDP densities for multiple basis sizes m.
+    Saves a single-panel figure to PDF.
+
+    basis_function_or_factory:
+        - Either a callable m -> basis_function (with .evaluate(X) -> Phi(X)),
+        - Or a list of basis functions aligned with psi_sdp_list (one per m).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # --- Helpers ---
+    def _deep_get(cfg, path, default=None):
+        cur = cfg
+        for key in path.split('.'):
+            if cur is None:
+                return default
+            if isinstance(cur, dict):
+                cur = cur.get(key, None)
+            else:
+                cur = getattr(cur, key, None)
+        return default if cur is None else cur
+
+    # --- Matplotlib from config ---
+    plt.rcParams.update({
+        "font.size": _deep_get(plot_cfg, "plot.font.size", 12),
+        "font.family": _deep_get(plot_cfg, "plot.font.family", "serif"),
+        "text.usetex": bool(_deep_get(plot_cfg, "plot.font.use_tex", False)),
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    fig_w = float(_deep_get(plot_cfg, "plot.figure.size.width", 6.0)) * 1.3
+    fig_h = float(_deep_get(plot_cfg, "plot.figure.size.height", 4.0))
+    fig_dpi = int(_deep_get(plot_cfg, "plot.figure.dpi", 150))
+    lw = float(_deep_get(plot_cfg, "plot.line.width", 1.5))
+
+    # Labels & names
+    names = _deep_get(plot_cfg, "plot.param_latex_names", {}) or {}
+    xlabel = names.get("mu_0", "theta")
+    ylabel = names.get("nonparametric_prior", "Density")
+    true_label = names.get("baseprior", "True Prior Density")
+    approx_sym = r"$\approx$"
+
+    # Colors
+    palette = list(getattr(_deep_get(plot_cfg, "plot.color_palette", {}), "colors", []))
+    if not palette:
+        palette = [f"C{i}" for i in range(10)]
+
+    # --- Figure ---
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=fig_dpi)
+
+    # Grid & true prior
+    x = np.linspace(domain[0], domain[1], resolution)[:, None]
+    dx = float(x[1, 0] - x[0, 0])
+    if hasattr(prior_distribution, "pdf"):
+        prior_density = prior_distribution.pdf(x).flatten()
+    else:
+        log_p = prior_distribution.log_pdf(x).flatten()
+        logZ = logsumexp(log_p) + np.log(dx)
+        prior_density = np.exp(log_p - logZ)
+
+    # Plot each SDP density for its own m
+    for i, (m, psi, ksd) in enumerate(zip(basis_funcs_num_list, psi_sdp_list, ksd_estimates)):
+        basis_fn = basis_functions[i]
+        Phi_x = basis_fn.evaluate(x)
+        f = (Phi_x @ psi).flatten()
+        logZ = logsumexp(f) + np.log(dx)
+        p_hat = np.exp(f - logZ)
+
+        color = palette[i % len(palette)]
+        label = rf"$m={int(m)}$"
+        ax.plot(x.flatten(), p_hat, label=label, linewidth=lw, color=color)
+
+    ax.plot(x.flatten(), prior_density, label=true_label, linestyle="--", linewidth=lw, color="black")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.3)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax.legend(
+        loc="best",
+        frameon=False,
+        labelspacing=0.4,
+        handlelength=1.8,
+        handletextpad=0.5,
+        borderpad=0.4,
+    )
+
+    if bool(_deep_get(plot_cfg, "plot.figure.tight_layout", False)):
+        plt.tight_layout()
+
+    filename = _deep_get(
+        plot_cfg, "plot.filenames.nonparametric_densities_by_basis",
+        "toy_gaussian_model_nonparametric_optimisation_densities_by_basis.pdf",
+    )
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved SDP densities-by-basis plot: {save_path}")

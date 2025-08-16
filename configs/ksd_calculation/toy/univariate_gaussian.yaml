@@ -43,9 +43,9 @@ ksd:
               mu: 21
               sigma: 4
       nonparametric:
-        basis_funcs_type: SigmoidBasisFunction # PolynomialBasisFunction RBFBasisFunction SigmoidBasisFunction
-        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "scale": null, "scale_multiplier": 1.0} # {"degree": 3} for polynomial, {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 5.0} for rbf, {"num_basis_functions": 5, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0} for sigmoid
-        radius_lower_bound: 2.0
+        basis_funcs_type: RBFBasisFunction # PolynomialBasisFunction RBFBasisFunction SigmoidBasisFunction
+        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 6.0} # {"degree": 3} for polynomial, {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 5.0} for rbf, {"num_basis_functions": 5, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0} for sigmoid
+        radius_lower_bound: 1.0
         scale_samples: False
 
       LogNormal:
