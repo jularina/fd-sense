@@ -1,13 +1,13 @@
 plot:
   font:
-    size: 12  # 32 match Overleaf 10pt font
+    size: 8  # 32 match Overleaf 10pt font
     family: serif  # for LaTeX compatibility
     use_tex: true  # render text with LaTeX
 
   figure:
     size:
-      width: 2.0  # 4 in inches, 2.5 for 4-col
-      height: 1.34 # 3.2 in inches, 1.67 for 4-col
+      width: 3.5  # 4 in inches, 2.5 for 4-col
+      height: 2.3 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: false
 
@@ -22,9 +22,9 @@ plot:
 #      - "#FF6B90"  # light-pink
 #      - "#1f77b4"  # blue
 #      - "#D20A2E"   # red (keep)
-#      - "#F2BDCD"  # light-light-pink
+      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
-      - "#5b9bd5"  # lighter blue
+#      - "#5b9bd5"  # lighter blue
 #      - "#009E73"   # forest green
 #      - "#E69F00"   # orange
 #      - "#F0E442"   # golden yellow

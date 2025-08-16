@@ -192,7 +192,6 @@ def density_plot_across_prior_parameter_sets(cfg, model: BayesianModel, posterio
         plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
         output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
         plot_cfg = load_plot_config(plot_config_path)
-
         plot_prior_densities_by_ksd(
             all_ksd_data=all_ksd_results,
             cfg=cfg,

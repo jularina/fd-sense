@@ -107,146 +107,307 @@ def plot_ksd_heatmaps(
             print(f"Saved heatmap to: {save_path}")
 
 
+# def plot_ksd_eta_surface(
+#     results: List[Tuple[Dict[str, float], np.ndarray, float]],
+#     corner_points: List[Dict[str, float]],
+#     plot_cfg: DictConfig,
+#     output_dir: str,
+# ) -> None:
+#     os.makedirs(output_dir, exist_ok=True)
+#
+#     latex_param_names = plot_cfg.plot.param_latex_names
+#
+#     x, y, z = [], [], []
+#     annotations = []
+#
+#     # Convert corner points to a set of frozensets for fast lookup
+#     corner_set: Set[FrozenSet[Tuple[str, float]]] = {
+#         frozenset({(k, float(f"{v:.8f}")) for k, v in cp.items()})
+#         for cp in corner_points
+#     }
+#
+#     for prior_params, eta_tilde, ksd_est in results:
+#         if len(eta_tilde) < 2:
+#             continue  # Skip if not enough dimensions
+#
+#         eta_0, eta_1 = eta_tilde[0], eta_tilde[1]
+#         x.append(eta_0)
+#         y.append(eta_1)
+#         z_val = np.log10(ksd_est) if plot_cfg.plot.y_axis.log_scale else ksd_est
+#         z.append(z_val)
+#
+#         # Format prior_params to match precision and check against corners
+#         param_key = frozenset({(k, float(f"{v:.8f}")) for k, v in prior_params.items()})
+#         if param_key in corner_set:
+#             label = "\n".join(
+#                 f"{latex_param_names.get(k+"_0", k)}={v}" for k, v in prior_params.items()
+#             )
+#         else:
+#             label = None
+#         annotations.append(label)
+#
+#     x = np.array(x)
+#     y = np.array(y)
+#     z = np.array(z)
+#
+#     # Create colormap from config
+#     palette_colors = plot_cfg.plot.color_palette.colors
+#     palette_colors = palette_colors[::-1]
+#     cmap = LinearSegmentedColormap.from_list("custom_cmap", palette_colors)
+#
+#     # Plot
+#     fig = plt.figure(
+#         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
+#         dpi=plot_cfg.plot.figure.dpi,
+#     )
+#     ax = fig.add_subplot(111, projection='3d')
+#
+#     surf = ax.plot_trisurf(x, y, z, cmap=cmap, edgecolor='none', linewidth=0.2, antialiased=True)
+#
+#     ax.set_xlabel(r"$\gamma_0=\frac{\mu_0}{\sigma_0^2}$")
+#     ax.set_ylabel(r"$\gamma_1=\frac{-0.5}{\sigma_0^2}$")
+#
+#     # ax.set_zlabel(ksd_qf_latex)
+#
+#     # Annotate only corner points
+#     for i in range(len(x)):
+#         if annotations[i] is not None:
+#             ax.text(x[i], y[i], z[i], annotations[i], fontsize=3, rotation=30, color='black', zorder=10)
+#
+#     if plot_cfg.plot.figure.tight_layout:
+#         plt.tight_layout()
+#
+#     # Mark min and max KSD points
+#     z = np.array(z)
+#     min_idx = np.argmin(z)
+#     max_idx = np.argmax(z)
+#
+#     min_x, min_y = x[min_idx], y[min_idx]
+#     max_x, max_y = x[max_idx], y[max_idx]
+#
+#     # Red star at maximum
+#     ax.scatter(
+#         max_x, max_y, z[max_idx],
+#         color="red",
+#         zorder=6,
+#         marker='*',
+#         s=50,
+#     )
+#     ax.view_init(elev=30, azim=50)
+#
+#     ksd_qf_latex = latex_param_names.get("estimatedKSDposteriorsQuadraticForm", "KSD")
+#     zmin, zmax = ax.get_zlim()
+#     xmid = np.max(ax.get_xlim())
+#     ymid = np.min(ax.get_ylim())
+#     ax.text(
+#         xmid, ymid-0.05, zmax-0.03,
+#         ksd_qf_latex,
+#         rotation=90,
+#         fontsize=10,
+#         va='bottom',
+#         ha='left'
+#     )
+#     ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+#     ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+#
+#     filename = "ksd_eta_surface_from_corners.pdf"
+#     save_path = os.path.join(output_dir, filename)
+#     fig.savefig(save_path, format="pdf", bbox_inches='tight')
+#     plt.close(fig)
+#
+#     print(f"Saved 3D eta surface with annotations to: {save_path}")
+
+from typing import List, Tuple, Dict, Set, FrozenSet
+
+from typing import List, Tuple, Dict, Set, FrozenSet
+
 def plot_ksd_eta_surface(
     results: List[Tuple[Dict[str, float], np.ndarray, float]],
-    corner_points: List[Dict[str, float]],  # <-- NEW ARG
+    corner_points: List[Dict[str, float]],
     plot_cfg: DictConfig,
     output_dir: str,
 ) -> None:
-    os.makedirs(output_dir, exist_ok=True)
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    from matplotlib.ticker import MaxNLocator, LinearLocator  # <-- added LinearLocator
 
+    os.makedirs(output_dir, exist_ok=True)
     latex_param_names = plot_cfg.plot.param_latex_names
 
+    # ---------- helpers ----------
+    def _key_from_params(p: Dict[str, float]) -> FrozenSet[Tuple[str, float]]:
+        return frozenset({(k, float(f"{v:.8f}")) for k, v in p.items()})
+
+    def _fmt(v: float) -> str:
+        return f"{float(v):.3g}"
+
+    def _get_mu_sigma_from_corner(cp: Dict[str, float]) -> Tuple[float, float]:
+        def _first(cp, keys):
+            for k in keys:
+                if k in cp:
+                    return cp[k]
+            return None
+        mu = _first(cp, ["mu_0", "mu0", "mu"])
+        sg = _first(cp, ["sigma_0", "sigma0", "sigma", "std", "sd"])
+        return mu, sg
+
+    def _ensure_math(s: str) -> str:
+        return s if "$" in s else f"${s}$"
+
+    # labels from config
+    try:
+        mu_label = getattr(latex_param_names, "mu_0")
+    except Exception:
+        mu_label = r"\mu_0"
+    try:
+        sigma_label = getattr(latex_param_names, "sigma_0")
+    except Exception:
+        sigma_label = r"\sigma_0"
+    mu_label = _ensure_math(mu_label)
+    sigma_label = _ensure_math(sigma_label)
+
+    # font sizes from config
+    base_fs = int(plot_cfg.plot.font.size)
+    corner_num_fs = max(7, int(base_fs * 1.25))
+    legend_title_fs = max(7, int(base_fs * 1.05))
+    legend_line_fs  = max(7, int(base_fs * 1.00))
+    corner_dot_size = max(10, int(base_fs * 1.4))  # <-- smaller black dots
+    y_label_fs = max(base_fs + 2, int(base_fs * 1.25))  # <-- larger y-label
+
+    # ---------- gather data ----------
     x, y, z = [], [], []
-    annotations = []
+    coords_by_key: Dict[FrozenSet[Tuple[str, float]], Tuple[float, float, float]] = {}
 
-    # Convert corner points to a set of frozensets for fast lookup
-    corner_set: Set[FrozenSet[Tuple[str, float]]] = {
-        frozenset({(k, float(f"{v:.8f}")) for k, v in cp.items()})
-        for cp in corner_points
-    }
-
+    corner_keys: List[FrozenSet[Tuple[str, float]]] = [_key_from_params(cp) for cp in corner_points]
     for prior_params, eta_tilde, ksd_est in results:
         if len(eta_tilde) < 2:
-            continue  # Skip if not enough dimensions
-
-        eta_0, eta_1 = eta_tilde[0], eta_tilde[1]
-        x.append(eta_0)
-        y.append(eta_1)
-        z_val = np.log10(ksd_est) if plot_cfg.plot.y_axis.log_scale else ksd_est
+            continue
+        eta0, eta1 = float(eta_tilde[0]), float(eta_tilde[1])
+        x.append(eta0); y.append(eta1)
+        z_val = float(np.log10(ksd_est) if plot_cfg.plot.y_axis.log_scale else ksd_est)
         z.append(z_val)
+        coords_by_key[_key_from_params(prior_params)] = (eta0, eta1, z_val)
 
-        # Format prior_params to match precision and check against corners
-        param_key = frozenset({(k, float(f"{v:.8f}")) for k, v in prior_params.items()})
-        if param_key in corner_set:
-            label = "\n".join(
-                f"{latex_param_names.get(k+"_0", k)}={v}" for k, v in prior_params.items()
-            )
-        else:
-            label = None
-        annotations.append(label)
+    x = np.array(x); y = np.array(y); z = np.array(z)
 
-    x = np.array(x)
-    y = np.array(y)
-    z = np.array(z)
-
-    # Create colormap from config
-    palette_colors = plot_cfg.plot.color_palette.colors
-    palette_colors = palette_colors[::-1]
+    # ---------- colormap & surface ----------
+    palette_colors = plot_cfg.plot.color_palette.colors[::-1]
     cmap = LinearSegmentedColormap.from_list("custom_cmap", palette_colors)
 
-    # Plot
     fig = plt.figure(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
         dpi=plot_cfg.plot.figure.dpi,
     )
-    ax = fig.add_subplot(111, projection='3d')
-
-    surf = ax.plot_trisurf(x, y, z, cmap=cmap, edgecolor='none', linewidth=0.2, antialiased=True)
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot_trisurf(x, y, z, cmap=cmap, edgecolor="none", linewidth=0.2, antialiased=True)
 
     ax.set_xlabel(r"$\gamma_0=\frac{\mu_0}{\sigma_0^2}$")
-    ax.set_ylabel(r"$\gamma_1=\frac{-0.5}{\sigma_0^2}$")
-
-    # ax.set_zlabel(ksd_qf_latex)
-
-    # Annotate only corner points
-    for i in range(len(x)):
-        if annotations[i] is not None:
-            ax.text(x[i], y[i], z[i], annotations[i], fontsize=3, rotation=30, color='black', zorder=10)
+    ax.set_ylabel(r"$\gamma_1=\frac{-0.5}{\sigma_0^2}$", fontsize=y_label_fs)  # <-- larger y-label
 
     if plot_cfg.plot.figure.tight_layout:
         plt.tight_layout()
 
-    # Mark min and max KSD points
-    z = np.array(z)
-    min_idx = np.argmin(z)
-    max_idx = np.argmax(z)
+    # ---------- max marker ----------
+    max_idx = int(np.argmax(z))
+    max_pt = (x[max_idx], y[max_idx], z[max_idx])
+    ax.scatter(*max_pt, color="red", marker="*", s=50, zorder=8)
 
-    min_x, min_y = x[min_idx], y[min_idx]
-    max_x, max_y = x[max_idx], y[max_idx]
+    # ---------- corners: numbers + straight trajectory + black dots ----------
+    corner_coords_ordered: List[Tuple[float, float, float]] = []
+    legend_lines: List[str] = []
 
-    # Red star at maximum
-    ax.scatter(
-        max_x, max_y, z[max_idx],
-        color="red",
-        zorder=6,
-        marker='*',
-        s=50,
-    )
+    for idx, (cp, ck) in enumerate(zip(corner_points, corner_keys), start=1):
+        if ck not in coords_by_key:
+            continue
+        cx, cy, cz = coords_by_key[ck]
+        corner_coords_ordered.append((cx, cy, cz))
+
+        # number at the corner (small z-lift)
+        z_lift = 0.02 * (ax.get_zlim()[1] - ax.get_zlim()[0])
+        ax.text(cx, cy, cz + z_lift, f"{idx}",
+                fontsize=corner_num_fs, color="black",
+                ha="center", va="bottom", zorder=12, weight="bold")
+
+        mu_val, sg_val = _get_mu_sigma_from_corner(cp)
+        parts = []
+        if mu_val is not None:
+            parts.append(f"{mu_label}={_fmt(mu_val)}")
+        if sg_val is not None:
+            parts.append(f"{sigma_label}={_fmt(sg_val)}")
+        legend_lines.append(f"{idx}: " + ", ".join(parts) if parts else f"{idx}: (corner)")
+
+    # straight trajectory
+    if len(corner_coords_ordered) >= 2:
+        traj = np.array(corner_coords_ordered, dtype=float)
+        ax.plot(traj[:, 0], traj[:, 1], traj[:, 2],
+                color="black", linestyle="-", linewidth=1.1, alpha=0.7, zorder=9)
+
+    # black points at corners (skip the red max)
+    xlim, ylim, zlim = ax.get_xlim(), ax.get_ylim(), ax.get_zlim()
+    tol_x = 1e-6 * max(1.0, (xlim[1] - xlim[0]))
+    tol_y = 1e-6 * max(1.0, (ylim[1] - ylim[0]))
+    tol_z = 1e-6 * max(1.0, (zlim[1] - zlim[0]))
+    for (cx, cy, cz) in corner_coords_ordered:
+        is_max_corner = (abs(cx - max_pt[0]) < tol_x) and (abs(cy - max_pt[1]) < tol_y) and (abs(cz - max_pt[2]) < tol_z)
+        if not is_max_corner:
+            ax.scatter(cx, cy, cz, color="black", s=corner_dot_size, zorder=11)
+
+    # ---------- middle-right legend ----------
+    N = max(1, len(legend_lines))
+    height = min(0.60, 0.05 * N + 0.10)
+    bottom = 0.50 - height / 2.0
+    legend_ax = fig.add_axes([0.77, bottom, 0.21, height])
+    legend_ax.axis("off")
+    legend_ax.text(0.0, 1.02, "Corners", fontsize=legend_title_fs, fontweight="bold",
+                   ha="left", va="bottom")
+    ys = [0.5] if N == 1 else np.linspace(0.85, 0.10, N)
+    for yv, line in zip(ys, legend_lines):
+        legend_ax.text(0.0, float(yv), line, fontsize=legend_line_fs, ha="left", va="center")
+
+    # ---------- ticks: exactly 3 on x, y, z ----------
+    ax.xaxis.set_major_locator(LinearLocator(4))
+    ax.yaxis.set_major_locator(LinearLocator(4))
+    ax.zaxis.set_major_locator(LinearLocator(4))
+
+    # format tick labels with max 2 decimals (strip trailing zeros)
+    def _fmt_two_decimals(x, pos):
+        s = f"{x:.2f}".rstrip('0').rstrip('.')
+        return s
+
+    from matplotlib.ticker import MaxNLocator, LinearLocator, FuncFormatter
+    _tickfmt = FuncFormatter(_fmt_two_decimals)
+    ax.xaxis.set_major_formatter(_tickfmt)
+    ax.yaxis.set_major_formatter(_tickfmt)
+    ax.zaxis.set_major_formatter(_tickfmt)
+
+    # Bring tick labels closer to the plot
+    tick_pad = 2  # pixels; lower = closer
+    ax.tick_params(axis='x', which='major', pad=tick_pad)
+    ax.tick_params(axis='y', which='major', pad=tick_pad)
+    ax.tick_params(axis='z', which='major', pad=tick_pad)
+
+    # OPTIONAL (3D-specific): pull ticks further inward if needed
+    for a in (ax.xaxis, ax.yaxis, ax.zaxis):
+        a._axinfo['tick']['outward_factor'] = 0.0  # reduce outward push
+        a._axinfo['tick']['inward_factor'] = 0.2  # small inward pull
+
+    # ---------- cosmetics ----------
     ax.view_init(elev=30, azim=50)
-
-    ksd_qf_latex = latex_param_names.get("estimatedKSDposteriorsQuadraticForm", "KSD")
+    ksd_qf_latex = getattr(latex_param_names, "estimatedKSDposteriorsQuadraticForm", "KSD")
     zmin, zmax = ax.get_zlim()
-    xmid = np.max(ax.get_xlim())
-    ymid = np.min(ax.get_ylim())
-    ax.text(
-        xmid, ymid-0.05, zmax-0.03,
-        ksd_qf_latex,
-        rotation=90,
-        fontsize=10,
-        va='bottom',
-        ha='left'
-    )
-    ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
-    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+    xmid = np.max(ax.get_xlim()); ymin = np.min(ax.get_ylim())
+    ax.text(xmid, ymin - 0.05, zmax - 0.03, ksd_qf_latex,
+            rotation=90, fontsize=base_fs, va="bottom", ha="left")
 
-    # fig.colorbar(surf, ax=ax, shrink=0.6, aspect=10, pad=0.1)
-
-    # cbar = fig.colorbar(surf, ax=ax)
-    # cbar.ax.tick_params(
-    #     size=0,
-    #     width=0,
-    #     length=0,
-    #     labelsize=0,
-    #     left=False,
-    #     right=False
-    # )
-    # cbar.set_ticks([])  # Also ensure no major ticks
-    # cbar.set_label(ksd_latex)
-    #
-    # # Add subtle upward arrow inside the colorbar
-    # cbar.ax.annotate(
-    #     '',
-    #     xy=(1.4, 0.6),
-    #     xytext=(1.4, 0.4),
-    #     xycoords='axes fraction',
-    #     textcoords='axes fraction',
-    #     arrowprops=dict(
-    #         arrowstyle='->',
-    #         color='black',
-    #         lw=1,
-    #         shrinkA=0,
-    #         shrinkB=0,
-    #         mutation_scale=8  # smaller arrow head
-    #     ),
-    # )
-
+    # save
     filename = "ksd_eta_surface_from_corners.pdf"
     save_path = os.path.join(output_dir, filename)
-    fig.savefig(save_path, format="pdf", bbox_inches='tight')
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
+    print(f"Saved 3D eta surface with straight path, smaller black corner points, 3 ticks/axis, and legend to: {save_path}")
 
-    print(f"Saved 3D eta surface with annotations to: {save_path}")
 
 
 def plot_ksd_line_plots(
@@ -669,7 +830,15 @@ def plot_prior_densities_by_ksd(
     """
     Plots all prior densities (from different distributions) in one figure,
     using 4 discrete color bins based on KSD quantiles and a colorbar legend.
+    The colorbar shows a SINGLE representative KSD value (median within bin)
+    for each color, not an interval. Lower-KSD densities are plotted last (on top).
     """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cmx
+    from matplotlib.colors import to_rgb, ListedColormap, BoundaryNorm
+
     os.makedirs(output_dir, exist_ok=True)
 
     # Setup figure
@@ -707,46 +876,59 @@ def plot_prior_densities_by_ksd(
     all_ksd_values = []
     for dist_data in all_ksd_data.values():
         all_ksd_values.extend(dist_data["ksd"].values())
-    all_ksd_values = np.array(all_ksd_values)
+    all_ksd_values = np.array(all_ksd_values, dtype=float)
 
-    # Compute quartile cutoffs
-    quantiles = np.quantile(all_ksd_values, [0.25, 0.5, 0.75])
+    # Compute bin edges: min, Q1, Q2, Q3, max
+    q1, q2, q3 = np.quantile(all_ksd_values, [0.25, 0.5, 0.75])
+    vmin, vmax = float(np.min(all_ksd_values)), float(np.max(all_ksd_values))
+    edges = [vmin, q1, q2, q3, vmax]
 
     # Use first 4 colors from palette (reversed if desired)
     palette_colors = plot_cfg.plot.color_palette.colors[:4]
     rgb_colors = [to_rgb(c) for c in palette_colors[::-1]]
 
-    # Plot densities with 4-bin color coding
+    # Helper for compact labels
+    def _fmt(v):
+        return f"{v:.3g}"  # 3 sig figs
+
+    # Build a list of items to plot, then sort by KSD (descending) so lowest KSD is on top
+    plotting_items = []
     for dist_name, dist_data in all_ksd_data.items():
         ksd_results = dist_data["ksd"]
         param_names = dist_data["param_names"]
         distribution_cls = dist_data["distribution_cls"]
 
         for param_tuple, ksd in ksd_results.items():
-            # Determine bin
-            if ksd <= quantiles[0]:
+            # Determine discrete color bin via edges
+            if ksd <= edges[1]:
                 bin_idx = 0
-            elif ksd <= quantiles[1]:
+            elif ksd <= edges[2]:
                 bin_idx = 1
-            elif ksd <= quantiles[2]:
+            elif ksd <= edges[3]:
                 bin_idx = 2
             else:
                 bin_idx = 3
 
             param_dict = dict(zip([p.replace("_0", "") for p in param_names], param_tuple))
-
             try:
                 dist = distribution_cls(**param_dict)
                 pdf_vals = dist.pdf(x)
-                ax.fill_between(
-                    x,
-                    pdf_vals,
-                    color=rgb_colors[bin_idx],
-                    alpha=0.8,
-                    linewidth=0.7
-                )
+                plotting_items.append((float(ksd), pdf_vals, bin_idx, dist_name, param_dict))
             except Exception as e:
                 print(f"[WARN] Skipping {dist_name} with params {param_dict}: {e}")
+
+    # Sort by KSD descending so we draw high KSD first, low KSD last (on top)
+    plotting_items.sort(key=lambda t: t[0], reverse=True)
+
+    # Plot densities with 4-bin color coding
+    for ksd, pdf_vals, bin_idx, dist_name, param_dict in plotting_items:
+        ax.fill_between(
+            x,
+            pdf_vals,
+            color=rgb_colors[bin_idx],
+            alpha=0.8,
+            linewidth=0.7
+        )
 
     # Axes formatting
     ax.set_xlabel(plot_cfg.plot.param_latex_names.mu_0)
@@ -761,27 +943,31 @@ def plot_prior_densities_by_ksd(
     sm = cmx.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
 
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.ax.tick_params(size=0, width=0, labelsize=0, left=False, right=False)
-    cbar.set_ticks([])
-    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+    # Compute a single representative value per bin: median of KSDs in that bin
+    bin_values = [[] for _ in range(4)]
+    for ksd, *_ in plotting_items:
+        if ksd <= edges[1]:
+            bin_values[0].append(ksd)
+        elif ksd <= edges[2]:
+            bin_values[1].append(ksd)
+        elif ksd <= edges[3]:
+            bin_values[2].append(ksd)
+        else:
+            bin_values[3].append(ksd)
 
-    # Arrow on colorbar
-    cbar.ax.annotate(
-        '',
-        xy=(1.4, 0.7),
-        xytext=(1.4, 0.3),
-        xycoords='axes fraction',
-        textcoords='axes fraction',
-        arrowprops=dict(
-            arrowstyle='->',
-            color='black',
-            lw=1,
-            shrinkA=0,
-            shrinkB=0,
-            mutation_scale=8
-        ),
-    )
+    single_labels = []
+    for i in range(4):
+        if len(bin_values[i]) > 0:
+            val = round(float(np.median(bin_values[i])), 2)
+        else:
+            # Fallback if a bin is empty: midpoint of its edges
+            val = 0.5 * (edges[i] + edges[i+1])
+        single_labels.append(_fmt(val))
+
+    cbar = fig.colorbar(sm, ax=ax, boundaries=bounds, ticks=[0.5, 1.5, 2.5, 3.5])
+    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+    cbar.ax.tick_params(labelsize=plot_cfg.plot.font.size)
+    cbar.set_ticklabels(single_labels)
 
     if plot_cfg.plot.figure.tight_layout:
         plt.tight_layout()
