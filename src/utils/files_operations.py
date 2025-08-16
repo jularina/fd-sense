@@ -57,3 +57,8 @@ def instantiate_from_target_str(target: str, kwargs: Dict[str, Any]):
     module = importlib.import_module(module_name)
     cls = getattr(module, cls_name)
     return cls(**kwargs)
+
+
+def deepcopy_cfg(cfg: DictConfig) -> DictConfig:
+    # Safe deep copy preserving OmegaConf structure
+    return OmegaConf.create(OmegaConf.to_container(cfg, resolve=False))

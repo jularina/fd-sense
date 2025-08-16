@@ -47,15 +47,10 @@ class Cauchy(BaseDistribution):
         raise NotImplementedError("Cauchy is not an exponential-family distribution; natural parameters are undefined.")
 
     def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, dtype=np.float64)
-        dx = x - self.x0
-        grad = (2.0 * dx) / (self.gamma**2 + dx**2)
-        grad = grad.reshape(-1, 1)
-        return grad[:, None, :]
+        raise NotImplementedError("Cauchy is not an exponential-family distribution; sufficient statistics are undefined.")
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, dtype=np.float64)
-        return np.zeros_like(x)
+        raise NotImplementedError("Cauchy is not an exponential-family distribution; base measure is undefined.")
 
     @property
     def parameters_dict(self) -> Dict[str, float]:
@@ -115,17 +110,10 @@ class HalfCauchy(BaseDistribution):
             "Half-Cauchy is not an exponential-family distribution; natural parameters are undefined.")
 
     def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, dtype=np.float64)
-        g = np.zeros_like(x, dtype=np.float64)
-        mask = x >= 0
-        dx = x[mask]
-        g[mask] = 2.0 * dx / (self.gamma**2 + dx**2)
-        g = g.reshape(-1, 1)
-        return g[:, None, :]
+        raise NotImplementedError("Cauchy is not an exponential-family distribution; sufficient statistics are undefined.")
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, dtype=np.float64)
-        return np.zeros_like(x, dtype=np.float64)
+        raise NotImplementedError("Cauchy is not an exponential-family distribution; base measure is undefined.")
 
     @property
     def parameters_dict(self) -> Dict[str, float]:

@@ -45,6 +45,8 @@ plot:
     beta: "$\\beta$"
     prior: "$\\pi(\\mu_0)$"
     log_prior: "$\\log\\pi$"
+    prior_beta1: "$\\pi(\\beta_1)$"
+    prior_beta3: "$\\pi(\\beta_3)$"
     nonparametric_prior: "$\\pi$"
     baseprior: "$\\Pi_\\text{ref}$"
     logbaseprior: "$\\log\\Pi_\\text{ref}$"

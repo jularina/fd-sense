@@ -8,14 +8,13 @@ from hydra.utils import instantiate, get_original_cwd
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
-import random
 import time
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from src.discrepancies.prior_ksd import PriorKSDNonParametric
 from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
-from src.plots.paper.paper_funcs import *
+from src.plots.paper.toy_paper_funcs import *
 from src.bayesian_model.base import BayesianModel
 from src.kernels.base import BaseKernel
 from src.distributions.gaussian import MultivariateGaussian

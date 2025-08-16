@@ -59,19 +59,22 @@ class LogNormal(BaseDistribution):
         return np.array([eta1, eta2])
 
     def grad_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x)
-        grad = np.zeros((x.shape[0], 2))
-        mask = x > 0
-        grad[mask, 0] = 1 / x[mask]
-        grad[mask, 1] = 2 * np.log(x[mask]) / x[mask]
+        x = np.asarray(x, dtype=np.float64)
+        x_flat = x.reshape(-1)
+        n = x_flat.shape[0]
+        grad = np.zeros((n, 2), dtype=np.float64)
+        mask = x_flat > 0
+        grad[mask, 0] = 1.0 / x_flat[mask]
+        grad[mask, 1] = 2.0 * np.log(x_flat[mask]) / x_flat[mask]
+
         return grad[:, None, :]
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x)
-        grad = np.zeros_like(x, dtype=np.float64)
+        x = np.asarray(x, dtype=np.float64).reshape(-1)
+        grad = np.zeros_like(x)
         mask = x > 0
-        grad[mask] = -1 / x[mask]
-        return grad
+        grad[mask] = -1.0 / x[mask]
+        return grad[:, None]
 
     @property
     def parameters_dict(self) -> Dict[str, float]:
