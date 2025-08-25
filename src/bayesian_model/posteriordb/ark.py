@@ -24,6 +24,7 @@ class ArkBayesianModel(ABC):
         self.loss: Any = data_config.loss
         self.prior: Any = data_config.candidate_prior
         self.prior_init: Any = data_config.base_prior
+        self.prior_candidate: Any = data_config.candidate_prior
         self.loss_lr_init: float = data_config.loss_lr
         self.pdb_path = data_config.pdb_path
         self.pdb_model_name = data_config.pdb_model_name
@@ -36,6 +37,32 @@ class ArkBayesianModel(ABC):
         self.observations_num = self.observations.shape[0]
         self.x_bar: np.ndarray = np.mean(self.observations, axis=0)
         self.m = self.posterior_samples_init.shape[0]
+
+    def back_to_prior_init(self, *, deep: bool = True):
+        """
+        Reset the current prior to the initial/base prior.
+
+        Args:
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.prior` do not affect `self.prior_init`.
+        Returns:
+            self (for chaining)
+        """
+        self.prior = copy.deepcopy(self.prior_init) if deep else self.prior_init
+        return self
+
+    def back_to_prior_candidate(self, *, deep: bool = True):
+        """
+        Reset the current prior to the candidate prior.
+
+        Args:
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.prior` do not affect `self.prior_candidate`.
+        Returns:
+            self (for chaining)
+        """
+        self.prior = copy.deepcopy(self.prior_candidate) if deep else self.prior_candidate
+        return self
 
     def _prepare_observations(self, datavals: Dict[str, Any]) -> Tuple[np.ndarray, int]:
         """

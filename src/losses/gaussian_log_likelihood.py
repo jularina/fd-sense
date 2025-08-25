@@ -240,16 +240,12 @@ class GaussianARLogLikelihood(BaseLoss):
         gamma = log(sigma)   if scale == "log_sigma"
     """
 
-    def __init__(self, scale: str = "sigma", eps: float = 1e-6):
-        assert scale in ("sigma", "log_sigma")
-        self.scale = scale
+    def __init__(self, eps: float = 1e-6):
         self.eps = float(eps)
-
         self._has_data = False
         self.K = 0
         self.n = 0  # n = T - K
 
-        # Sufficient statistics over t = K..T-1 (0-based python)
         self.Sy = None                  # sum y_t
         self.Syy = None                 # sum y_t^2
         self.Sx = None                  # sum x_t (K-dim) where x_tk = y_{t-k-1}
@@ -313,17 +309,10 @@ class GaussianARLogLikelihood(BaseLoss):
         gamma = th[:, [1 + K]]  # (m,1)
 
         S, T, Q = self._S_T_Q(alpha, beta)
-
-        if self.scale == "sigma":
-            sigma = np.maximum(gamma, self.eps)  # (m,1)
-            sigma2 = sigma * sigma  # (m,1)
-            g_alpha = S / sigma2  # (m,1)
-            g_beta = T / sigma2  # (m,K)  (row-wise divide)
-            g_gamma = -self.n / sigma + Q / (sigma * sigma2)  # (m,1)
-        else:
-            sigma2 = np.exp(2.0 * gamma)  # (m,1)
-            g_alpha = S / sigma2
-            g_beta = T / sigma2
-            g_gamma = -self.n + Q / sigma2
+        sigma = gamma
+        sigma2 = sigma * sigma  # (m,1)
+        g_alpha = S / sigma2  # (m,1)
+        g_beta = T / sigma2  # (m,K)  (row-wise divide)
+        g_gamma = -self.n / sigma + Q / (sigma * sigma2)  # (m,1)
 
         return np.concatenate([g_alpha, g_beta, g_gamma], axis=1)  # (m, 2+K)

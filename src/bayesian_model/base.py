@@ -1,3 +1,4 @@
+import copy
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Type
 import numpy as np
@@ -20,6 +21,7 @@ class BayesianModel(ABC):
         self.loss: Any = data_config.loss
         self.prior: Any = data_config.candidate_prior
         self.prior_init: Any = data_config.base_prior
+        self.prior_candidate: Any = data_config.candidate_prior
         self.loss_lr_init: float = data_config.loss_lr
         self.m: int = data_config.posterior_samples_num
         self.m_prior: int = data_config.prior_samples_num
@@ -36,6 +38,32 @@ class BayesianModel(ABC):
             getattr(data_config, "prior_samples_path", None),
             name="prior"
         )
+
+    def back_to_prior_init(self, *, deep: bool = True):
+        """
+        Reset the current prior to the initial/base prior.
+
+        Args:
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.prior` do not affect `self.prior_init`.
+        Returns:
+            self (for chaining)
+        """
+        self.prior = copy.deepcopy(self.prior_init) if deep else self.prior_init
+        return self
+
+    def back_to_prior_candidate(self, *, deep: bool = True):
+        """
+        Reset the current prior to the candidate prior.
+
+        Args:
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.prior` do not affect `self.prior_candidate`.
+        Returns:
+            self (for chaining)
+        """
+        self.prior = copy.deepcopy(self.prior_candidate) if deep else self.prior_candidate
+        return self
 
     def _prepare_observations(self, data_config: Any) -> np.ndarray:
         """

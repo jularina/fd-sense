@@ -588,6 +588,8 @@ def run_gaussian_priors_diff_samples_num(cfg) -> None:
     times_list_parametric, times_list_nonparametric = [], []
     samples_nums_list = [int(x) for x in np.linspace(1000, 10000, 10)]
     basis_funcs_num_list = [int(x) for x in np.linspace(5, 15, 3)]
+    # samples_nums_list = [int(x) for x in np.linspace(1000, 3000, 3)]
+    # basis_funcs_num_list = [int(x) for x in np.linspace(5, 10, 2)]
 
     for sample_nums in samples_nums_list:
         cfg.data.posterior_samples_num = sample_nums
@@ -764,5 +766,5 @@ if __name__ == "__main__":
     # run_multivariate_gaussian_priors()
     # run_inverse_wishart_priors()
     # run_gaussian_priors_nonparametric_diff_radii()
-    run_gaussian_priors_nonparametric_diff_basis_funcs_nums()
-    # run_gaussian_priors_diff_samples_num()
+    # run_gaussian_priors_nonparametric_diff_basis_funcs_nums()
+    run_gaussian_priors_diff_samples_num()

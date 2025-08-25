@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import List, Tuple, Dict, FrozenSet
+from typing import List, Tuple, Dict, FrozenSet, Any
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import colorsys
 from matplotlib.colors import to_rgb, Normalize, ListedColormap, BoundaryNorm
 import matplotlib.cm as cmx
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse, Rectangle
 from matplotlib.cm import ScalarMappable
 from scipy.special import logsumexp
 
@@ -1916,16 +1916,157 @@ def plot_sdp_densities_and_logprior(
     plt.close(fig)
     print(f"[INFO] Saved combined densities/logprior plot: {save_path}")
 
+# def plot_runtime_parametric_nonparametric(
+#     times_list_parametric: list[tuple[int, float]],
+#     times_list_nonparametric: list[tuple[int, int, float]],
+#     plot_cfg: DictConfig,
+#     output_dir: str,
+# ) -> None:
+#     """
+#     Plot execution time vs number of samples:
+#       - Left: Parametric KSD runtime
+#       - Right: Non-parametric KSD runtime (one line per basis size)
+#     """
+#     os.makedirs(output_dir, exist_ok=True)
+#
+#     # Helper
+#     def _deep_get(cfg, path, default=None):
+#         cur = cfg
+#         for key in path.split('.'):
+#             if cur is None: return default
+#             if isinstance(cur, dict):
+#                 cur = cur.get(key, None)
+#             else:
+#                 cur = getattr(cur, key, None)
+#         return default if cur is None else cur
+#
+#     # Matplotlib rc from config
+#     plt.rcParams.update({
+#         "font.size": _deep_get(plot_cfg, "plot.font.size", 12),
+#         "font.family": _deep_get(plot_cfg, "plot.font.family", "serif"),
+#         "text.usetex": bool(_deep_get(plot_cfg, "plot.font.use_tex", False)),
+#         "text.latex.preamble": r"\usepackage{amsmath}",
+#     })
+#
+#     fig_w = float(_deep_get(plot_cfg, "plot.figure.size.width", 6.0))
+#     fig_h = float(_deep_get(plot_cfg, "plot.figure.size.height", 4.0))  # one row, two columns
+#     fig_dpi = int(_deep_get(plot_cfg, "plot.figure.dpi", 150))
+#     lw = float(_deep_get(plot_cfg, "plot.line.width", 2.0))
+#     marker = _deep_get(plot_cfg, "plot.marker.style", "o")
+#     ms = float(_deep_get(plot_cfg, "plot.marker.size", 4.5))
+#     grid_alpha = float(_deep_get(plot_cfg, "plot.grid.alpha", 0.7))
+#     tight = bool(_deep_get(plot_cfg, "plot.figure.tight_layout", True))
+#
+#     names = _deep_get(plot_cfg, "plot.param_latex_names", {}) or {}
+#     x_label = names.get("numPosteriorSamples", r"\# of Posterior Samples")
+#     y_label = names.get("runtimeSeconds", "Time (sec.)")
+#     legend_title = names.get("legendBasisFunctions", r"\# of basis functions")
+#     filename = _deep_get(plot_cfg, "plot.filenames.runtime_param_nonparam", "runtime_parametric_nonparametric.pdf")
+#
+#     # Fine-tuning for spacing and sup xlabel height (lowered)
+#     bottom_margin = float(_deep_get(plot_cfg, "plot.figure.bottom_margin", 0.1))
+#     supxlabel_y = float(_deep_get(plot_cfg, "plot.figure.suplabel_y", 0.004))
+#
+#     # Colors
+#     palette = list(getattr(_deep_get(plot_cfg, "plot.color_palette", {}), "colors", []))
+#     if not palette:
+#         palette = [f"C{i}" for i in range(10)]
+#
+#     # Parametric
+#     if times_list_parametric:
+#         sample_sizes_param, times_param = zip(*times_list_parametric)
+#     else:
+#         sample_sizes_param, times_param = [], []
+#
+#     # Nonparametric grouped by basis size
+#     by_basis = defaultdict(list)
+#     for s, b, t in times_list_nonparametric:
+#         by_basis[int(b)].append((int(s), float(t)))
+#     for b in by_basis:
+#         by_basis[b].sort(key=lambda x: x[0])
+#
+#     # Figure
+#     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(fig_w, fig_h), dpi=fig_dpi, sharex=True)
+#
+#     # Left panel: Parametric
+#     if sample_sizes_param:
+#         ax1.plot(sample_sizes_param, times_param, marker=marker, markersize=ms, linewidth=lw)
+#     ax1.set_ylabel(y_label)
+#     ax1.grid(True, alpha=grid_alpha)
+#     ax1.spines["top"].set_visible(False)
+#     ax1.spines["right"].set_visible(False)
+#
+#     # Right panel: Non-parametric
+#     for i, (b, pts) in enumerate(sorted(by_basis.items())):
+#         s_vals = [p[0] for p in pts]
+#         t_vals = [p[1] for p in pts]
+#         ax2.plot(
+#             s_vals, t_vals,
+#             marker=marker, markersize=ms, linewidth=lw,
+#             label=rf"{b}",
+#             color=palette[i % len(palette)],
+#         )
+#     ax2.grid(True, alpha=grid_alpha)
+#     ax2.spines["top"].set_visible(False)
+#     ax2.spines["right"].set_visible(False)
+#
+#     leg = ax2.legend(
+#         title=legend_title,
+#         loc="lower left",
+#         bbox_to_anchor=(0.02, 0.5),
+#         frameon=True,
+#         fancybox=True,
+#         framealpha=0.95,
+#         borderpad=0.4,
+#         handlelength=1.2,
+#         handletextpad=0.4,
+#         labelspacing=0.25,
+#     )
+#     leg.get_title().set_ha("left")
+#     leg._legend_box.align = "left"
+#
+#     if tight:
+#         fig.tight_layout(rect=(0, bottom_margin, 1, 1))
+#     fig.supxlabel(x_label, y=supxlabel_y, ha="center")
+#
+#     # Save
+#     save_path = os.path.join(output_dir, filename)
+#     fig.savefig(save_path, format="pdf", bbox_inches="tight")
+#     plt.close(fig)
+#     print(f"[INFO] Saved runtime plot: {save_path}")
+
+import os
+from collections import defaultdict
+from typing import Any
+import matplotlib.pyplot as plt
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.lines import Line2D
+
+class _TextOnlyHandler(HandlerBase):
+    """Legend handler that reserves space but draws no glyph (text-only row)."""
+    def create_artists(
+        self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans
+    ):
+        return [Rectangle((0, 0), 0, 0, transform=trans,
+                          facecolor="none", edgecolor="none")]
+
 def plot_runtime_parametric_nonparametric(
     times_list_parametric: list[tuple[int, float]],
     times_list_nonparametric: list[tuple[int, int, float]],
-    plot_cfg: DictConfig,
+    plot_cfg: Any,  # DictConfig or dict-like
     output_dir: str,
 ) -> None:
     """
-    Plot execution time vs number of samples:
-      - Left: Parametric KSD runtime
-      - Right: Non-parametric KSD runtime (one line per basis size)
+    Single-axis plot:
+      - Parametric KSD runtime (one line)
+      - Non-parametric KSD runtime (one line per basis size)
+
+    Single legend box with the order:
+      Parametric
+      # of basis functions   (text-only "sub-title")
+      5
+      10
+      ...
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -1933,7 +2074,8 @@ def plot_runtime_parametric_nonparametric(
     def _deep_get(cfg, path, default=None):
         cur = cfg
         for key in path.split('.'):
-            if cur is None: return default
+            if cur is None:
+                return default
             if isinstance(cur, dict):
                 cur = cur.get(key, None)
             else:
@@ -1949,7 +2091,7 @@ def plot_runtime_parametric_nonparametric(
     })
 
     fig_w = float(_deep_get(plot_cfg, "plot.figure.size.width", 6.0))
-    fig_h = float(_deep_get(plot_cfg, "plot.figure.size.height", 4.0))  # one row, two columns
+    fig_h = float(_deep_get(plot_cfg, "plot.figure.size.height", 4.0))
     fig_dpi = int(_deep_get(plot_cfg, "plot.figure.dpi", 150))
     lw = float(_deep_get(plot_cfg, "plot.line.width", 2.0))
     marker = _deep_get(plot_cfg, "plot.marker.style", "o")
@@ -1960,76 +2102,88 @@ def plot_runtime_parametric_nonparametric(
     names = _deep_get(plot_cfg, "plot.param_latex_names", {}) or {}
     x_label = names.get("numPosteriorSamples", r"\# of Posterior Samples")
     y_label = names.get("runtimeSeconds", "Time (sec.)")
-    legend_title = names.get("legendBasisFunctions", r"\# of basis functions")
+    legend_subtitle = names.get("legendBasisFunctions", r"Non-parametric: \# of basis functions")
     filename = _deep_get(plot_cfg, "plot.filenames.runtime_param_nonparam", "runtime_parametric_nonparametric.pdf")
-
-    # Fine-tuning for spacing and sup xlabel height (lowered)
-    bottom_margin = float(_deep_get(plot_cfg, "plot.figure.bottom_margin", 0.1))
-    supxlabel_y = float(_deep_get(plot_cfg, "plot.figure.suplabel_y", 0.004))
 
     # Colors
     palette = list(getattr(_deep_get(plot_cfg, "plot.color_palette", {}), "colors", []))
     if not palette:
         palette = [f"C{i}" for i in range(10)]
 
-    # Parametric
+    # Prepare data
     if times_list_parametric:
-        sample_sizes_param, times_param = zip(*times_list_parametric)
+        sample_sizes_param, times_param = zip(*[(int(s), float(t)) for s, t in times_list_parametric])
     else:
         sample_sizes_param, times_param = [], []
 
-    # Nonparametric grouped by basis size
     by_basis = defaultdict(list)
     for s, b, t in times_list_nonparametric:
         by_basis[int(b)].append((int(s), float(t)))
     for b in by_basis:
         by_basis[b].sort(key=lambda x: x[0])
 
-    # Figure
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(fig_w, fig_h), dpi=fig_dpi, sharex=True)
+    # Figure (single axis)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=fig_dpi)
 
-    # Left panel: Parametric
+    # Plot lines
+    handles_ordered, labels_ordered = [], []
+
+    # 1) Parametric first
     if sample_sizes_param:
-        ax1.plot(sample_sizes_param, times_param, marker=marker, markersize=ms, linewidth=lw)
-    ax1.set_ylabel(y_label)
-    ax1.grid(True, alpha=grid_alpha)
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["right"].set_visible(False)
+        h_param, = ax.plot(
+            sample_sizes_param, times_param,
+            marker=marker, markersize=ms, linewidth=lw,
+            color=palette[0],
+            label="Parametric",
+        )
+        handles_ordered.append(h_param)
+        labels_ordered.append("Parametric")
 
-    # Right panel: Non-parametric
-    for i, (b, pts) in enumerate(sorted(by_basis.items())):
+    # 2) Insert a text-only "subtitle" row for the basis functions
+    #    This shows as a label with no handle glyph.
+    dummy_title = Line2D([], [], linestyle="none", label=legend_subtitle)
+    handles_ordered.append(dummy_title)
+    labels_ordered.append(legend_subtitle)
+
+    # 3) Basis function curves
+    for i, (b, pts) in enumerate(sorted(by_basis.items()), start=1):
         s_vals = [p[0] for p in pts]
         t_vals = [p[1] for p in pts]
-        ax2.plot(
+        h_np, = ax.plot(
             s_vals, t_vals,
             marker=marker, markersize=ms, linewidth=lw,
-            label=rf"{b}",
             color=palette[i % len(palette)],
+            label=rf"{b}",
         )
-    ax2.grid(True, alpha=grid_alpha)
-    ax2.spines["top"].set_visible(False)
-    ax2.spines["right"].set_visible(False)
+        handles_ordered.append(h_np)
+        labels_ordered.append(rf"{b}")
 
-    leg = ax2.legend(
-        title=legend_title,
+    # Axes styling
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.grid(True, alpha=grid_alpha)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    spacer = Line2D([], [], linestyle="none", label="")  # blank row
+    handles_ordered.append(spacer)
+    labels_ordered.append("")
+    legend_fs = float(_deep_get(plot_cfg, "plot.legend.fontsize",
+                                plt.rcParams["font.size"] * 0.8))
+    leg = ax.legend(
+        handles_ordered, labels_ordered,
         loc="lower left",
+        fontsize=legend_fs,
         bbox_to_anchor=(0.02, 0.5),
-        frameon=True,
-        fancybox=True,
-        framealpha=0.95,
-        borderpad=0.4,
-        handlelength=1.2,
-        handletextpad=0.4,
-        labelspacing=0.25,
+        frameon=True, fancybox=True, framealpha=0.95,
+        borderpad=0.4, handlelength=1.2, handletextpad=0.4, labelspacing=0.24,
+        handler_map={dummy_title: _TextOnlyHandler()},
     )
-    leg.get_title().set_ha("left")
     leg._legend_box.align = "left"
 
     if tight:
-        fig.tight_layout(rect=(0, bottom_margin, 1, 1))
-    fig.supxlabel(x_label, y=supxlabel_y, ha="center")
+        fig.tight_layout()
 
-    # Save
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)

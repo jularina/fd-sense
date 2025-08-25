@@ -72,12 +72,6 @@ class HalfCauchy(BaseDistribution):
         self.gamma = gamma
         self._norm_const = 2.0 / (np.pi * self.gamma)
 
-        x = np.linspace(0.0, 50.0, 2000)
-        y = self.pdf(x)
-        from matplotlib import pyplot as plt
-        plt.plot(x, y, linewidth=2, color="r")
-        plt.show()
-
     def sample(self, n_samples: int = 1) -> np.ndarray:
         return self.gamma * np.abs(np.random.standard_cauchy(size=n_samples))
 

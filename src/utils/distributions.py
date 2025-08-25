@@ -3,7 +3,7 @@ from src.distributions.log_normal import LogNormal
 from src.distributions.cauchy import Cauchy, HalfCauchy
 from src.distributions.inverse_wishart import InverseWishart
 from src.distributions.uniform import Uniform
-
+from src.distributions.gamma import Gamma
 
 DISTRIBUTION_MAP = {
     "Gaussian": Gaussian,
@@ -13,6 +13,7 @@ DISTRIBUTION_MAP = {
     "HalfCauchy": HalfCauchy,
     "Uniform": Uniform,
     "InverseWishart": InverseWishart,
+    "Gamma": Gamma,
 }
 
 
