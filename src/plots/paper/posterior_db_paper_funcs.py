@@ -385,7 +385,7 @@ def plot_three_panel_priors(
         loc="lower center",
         frameon=False,
         ncol=len(legend_labels),
-        bbox_to_anchor=(0.5, -0.15)
+        bbox_to_anchor=(0.5, -0.23)
     )
 
     if getattr(plot_cfg.plot.figure, "tight_layout", True):
@@ -523,11 +523,8 @@ def plot_complexity_bar(
     prefix: str = "ark_param",
     filename: str | None = None,
     nuts_exponent: float = 5/4,
-    title: str | None = None,
     use_log10: bool = True,
 ):
-    import os, numpy as np, matplotlib.pyplot as plt
-
     try:
         _apply_plot_rc(plot_cfg)
     except Exception:
@@ -545,7 +542,6 @@ def plot_complexity_bar(
             ranges = c.get("parameters_box_range", {}).get("ranges", {})
             H_total += len(ranges)
 
-    # --- Compute ∏ G_h
     Gprod = 1
     for c in comps:
         nums = c.get("parameters_box_range", {}).get("nums", {})
@@ -566,12 +562,11 @@ def plot_complexity_bar(
 
     # --- Assemble bars
     labels = [
-        "Total cost (ours)",
-        r"$\mathcal{O}(m^2 D)$ (ours)",
+        r"$\mathcal{O}(m^2 D)$ (dominating terms, ours)",
         r"$\mathcal{O}(2^H P^2)$ (ours)",
         "MCMC-based grid-search",
     ]
-    values = np.array([cost_ours_total, cost_ours_data, cost_ours_corners, cost_mcmc], dtype=float)
+    values = np.array([cost_ours_data, cost_ours_corners, cost_mcmc], dtype=float)
     heights = np.log10(values) if use_log10 else values
     ylab = r"$\log_{10}(\text{cost})$" if use_log10 else "cost"
 
@@ -585,6 +580,8 @@ def plot_complexity_bar(
         palette = (palette * reps)[:len(labels)]
 
     # --- Plot
+    style = "lollipop"  # options: "lollipop", "float_rect", "bar"
+
     fig = plt.figure(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
         if hasattr(plot_cfg, "plot") else (9, 5),
@@ -592,12 +589,37 @@ def plot_complexity_bar(
     )
     ax = fig.add_subplot(1, 1, 1)
     x = np.arange(len(labels))
-    ax.bar(x, heights, color=palette[:len(labels)])
+
+    if style == "bar":
+        ax.bar(x, heights, color=palette[:len(labels)], width=0.55)
+    elif style == "lollipop":
+        # stems
+        for xi, yi, c in zip(x, heights, palette):
+            ax.vlines(xi, 0, yi, colors=c, linewidth=1.5, alpha=0.9)
+        # markers at the top (small rectangles)
+        rect_w = 0.28
+        rect_h = 0.25 if use_log10 else 0.02 * np.max(heights)
+        for xi, yi, c in zip(x, heights, palette):
+            ax.add_patch(plt.Rectangle((xi - rect_w / 2, yi - rect_h / 2),
+                                       rect_w, rect_h,
+                                       facecolor=c, edgecolor=c, alpha=0.9, linewidth=1.5))
+    elif style == "float_rect":
+        # only floating rectangles (no stems)
+        rect_w = 0.35
+        rect_h = 0.28 if use_log10 else 0.02 * np.max(heights)
+        for xi, yi, c in zip(x, heights, palette):
+            ax.add_patch(plt.Rectangle((xi - rect_w / 2, yi - rect_h / 2),
+                                       rect_w, rect_h,
+                                       facecolor=c, edgecolor=c, alpha=0.2, linewidth=1.8))
+
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=20, ha='right')
-    ax.set_ylabel(ylab)
+    ax.set_xticklabels(labels, rotation=0, ha='center')
+    ax.set_ylabel(r"$\log_{10}(\text{cost})$" if use_log10 else "cost")
+
+    # light styling
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.grid(axis='y', linestyle=':', alpha=0.35)
     fig.tight_layout()
 
     try:

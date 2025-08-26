@@ -32,7 +32,6 @@ class MultivariateGaussianModel(BayesianModel):
     def __init__(self, data_config):
         super().__init__(data_config)
         self.dim = self.observations.shape[1]
-        self.x_bar = np.mean(self.observations, axis=0)
 
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
         """

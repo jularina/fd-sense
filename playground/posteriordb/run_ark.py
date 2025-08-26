@@ -130,29 +130,29 @@ def main_for_paper_several_variants(cfg: DictConfig) -> None:
     # print(f"[KSD] Posterior KSD (baseline hyperprior): {ksd_value:.3f}")
     # print(f"Time for one KSD evaluation: {elapsed:.3f} sec")
 
-    start = time.perf_counter()
-    cfg_all = _filter_components(cfg, keep_names=["alpha", "sigma", "beta1", "beta2", "beta3", "beta4", "beta5"])
-    rows_all, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_all)
-    elapsed = time.perf_counter() - start
-    print(f"Time for optimisation of all parameters at ONCE: {elapsed:.3f} sec")
-
-    plot_three_panel_priors(
-        rows_all=worst_corner_dict,
-        cfg=cfg,
-        plot_cfg=plot_cfg,
-        output_dir=output_dir,
-        prefix=prefix,
-        sample_n_alpha=30,
-        sample_n_sigma=30,
-        sample_n_beta=30,
-        seed=27,
-        filename="ark_param_three_panel_priors.pdf"
-    )
+    # start = time.perf_counter()
+    # cfg_all = _filter_components(cfg, keep_names=["alpha", "sigma", "beta1", "beta2", "beta3", "beta4", "beta5"])
+    # rows_all, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_all)
+    # elapsed = time.perf_counter() - start
+    # print(f"Time for optimisation of all parameters at ONCE: {elapsed:.3f} sec")
+    #
+    # plot_three_panel_priors(
+    #     rows_all=worst_corner_dict,
+    #     cfg=cfg,
+    #     plot_cfg=plot_cfg,
+    #     output_dir=output_dir,
+    #     prefix=prefix,
+    #     sample_n_alpha=30,
+    #     sample_n_sigma=30,
+    #     sample_n_beta=30,
+    #     seed=27,
+    #     filename="ark_param_three_panel_priors.pdf"
+    # )
 
     plot_complexity_bar(
-        cfg=cfg, plot_cfg=plot_cfg, output_dir=output_dir, m=10000, D=7, P=14, H_total=14,prefix=prefix,filename="ark_computational_cost.pdf",
+        cfg = cfg.ksd.optimize.prior.Composite, plot_cfg=plot_cfg, output_dir=output_dir, m=10000, D=7, P=14, H_total=14,prefix=prefix,filename="ark_computational_cost.pdf",
         nuts_exponent= 5 / 4, use_log10= True,
-        )
+    )
 
     params = ["sigma", "alpha", "beta1", "beta2", "beta3", "beta4", "beta5"]
     for i in range(1, 7):

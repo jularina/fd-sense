@@ -306,7 +306,6 @@ class PosteriorKSDNonParametric(PosteriorKSDBase):
         Compute components of the KSD quadratic form specific to the nonparametric prior term.
         """
         grad_phi_T = self._compute_grad_basis_function_for_prior(basis_func, scale_samples)
-        J = grad_phi_T
         Lambda_m = self._compute_Lambda_for_prior(grad_phi_T)
         b_prior = self._compute_b_prior(grad_phi_T)
         b_cross = self._compute_b_cross_for_prior(grad_phi_T)

@@ -33,7 +33,7 @@ ksd:
     _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
     lengthscale: [[1.0, 0.0], [0.0, 1.0]]
     alpha: 0.5
-    heuristic: False
+    heuristic: True
 
   optimize:
     prior:
@@ -57,6 +57,12 @@ ksd:
               "1_1": 2
               "0_1": 2
               "1_0": 2
+
+      nonparametric:
+        basis_funcs_type: RBFBasisFunctionMultidim
+        basis_funcs_kwargs: { "num_basis_functions": 5, "method": "kmeans", "lengthscale": null, "scale_multiplier": 2}
+        radius_lower_bound: null
+        scale_samples: False
 
 flags:
   plots:

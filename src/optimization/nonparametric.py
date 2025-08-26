@@ -27,7 +27,7 @@ class OptimizationNonparametricBase:
         basis_cls = BASIS_FUNCTIONS_REGISTRY[basis_cls_name]
         basis_kwargs = config.get("basis_funcs_kwargs", {})
 
-        if basis_cls_name == "RBFBasisFunction" or basis_cls_name == "SigmoidBasisFunction":
+        if "RBFBasisFunction" in basis_cls_name or basis_cls_name == "SigmoidBasisFunction":
             basis_kwargs = OmegaConf.to_container(basis_kwargs, resolve=True)
             basis_kwargs["prior_samples"] = self.prior_ksd.samples
             basis_kwargs["posterior_samples"] = self.posterior_ksd.samples
@@ -159,9 +159,6 @@ class OptimizationNonparametricBase:
         print("r:", self.r)
 
         problem = cp.Problem(objective, [constraint1, constraint2])
-
-        # If MOSEK isn't available, you can swap to SCS/CVXOPT:
-        # problem.solve(solver=cp.SCS, eps=1e-6, max_iters=20000, verbose=True)
         problem.solve(solver=cp.MOSEK)
 
         if problem.status not in ["optimal", "optimal_inaccurate"]:

@@ -12,6 +12,10 @@ import matplotlib.cm as cmx
 from matplotlib.patches import Ellipse, Rectangle
 from matplotlib.cm import ScalarMappable
 from scipy.special import logsumexp
+import os
+from typing import Any
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.lines import Line2D
 
 from src.distributions.gaussian import Gaussian
 
@@ -1916,131 +1920,162 @@ def plot_sdp_densities_and_logprior(
     plt.close(fig)
     print(f"[INFO] Saved combined densities/logprior plot: {save_path}")
 
-# def plot_runtime_parametric_nonparametric(
-#     times_list_parametric: list[tuple[int, float]],
-#     times_list_nonparametric: list[tuple[int, int, float]],
-#     plot_cfg: DictConfig,
-#     output_dir: str,
-# ) -> None:
-#     """
-#     Plot execution time vs number of samples:
-#       - Left: Parametric KSD runtime
-#       - Right: Non-parametric KSD runtime (one line per basis size)
-#     """
-#     os.makedirs(output_dir, exist_ok=True)
-#
-#     # Helper
-#     def _deep_get(cfg, path, default=None):
-#         cur = cfg
-#         for key in path.split('.'):
-#             if cur is None: return default
-#             if isinstance(cur, dict):
-#                 cur = cur.get(key, None)
-#             else:
-#                 cur = getattr(cur, key, None)
-#         return default if cur is None else cur
-#
-#     # Matplotlib rc from config
-#     plt.rcParams.update({
-#         "font.size": _deep_get(plot_cfg, "plot.font.size", 12),
-#         "font.family": _deep_get(plot_cfg, "plot.font.family", "serif"),
-#         "text.usetex": bool(_deep_get(plot_cfg, "plot.font.use_tex", False)),
-#         "text.latex.preamble": r"\usepackage{amsmath}",
-#     })
-#
-#     fig_w = float(_deep_get(plot_cfg, "plot.figure.size.width", 6.0))
-#     fig_h = float(_deep_get(plot_cfg, "plot.figure.size.height", 4.0))  # one row, two columns
-#     fig_dpi = int(_deep_get(plot_cfg, "plot.figure.dpi", 150))
-#     lw = float(_deep_get(plot_cfg, "plot.line.width", 2.0))
-#     marker = _deep_get(plot_cfg, "plot.marker.style", "o")
-#     ms = float(_deep_get(plot_cfg, "plot.marker.size", 4.5))
-#     grid_alpha = float(_deep_get(plot_cfg, "plot.grid.alpha", 0.7))
-#     tight = bool(_deep_get(plot_cfg, "plot.figure.tight_layout", True))
-#
-#     names = _deep_get(plot_cfg, "plot.param_latex_names", {}) or {}
-#     x_label = names.get("numPosteriorSamples", r"\# of Posterior Samples")
-#     y_label = names.get("runtimeSeconds", "Time (sec.)")
-#     legend_title = names.get("legendBasisFunctions", r"\# of basis functions")
-#     filename = _deep_get(plot_cfg, "plot.filenames.runtime_param_nonparam", "runtime_parametric_nonparametric.pdf")
-#
-#     # Fine-tuning for spacing and sup xlabel height (lowered)
-#     bottom_margin = float(_deep_get(plot_cfg, "plot.figure.bottom_margin", 0.1))
-#     supxlabel_y = float(_deep_get(plot_cfg, "plot.figure.suplabel_y", 0.004))
-#
-#     # Colors
-#     palette = list(getattr(_deep_get(plot_cfg, "plot.color_palette", {}), "colors", []))
-#     if not palette:
-#         palette = [f"C{i}" for i in range(10)]
-#
-#     # Parametric
-#     if times_list_parametric:
-#         sample_sizes_param, times_param = zip(*times_list_parametric)
-#     else:
-#         sample_sizes_param, times_param = [], []
-#
-#     # Nonparametric grouped by basis size
-#     by_basis = defaultdict(list)
-#     for s, b, t in times_list_nonparametric:
-#         by_basis[int(b)].append((int(s), float(t)))
-#     for b in by_basis:
-#         by_basis[b].sort(key=lambda x: x[0])
-#
-#     # Figure
-#     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(fig_w, fig_h), dpi=fig_dpi, sharex=True)
-#
-#     # Left panel: Parametric
-#     if sample_sizes_param:
-#         ax1.plot(sample_sizes_param, times_param, marker=marker, markersize=ms, linewidth=lw)
-#     ax1.set_ylabel(y_label)
-#     ax1.grid(True, alpha=grid_alpha)
-#     ax1.spines["top"].set_visible(False)
-#     ax1.spines["right"].set_visible(False)
-#
-#     # Right panel: Non-parametric
-#     for i, (b, pts) in enumerate(sorted(by_basis.items())):
-#         s_vals = [p[0] for p in pts]
-#         t_vals = [p[1] for p in pts]
-#         ax2.plot(
-#             s_vals, t_vals,
-#             marker=marker, markersize=ms, linewidth=lw,
-#             label=rf"{b}",
-#             color=palette[i % len(palette)],
-#         )
-#     ax2.grid(True, alpha=grid_alpha)
-#     ax2.spines["top"].set_visible(False)
-#     ax2.spines["right"].set_visible(False)
-#
-#     leg = ax2.legend(
-#         title=legend_title,
-#         loc="lower left",
-#         bbox_to_anchor=(0.02, 0.5),
-#         frameon=True,
-#         fancybox=True,
-#         framealpha=0.95,
-#         borderpad=0.4,
-#         handlelength=1.2,
-#         handletextpad=0.4,
-#         labelspacing=0.25,
-#     )
-#     leg.get_title().set_ha("left")
-#     leg._legend_box.align = "left"
-#
-#     if tight:
-#         fig.tight_layout(rect=(0, bottom_margin, 1, 1))
-#     fig.supxlabel(x_label, y=supxlabel_y, ha="center")
-#
-#     # Save
-#     save_path = os.path.join(output_dir, filename)
-#     fig.savefig(save_path, format="pdf", bbox_inches="tight")
-#     plt.close(fig)
-#     print(f"[INFO] Saved runtime plot: {save_path}")
 
-import os
-from collections import defaultdict
-from typing import Any
-import matplotlib.pyplot as plt
-from matplotlib.legend_handler import HandlerBase
-from matplotlib.lines import Line2D
+def plot_sdp_2d_densities(
+    basis_function,
+    psi_sdp_list: list[np.ndarray],
+    radius_labels: list[float],
+    ksd_estimates: list[float],
+    prior_distribution,
+    plot_cfg,
+    output_dir: str,
+    domain: tuple = ((-5, 5), (-5, 5)),   # ((x_min, x_max), (y_min, y_max))
+    resolution: int | tuple = 200,        # int or (nx, ny)
+    contour_levels: int = 8,              # number of contour levels for overlays
+) -> None:
+    """
+    2D plot:
+      True prior density heatmap + SDP density contours.
+    All colors come from plot_cfg.plot.color_palette.colors:
+      - palette[0] -> heatmap + "true" legend handle
+      - palette[1:], cycled -> SDP contour sets
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    def _f_grid(Phi_XY: np.ndarray, psi: np.ndarray, nx: int, ny: int) -> np.ndarray:
+        """
+        Contract Phi_XY over basis (last axis) with psi, then sum over dimensions.
+        - Phi_XY: (N, 2, B) where B=#basis, 2=#dims
+        - psi:    (B,)
+        Returns f on grid as (ny, nx).
+        """
+        # (N, 2, B) · (B,) -> (N, 2), then sum over dim -> (N,)
+        fN2 = np.tensordot(Phi_XY, psi, axes=([-1], [0]))  # (N, 2)
+        fN = fN2.sum(axis=1)                                # (N,)
+        return fN.reshape(ny, nx)
+
+    # --- rcParams (LaTeX + font) ---
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    # --- Colors (from config only) ---
+    palette = list(getattr(plot_cfg.plot.color_palette, "colors", []))
+    if not palette:
+        raise ValueError("plot_cfg.plot.color_palette.colors is empty; please provide at least one color.")
+    base_color = palette[0]
+    sdp_palette = palette[1:] if len(palette) > 1 else [palette[0]]
+
+    # Single-hue colormap for heatmap (white -> base_color)
+    heatmap_cmap = LinearSegmentedColormap.from_list("base_cmap", ["#ffffff", base_color])
+
+    # --- Names & labels ---
+    names = getattr(plot_cfg.plot, "param_latex_names", {})
+    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    xlabel = names.get("mu_0", r"$\theta_1$")
+    ylabel = names.get("sigma2_0", r"$\theta_2$")
+    ylabel_density = names.get("nonparametric_prior", "Density")
+    true_density_label = names.get("logbaseprior", "True Prior Density")
+    approx_sym = r"$\approx$"
+    geq_sym = r"$\geq$"
+
+    # --- Grid & features ---
+    if isinstance(resolution, int):
+        nx = ny = resolution
+    else:
+        nx, ny = resolution
+    (x_min, x_max), (y_min, y_max) = domain
+    x = np.linspace(x_min, x_max, nx)
+    y = np.linspace(y_min, y_max, ny)
+    dx = float(x[1] - x[0])
+    dy = float(y[1] - y[0])
+    X, Y = np.meshgrid(x, y)  # (ny, nx)
+
+    XY = np.column_stack([X.ravel(), Y.ravel()])  # (ny*nx, 2)
+    Phi_XY = basis_function.evaluate(XY)          # expected (ny*nx, 2, B)
+
+    # True prior (2D)
+    prior_density_true = prior_distribution.pdf(XY).reshape(ny, nx)
+
+    # --- Figure & Axes ---
+    fig, ax = plt.subplots(
+        1, 1,
+        figsize=(plot_cfg.plot.figure.size.width*1.2,
+                 plot_cfg.plot.figure.size.height*1.2),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    # Heatmap
+    im = ax.imshow(
+        prior_density_true,
+        origin="lower",
+        extent=(x_min, x_max, y_min, y_max),
+        aspect="auto",
+        cmap=heatmap_cmap,    # from palette[0]
+        alpha=0.95,
+    )
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(ylabel_density)
+    ax.grid(True, alpha=0.15)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Legend handles: begin with "true" density dashed in base_color
+    legend_handles = [Line2D([0], [0], color=base_color, lw=1.5, linestyle="--", label=true_density_label)]
+
+    # SDP density contours
+    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+        f = _f_grid(Phi_XY, psi, nx, ny)
+        logZ = logsumexp(f) + np.log(dx * dy)
+        p_hat = np.exp(f - logZ)
+
+        color = sdp_palette[i % len(sdp_palette)]
+        label = rf"r {geq_sym} {r_label} ({approx_sym} {ksd:.2f})"
+        ax.contour(
+            X, Y, p_hat,
+            levels=contour_levels,
+            colors=color,
+            linewidths=1.5,
+        )
+        legend_handles.append(Line2D([0], [0], color=color, lw=1.8, label=label))
+
+    # Shared legend (right side)
+    leg = fig.legend(
+        handles=legend_handles,
+        title=ksd_label,
+        loc="center left",
+        bbox_to_anchor=(0.96, 0.5),
+        frameon=False,
+        labelspacing=0.4,
+        handlelength=1.8,
+        handletextpad=0.5,
+        borderpad=0.4,
+    )
+    for t in leg.get_texts():
+        t.set_wrap(True)
+    leg.get_title().set_ha("right")
+    leg._legend_box.align = "right"
+    plt.setp(leg.get_texts(), fontsize=plt.rcParams["font.size"] * 0.9)
+    plt.setp(leg.get_title(), fontsize=plt.rcParams["font.size"] * 0.9)
+
+    # Colorbar
+    cbar_kw = dict(fraction=0.046, pad=0.04)
+    fig.colorbar(im, ax=ax, **cbar_kw)
+
+    if getattr(plot_cfg.plot.figure, "tight_layout", False):
+        plt.tight_layout(rect=[0, 0, 0.95, 1])
+
+    # Save
+    filename = "toy_multivariate_gaussian_nonparametric_densities_only.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved 2D densities-only plot: {save_path}")
+
 
 class _TextOnlyHandler(HandlerBase):
     """Legend handler that reserves space but draws no glyph (text-only row)."""

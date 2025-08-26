@@ -100,7 +100,7 @@ ksd:
                 mu: [ -5, 20 ]
                 sigma: [ 4, 8 ]
               nums:
-                mu: 5
+                mu: 26
                 sigma: 5
           - name: beta1
             family: Gaussian
@@ -109,7 +109,7 @@ ksd:
                 mu: [ -20, 20 ]
                 sigma: [ 3, 7 ]
               nums:
-                mu: 11
+                mu: 41
                 sigma: 5
           - name: beta2
             family: Gaussian
@@ -118,7 +118,7 @@ ksd:
                 mu: [ -20, 20 ]
                 sigma: [ 3, 7 ]
               nums:
-                mu: 11
+                mu: 41
                 sigma: 5
           - name: beta3
             family: Gaussian
@@ -127,7 +127,7 @@ ksd:
                 mu: [ -20, 20 ]
                 sigma: [ 3, 7 ]
               nums:
-                mu: 11
+                mu: 41
                 sigma: 5
           - name: beta4
             family: Gaussian
@@ -136,7 +136,7 @@ ksd:
                 mu: [ -20, 20 ]
                 sigma: [ 3, 7 ]
               nums:
-                mu: 11
+                mu: 41
                 sigma: 5
           - name: beta5
             family: Gaussian
@@ -145,7 +145,7 @@ ksd:
                 mu: [ -20, 20 ]
                 sigma: [ 3, 7 ]
               nums:
-                mu: 11
+                mu: 41
                 sigma: 5
           - name: sigma
             #            family: LogNormal
@@ -162,8 +162,8 @@ ksd:
                 alpha: [ 1.1, 2.5 ]
                 theta: [ 2.0, 4.5 ]
               nums:
-                alpha: 5
-                theta: 10
+                alpha: 15
+                theta: 26
 flags:
   plots:
     generate_plots:

@@ -349,3 +349,201 @@ class SigmoidBasisFunction(BaseBasisFunction):
         s = sp.Float(self.scale)
 
         return 1 / (1 + sp.exp(-(sum((x[i] - c[i]) for i in range(dim)) / s)))
+
+
+class RBFBasisFunctionMultidim(BaseBasisFunction):
+    def __init__(
+        self,
+        posterior_samples: np.ndarray,
+        num_basis_functions: int,
+        prior_samples: Optional[np.ndarray] = None,
+        lengthscale: Optional[np.ndarray] = None,  # per-dim (d,)
+        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        estimation_samples_source: Optional[str] = "prior",
+        scale_multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+    ):
+        """
+        Multidim RBF basis with per-dimension lengthscales l \in R^d (vector).
+
+        Outputs:
+          evaluate(samples) -> (m, d, B):  phi_{i,b}(x) = exp(-(x_i - c_{b,i})^2 / (2 l_i^2))
+          gradient(samples) -> (m, d, B):  d/dx_i phi_{i,b}(x) = -(x_i - c_{b,i})/l_i^2 * phi_{i,b}(x)
+        """
+        self.rng = np.random.default_rng(None)
+
+        if estimation_samples_source == "prior":
+            estimation_samples = prior_samples
+        else:
+            estimation_samples = posterior_samples
+
+        # Choose centers (B, d)
+        self.centers = self._select_centers(
+            posterior_samples=posterior_samples,
+            prior_samples=prior_samples,
+            num_centers=num_basis_functions,
+            method=method,
+        )
+
+        # Per-dimension lengthscale (d,)
+        if lengthscale is None:
+            if estimation_samples is None:
+                # fallback: estimate from centers if samples not provided
+                ls = self._estimate_lengthscale_vector_from_centers(
+                    centers=self.centers,
+                    multiplier=scale_multiplier,
+                    floor_frac=floor_frac,
+                )
+            else:
+                ls = self._estimate_lengthscale_vector_from_samples(
+                    samples=estimation_samples,
+                    multiplier=scale_multiplier,
+                    floor_frac=floor_frac,
+                )
+            self.lengthscale = ls
+        else:
+            ls = np.asarray(lengthscale, dtype=float)
+            if ls.ndim != 1:
+                raise ValueError("lengthscale must be a 1D array of shape (d,).")
+            self.lengthscale = ls
+
+        # Nice printout
+        ls_str = np.array2string(self.lengthscale, precision=4, separator=", ")
+        print(f"Selected per-dimension lengthscales for RBF basis: {ls_str}")
+
+    # ---------- center selection (same strategies as before) ----------
+    def _select_centers(
+        self,
+        posterior_samples: np.ndarray,
+        prior_samples: Optional[np.ndarray],
+        num_centers: int,
+        method: str,
+    ) -> np.ndarray:
+        if prior_samples is not None:
+            X = np.asarray(prior_samples, dtype=float)
+        else:
+            X = np.asarray(posterior_samples, dtype=float)
+
+        m, d = X.shape
+
+        if method == "kmeans":
+            n = min(num_centers, m)
+            return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
+
+        if method == "random":
+            n = min(num_centers, m)
+            idx = self.rng.choice(m, n, replace=False)
+            return X[idx]
+
+        if method == "farthest":
+            return self._farthest_point_sampling(X, min(num_centers, m))
+
+        if method == "kmeans_mix":
+            if prior_samples is None:
+                raise ValueError("kmeans_mix requires prior_samples.")
+            Xp = np.asarray(prior_samples, dtype=float)
+            Xpost = np.asarray(posterior_samples, dtype=float)
+            m_post = min(len(Xpost), max(1, num_centers * 50))
+            m_prior = min(len(Xp), max(1, num_centers * 50))
+            Xmix = np.vstack([
+                Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
+                Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
+            ])
+            return KMeans(n_clusters=min(num_centers, len(Xmix)), random_state=0).fit(Xmix).cluster_centers_
+
+        raise ValueError(f"Unknown center selection method: {method}")
+
+    def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
+        n = X.shape[0]
+        if k <= 0:
+            return np.empty((0, X.shape[1]))
+        if k == 1:
+            return X[[self.rng.integers(0, n)]]
+        idx0 = int(self.rng.integers(0, n))
+        centers_idx = [idx0]
+        dist = cdist(X[[idx0]], X).reshape(-1)
+        for _ in range(1, k):
+            i = int(np.argmax(dist))
+            centers_idx.append(i)
+            dist = np.minimum(dist, cdist(X[[i]], X).reshape(-1))
+        return X[np.array(centers_idx)]
+
+    def _median_heuristic_per_dim(self, x: np.ndarray, jitter: float = 1e-12) -> np.ndarray:
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 2:
+            raise ValueError("reference_data must be a 2D array of shape (n, d).")
+        n, d = x.shape
+        if n < 2:
+            return np.sqrt(np.var(x, axis=0) + jitter)
+
+        diffs = x[:, None, :] - x[None, :, :]  # (n, n, d)
+        iu = np.triu_indices(n, k=1)
+        diffs = diffs[iu]                       # (n*(n-1)/2, d)
+        med_sq = np.median(diffs**2, axis=0)    # (d,)
+        return np.sqrt(med_sq + jitter)         # (d,)
+
+    def _estimate_lengthscale_vector_from_samples(
+        self,
+        samples: np.ndarray,
+        multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+    ) -> np.ndarray:
+        ls = self._median_heuristic_per_dim(samples)
+        floor = floor_frac * np.std(samples, axis=0)
+        ls = np.maximum(multiplier * ls, floor)
+        return ls.astype(float)
+
+    def _estimate_lengthscale_vector_from_centers(
+        self,
+        centers: np.ndarray,
+        multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+    ) -> np.ndarray:
+        ls = self._median_heuristic_per_dim(centers)
+        floor = floor_frac * np.std(centers, axis=0)
+        ls = np.maximum(multiplier * ls, floor)
+        return ls.astype(float)
+
+    # ---------- basis & gradient ----------
+    def evaluate(self, samples: np.ndarray) -> np.ndarray:
+        """
+        Return per-dimension basis values:
+          phi_{i,b}(x) = exp( - (x_i - c_{b,i})^2 / (2 l_i^2) )
+        Shape: (m, d, B)
+        """
+        samples = np.asarray(samples, dtype=float)
+        # diffs: (m, B, d)
+        diffs = samples[:, None, :] - self.centers[None, :, :]
+        # (m, B, d) / (d,)
+        denom = 2.0 * (self.lengthscale**2)  # (d,)
+        vals = np.exp(-(diffs**2) / denom)   # (m, B, d)
+        return np.transpose(vals, (0, 2, 1)) # (m, d, B)
+
+    def gradient(self, samples: np.ndarray) -> np.ndarray:
+        """
+        Per-dimension gradient of the per-dim basis:
+          d/dx_i phi_{i,b}(x) = -(x_i - c_{b,i}) / l_i^2 * phi_{i,b}(x)
+        Shape: (m, d, B)
+        """
+        samples = np.asarray(samples, dtype=float)
+        diffs = samples[:, None, :] - self.centers[None, :, :]  # (m, B, d)
+        denom = 2.0 * (self.lengthscale**2)                     # (d,)
+        phi = np.exp(-(diffs**2) / denom)                       # (m, B, d)
+        # factor: (m, B, d) with division by l_i^2
+        factor = -diffs / (self.lengthscale**2)                 # (m, B, d)
+        grad = factor * phi                                     # (m, B, d)
+        return np.transpose(grad, (0, 2, 1))                    # (m, d, B)
+
+    def symbolic_expression(self, dim: int) -> sp.Expr:
+        """
+        Returns a separable per-dimension RBF expression for the FIRST center b=0:
+          exp( - (x_i - c_{0,i})^2 / (2 l_i^2) )  (for a given i)
+        """
+        x = sp.symbols(f"x0:{dim}")
+        c = self.centers[0]
+        exprs = [
+            sp.exp(-((x[i] - c[i])**2) / (2 * (self.lengthscale[i]**2)))
+            for i in range(dim)
+        ]
+        # return a tuple-like additive or list — here we return a vector symbolic form
+        return sp.Tuple(*exprs)
