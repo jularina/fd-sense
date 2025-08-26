@@ -44,7 +44,6 @@ def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
     path = os.path.join(output_dir, filename)
     fig.savefig(path, format=filename.split(".")[-1], bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved: {path}")
 
 def _palette(plot_cfg, n: int) -> List[str]:
     base = list(plot_cfg.plot.color_palette.colors)
@@ -119,8 +118,20 @@ def _get_component_cfg(cfg, name: str):
             return c
     raise KeyError(f"Component '{name}' not found in cfg.")
 
-def _midpoint_params(ranges: Dict[str, List[float]]) -> Dict[str, float]:
-    return {k: 0.5 * (float(v[0]) + float(v[1])) for k, v in ranges.items()}
+def _parse_family_from_target(target: str) -> str:
+    # e.g. "src.distributions.gaussian.Gaussian" -> "Gaussian"
+    return target.split(".")[-1]
+
+def _get_base_prior_spec(cfg, name: str) -> Tuple[str, Dict[str, float]]:
+    """Read family+params from cfg.data.base_prior.distributions[name]."""
+    d = _deep_get(cfg, f"data.base_prior.distributions.{name}", None)
+    if d is None:
+        raise KeyError(f"Base prior for '{name}' not found in cfg.data.base_prior.distributions")
+    target = d.get("_target_", "")
+    family = _parse_family_from_target(target) if isinstance(target, str) else d.get("family", "")
+    # copy params, excluding _target_
+    params = {k: float(v) for k, v in d.items() if k != "_target_"}
+    return family, params
 
 def _make_pdf(family: str, params: Dict[str, float]):
     """Prefer your DISTRIBUTION_MAP, otherwise fallback for Gaussian/Gamma."""
@@ -132,16 +143,49 @@ def _make_pdf(family: str, params: Dict[str, float]):
         return np.asarray(y).squeeze()
     return f
 
-def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]):
-    low = family.lower()
+
+def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[float, float]:
+    """
+    Choose a reasonable x-range for plotting PDFs, based on a reference prior.
+
+    Supported families (case-insensitive):
+      - "Gaussian" / "Normal":      (mu - 4*sigma, mu + 4*sigma)
+      - "HalfCauchy":               (0, 10*gamma)              # x >= 0
+      - "LogNormal":                (exp(mu_log - 5*sigma_log), exp(mu_log + 5*sigma_log)), clipped at > 0
+      - "Gamma": (shape α, scale θ) (0, mean + 6*sd) where mean=αθ, sd=√α * θ
+
+    Falls back to (-5, 5) if family is unknown.
+    """
+    low = family.strip().lower()
+
+    # Gaussian / Normal
     if low in ("gaussian", "normal"):
-        mu, s = ref_params["mu"], ref_params["sigma"]
-        return (mu - 4 * s, mu + 4 * s)
+        mu = float(ref_params["mu"])
+        s  = float(ref_params["sigma"])
+        return (mu - 4.0 * s, mu + 4.0 * s)
+
+    if low in ("halfcauchy"):
+        gamma = float(ref_params.get("gamma", ref_params.get("scale", 1.0)))
+        return (0.0, 10.0 * gamma)
+
+    # LogNormal with parameters mu_log, sigma_log (accept "sigma-log" typo too)
+    if low == "lognormal":
+        mu_log   = float(ref_params["mu_log"])
+        sigma_log = float(ref_params.get("sigma_log", ref_params.get("sigma-log")))
+        lo = np.exp(mu_log - 5.0 * sigma_log)
+        hi = np.exp(mu_log + 5.0 * sigma_log)
+        # Ensure strictly positive lower bound
+        return (max(1e-8, lo), hi)
+
+    # Gamma with shape alpha and scale theta; support x > 0
     if low == "gamma":
-        a, th = ref_params["alpha"], ref_params["theta"]
-        mean = a * th
-        sd = np.sqrt(a) * th
-        return (0.0, max(1e-8, mean + 6 * sd))
+        alpha = float(ref_params["alpha"])
+        theta = float(ref_params["theta"])
+        mean = alpha * theta
+        sd   = np.sqrt(alpha) * theta
+        return (0.0, max(1e-8, mean + 6.0 * sd))
+
+    # Fallback
     return (-5.0, 5.0)
 
 def _linspace_pad(xmin, xmax, n=1200, pad=0.05):
@@ -163,11 +207,33 @@ def _sample_param_sets(ranges: Dict[str, List[float]], n: int, rng: np.random.Ge
         out.append({k: float(v) for k, v in zip(keys, vals)})
     return out
 
+def _canonicalize_params(params: Dict[str, float], tol: float = 1e-10) -> Tuple[Tuple[str, float], ...]:
+    # Sort keys for stable ordering; round to tolerance to avoid tiny float diffs
+    return tuple(sorted((k, round(float(v), 10)) for k, v in params.items()))
+
+def _group_beta_most_sensitive(rows_all: Dict, beta_names: List[str]) -> List[Tuple[List[str], str, Dict[str, float]]]:
+    """
+    Returns list of groups: [([beta names], family, params_dict_for_group), ...]
+    Group by (family, params) with rounding.
+    """
+    bykey = {}
+    for b in beta_names:
+        fam = rows_all[b]["family"]
+        p = rows_all[b]["params"]
+        key = (fam, _canonicalize_params(p))
+        if key not in bykey:
+            bykey[key] = ([], fam, p)
+        bykey[key][0].append(b)
+    # stable order by first beta index
+    idx = {"beta1":1,"beta2":2,"beta3":3,"beta4":4,"beta5":5}
+    groups = list(bykey.values())
+    groups.sort(key=lambda g: min(idx.get(n, 99) for n in g[0]))
+    return groups
 
 def plot_three_panel_priors(
-    rows_all: Dict,
-    cfg,
-    plot_cfg,
+    rows_all: Dict,               # {'alpha': {...}, 'beta1': {...}, ..., 'sigma': {...}} with 'family' & 'params'
+    cfg,                          # config with families & parameter ranges
+    plot_cfg,                     # plotting config
     output_dir: str,
     prefix: str = "ark_param",
     sample_n_alpha: int = 30,
@@ -175,122 +241,152 @@ def plot_three_panel_priors(
     sample_n_beta: int = 30,      # per-beta cloud count
     seed: int = 123,
     filename: str = None,
-    x_alpha=None,                 # optional manual x-ranges: tuples
+    x_alpha=None,                 # optional manual x-ranges
     x_sigma=None,
     x_beta=None,
 ):
     """
-    Creates a single figure with 3 subplots:
-      (row 1) [alpha | sigma]
-      (row 2) [betas consolidated]
+    Three-panel figure:
+      row 1: [alpha | sigma]
+      row 2: [betas consolidated]
 
-    - Dashed black: Π_ref (midpoint of cfg ranges)
-    - Faint cloud: candidate priors sampled uniformly from cfg ranges
-    - Solid red: most sensitive (from rows_all['...']['params'])
-    - Bottom panel: shows Π_ref once, cloud across ranges for each β, and five red curves β₁..β₅.
-
-    No titles. Legends on each subplot include Π_ref and most-sensitive lines.
+    - Π_ref (dashed black) from cfg midpoint ranges
+    - Candidate clouds from cfg ranges (faint)
+    - Most sensitive: from rows_all['...']['params'].
+      For betas, identical most-sensitive params are GROUPED and drawn in red but with
+      distinct line styles; the legend shows grouped beta names.
     """
     _apply_plot_rc(plot_cfg)
     os.makedirs(output_dir, exist_ok=True)
-    rng = np.random.default_rng(seed)
+    if filename is None:
+        filename = f"{prefix}_three_panel_priors.pdf"
 
-    # Colors
-    palette_full = list(plot_cfg.plot.color_palette.colors)
+    rng = np.random.default_rng(seed)
     col_ref = "black"
     col_red = "red"
+    alpha_cloud = 0.18
+    palette_full = list(plot_cfg.plot.color_palette.colors)
 
-    def _cloud_colors(n: int, skip_first: int = 0) -> List[str]:
+    def _cloud_colors(n: int, skip_first: int = 2) -> List[str]:
         base = palette_full[skip_first:] if skip_first < len(palette_full) else palette_full
-        if not base:
-            base = ["#aaaaaa"]
         reps = int(np.ceil(n / len(base)))
         return (base * reps)[:n]
-
-    alpha_cloud = 0.18
 
     # Figure & grid
     fig = plt.figure(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
         dpi=plot_cfg.plot.figure.dpi
     )
-    gs = fig.add_gridspec(nrows=2, ncols=2, height_ratios=[1.0, 1.0], hspace=0.30, wspace=0.25)
-    ax_alpha = fig.add_subplot(gs[0, 0])  # top-left
-    ax_sigma = fig.add_subplot(gs[0, 1])  # top-right
-    ax_betas = fig.add_subplot(gs[1, :])  # bottom full width
+    plt.subplots_adjust(right=0.82, wspace=0.)
+    gs = fig.add_gridspec(
+        nrows=1, ncols=3,
+        width_ratios=[25, 25, 50],
+        wspace=0.25
+    )
+    ax_alpha = fig.add_subplot(gs[0, 0])  # left (alpha)
+    ax_sigma = fig.add_subplot(gs[0, 1])  # middle (sigma)
+    ax_betas = fig.add_subplot(gs[0, 2])  # right (betas, double width)
 
-    # ---------------- ALPHA PANEL ----------------
+    # ---------------- ALPHA ----------------
+    famA_ref, refA_params = _get_base_prior_spec(cfg, "alpha")
     comp_a = _get_component_cfg(cfg, "alpha")
-    fam_a = comp_a["family"]
     ranges_a = comp_a["parameters_box_range"]["ranges"]
-    ref_a = _midpoint_params(ranges_a)
-    ms_a = rows_all["alpha"]["params"]
+    famA_ms = rows_all["alpha"]["family"]
+    msA_params = rows_all["alpha"]["params"]
 
-    xA = _linspace_pad(*(_auto_x_range_from_ref(fam_a, ref_a) if x_alpha is None else x_alpha))
-    pdf_ref_a = _make_pdf(fam_a, ref_a)
-    pdf_ms_a = _make_pdf(fam_a, ms_a)
+    xA_rng = _auto_x_range_from_ref(famA_ref, refA_params) if x_alpha is None else x_alpha
+    xA = _linspace_pad(*xA_rng)
+    pdf_ref_a = _make_pdf(famA_ref, refA_params)
+    pdf_ms_a  = _make_pdf(famA_ms,  msA_params)
 
-    # reference
     ax_alpha.plot(xA, pdf_ref_a(xA), linestyle="--", color=col_ref, linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$")
-    # candidates
-    for p, c in zip(_sample_param_sets(ranges_a, sample_n_alpha, rng), _cloud_colors(sample_n_alpha, 2)):
-        pdf_c = _make_pdf(fam_a, p)
+    cand_colors = _cloud_colors(sample_n_alpha, skip_first=2)
+    for (p, c) in zip(_sample_param_sets(ranges_a, sample_n_alpha, rng), cand_colors):
+        pdf_c = _make_pdf(comp_a["family"], p)
         ax_alpha.plot(xA, pdf_c(xA), linewidth=0.9, alpha=alpha_cloud, color=c)
-    # most sensitive
     ax_alpha.plot(xA, pdf_ms_a(xA), color=col_red, linewidth=1.8, label="Most sensitive")
-    ax_alpha.legend(frameon=False)
-    ax_alpha.spines["top"].set_visible(False); ax_alpha.spines["right"].set_visible(False)
+    ax_alpha.set_ylabel(_latex_name(plot_cfg, "nonparametric_prior", "prior"))
+    ax_alpha.set_title(
+        _latex_name(plot_cfg, "alpha", r"$\alpha$")
+    )
+    ax_alpha.spines["top"].set_visible(False)
+    ax_alpha.spines["right"].set_visible(False)
 
-    # ---------------- SIGMA PANEL (Gamma) ----------------
-    comp_s = _get_component_cfg(cfg, "sigma")
-    fam_s = comp_s["family"]
+    # ---------------- SIGMA ----------------
+    famS_ref, refS_params = _get_base_prior_spec(cfg, "sigma")  # HalfCauchy(gamma=2.5) from data.base_prior
+    comp_s = _get_component_cfg(cfg, "sigma")                   # candidates from Gamma ranges (per cfg)
     ranges_s = comp_s["parameters_box_range"]["ranges"]
-    ref_s = _midpoint_params(ranges_s)
-    ms_s = rows_all["sigma"]["params"]
+    famS_ms = rows_all["sigma"]["family"]                       # e.g., "Gamma"
+    msS_params = rows_all["sigma"]["params"]
 
-    xS = _linspace_pad(*(_auto_x_range_from_ref(fam_s, ref_s) if x_sigma is None else x_sigma))
-    pdf_ref_s = _make_pdf(fam_s, ref_s)
-    pdf_ms_s = _make_pdf(fam_s, ms_s)
+    xS_rng = _auto_x_range_from_ref(famS_ref, refS_params) if x_sigma is None else x_sigma
+    xS = _linspace_pad(*xS_rng)
+    pdf_ref_s = _make_pdf(famS_ref, refS_params)
+    pdf_ms_s  = _make_pdf(famS_ms,  msS_params)
 
     ax_sigma.plot(xS, pdf_ref_s(xS), linestyle="--", color=col_ref, linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$")
-    for p, c in zip(_sample_param_sets(ranges_s, sample_n_sigma, rng), _cloud_colors(sample_n_sigma, 2)):
-        pdf_c = _make_pdf(fam_s, p)
+    cand_colors = _cloud_colors(sample_n_sigma, skip_first=2)
+    for (p, c) in zip(_sample_param_sets(ranges_s, sample_n_sigma, rng), cand_colors):
+        pdf_c = _make_pdf(comp_s["family"], p)
         ax_sigma.plot(xS, pdf_c(xS), linewidth=0.9, alpha=alpha_cloud, color=c)
     ax_sigma.plot(xS, pdf_ms_s(xS), color=col_red, linewidth=1.8, label="Most sensitive")
-    ax_sigma.legend(frameon=False)
+    ax_sigma.set_title(
+        _latex_name(plot_cfg, "sigma", r"$\sigma$")
+    )
     ax_sigma.spines["top"].set_visible(False); ax_sigma.spines["right"].set_visible(False)
 
-    # ---------------- BETAS PANEL (β1..β5 consolidated) ----------------
-    # assume shared ref across betas (use beta1’s ranges for Π_ref + x-axis)
-    comp_b1 = _get_component_cfg(cfg, "beta1")
-    fam_b = comp_b1["family"]
-    ranges_b = comp_b1["parameters_box_range"]["ranges"]
-    ref_b = _midpoint_params(ranges_b)
-    xB = _linspace_pad(*(_auto_x_range_from_ref(fam_b, ref_b) if x_beta is None else x_beta))
-    pdf_ref_b = _make_pdf(fam_b, ref_b)
+    # ---------------- BETAS (grouped most-sensitive) ----------------
+    beta_names = ["beta1", "beta2", "beta3", "beta4", "beta5"]
+    beta_group_styles = ["-", ":", "--", "-."]
 
-    # draw shared reference once
+    # Shared Π_ref from base_prior (assume same family/params across β’s; use beta1 as source)
+    famB_ref, refB_params = _get_base_prior_spec(cfg, "beta1")
+    xB_rng = _auto_x_range_from_ref(famB_ref, refB_params) if x_beta is None else x_beta
+    xB = _linspace_pad(*xB_rng)
+    pdf_ref_b = _make_pdf(famB_ref, refB_params)
     ax_betas.plot(xB, pdf_ref_b(xB), linestyle="--", color=col_ref, linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$")
 
-    # cloud of candidates for each beta
-    beta_names = ["beta1", "beta2", "beta3", "beta4", "beta5"]
+    # candidate clouds from ranges of each beta
     for bname in beta_names:
         comp_b = _get_component_cfg(cfg, bname)
-        fam_i = comp_b["family"]
-        ranges_i = comp_b["parameters_box_range"]["ranges"]
-        for p, c in zip(_sample_param_sets(ranges_i, sample_n_beta, rng), _cloud_colors(sample_n_beta, 2)):
-            pdf_c = _make_pdf(fam_i, p)
+        ranges_b = comp_b["parameters_box_range"]["ranges"]
+        fam_b_cand = comp_b["family"]
+        cand_colors = _cloud_colors(sample_n_beta, skip_first=2)
+        for (p, c) in zip(_sample_param_sets(ranges_b, sample_n_beta, rng), cand_colors):
+            pdf_c = _make_pdf(fam_b_cand, p)
             ax_betas.plot(xB, pdf_c(xB), linewidth=0.75, alpha=alpha_cloud, color=c)
 
-    # most sensitive (five red lines)
-    for i, bname in enumerate(beta_names, start=1):
-        fam_i = _get_component_cfg(cfg, bname)["family"]
-        ms_i = rows_all[bname]["params"]
-        pdf_ms_i = _make_pdf(fam_i, ms_i)
-        ax_betas.plot(xB, pdf_ms_i(xB), color=col_red, linewidth=1.6, label=fr"$\beta_{i}$")
-
-    ax_betas.legend(frameon=False, ncol=3)
+    ax_betas.set_title(r"$\beta_{1 \cdots 5}$", pad=-9)
+    # ax_betas.set_ylabel(_latex_name(plot_cfg, "nonparametric_prior", "prior"))
     ax_betas.spines["top"].set_visible(False); ax_betas.spines["right"].set_visible(False)
+
+    # group equal most-sensitive betas and draw each group with distinct red linestyle
+    groups = _group_beta_most_sensitive(rows_all, beta_names)
+    legend_handles = []
+    legend_labels  = []
+
+    # Π_ref (only once)
+    legend_handles.append(plt.Line2D([], [], color=col_ref, linestyle="--", linewidth=1.2))
+    legend_labels.append(r"$\Pi_{\mathrm{ref}}$")
+
+    legend_handles.append(plt.Line2D([], [], color=col_red, linestyle="-", linewidth=1.2))
+    legend_labels.append(
+        r"$\Pi$ (sup$_{\gamma \in C_\gamma} L_m(\gamma)$)"
+    )
+
+    for gi, (names, fam_g, params_g) in enumerate(groups):
+        style = beta_group_styles[min(gi, len(beta_group_styles)-1)]
+        pdf_ms = _make_pdf(fam_g, params_g)
+        ax_betas.plot(xB, pdf_ms(xB), color=col_red, linestyle=style, linewidth=1.8)
+
+    fig.legend(
+        legend_handles,
+        legend_labels,
+        loc="lower center",
+        frameon=False,
+        ncol=len(legend_labels),
+        bbox_to_anchor=(0.5, -0.15)
+    )
 
     if getattr(plot_cfg.plot.figure, "tight_layout", True):
         plt.tight_layout()
@@ -414,6 +510,102 @@ def plot_ar_results(y, posterior_samples_init, K=5, plot_cfg=None, save=False, o
         _save_fig(f4,out,_deep_get(plot_cfg,"ar.output.filenames.fig4",f"{prefix}_pairs.pdf"),plot_cfg)
 
     return figs
+
+
+def plot_complexity_bar(
+    cfg: dict,
+    plot_cfg,
+    output_dir: str,
+    m: int,
+    D: int,
+    P: int,
+    H_total: int | None = None,
+    prefix: str = "ark_param",
+    filename: str | None = None,
+    nuts_exponent: float = 5/4,
+    title: str | None = None,
+    use_log10: bool = True,
+):
+    import os, numpy as np, matplotlib.pyplot as plt
+
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+    if filename is None:
+        filename = f"{prefix}_complexity_bar.pdf"
+
+    # --- Infer H_total if not provided
+    comps = cfg.get("components", [])
+    if H_total is None:
+        H_total = 0
+        for c in comps:
+            ranges = c.get("parameters_box_range", {}).get("ranges", {})
+            H_total += len(ranges)
+
+    # --- Compute ∏ G_h
+    Gprod = 1
+    for c in comps:
+        nums = c.get("parameters_box_range", {}).get("nums", {})
+        gk = 1
+        for v in nums.values():
+            gk *= int(v)
+        Gprod *= gk
+
+    # --- Our method terms
+    corners = 2 ** H_total
+    cost_ours_data = (m ** 2) * D
+    cost_ours_corners = corners * (P ** 2)
+    cost_ours_total = cost_ours_data + cost_ours_corners
+
+    # --- MCMC grid term
+    nuts_factor = D ** nuts_exponent
+    cost_mcmc = Gprod * m * nuts_factor
+
+    # --- Assemble bars
+    labels = [
+        "Total cost (ours)",
+        r"$\mathcal{O}(m^2 D)$ (ours)",
+        r"$\mathcal{O}(2^H P^2)$ (ours)",
+        "MCMC-based grid-search",
+    ]
+    values = np.array([cost_ours_total, cost_ours_data, cost_ours_corners, cost_mcmc], dtype=float)
+    heights = np.log10(values) if use_log10 else values
+    ylab = r"$\log_{10}(\text{cost})$" if use_log10 else "cost"
+
+    # --- Get palette colors
+    try:
+        palette = list(plot_cfg.plot.color_palette.colors)
+    except Exception:
+        palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    if len(palette) < len(labels):
+        reps = int(np.ceil(len(labels) / len(palette)))
+        palette = (palette * reps)[:len(labels)]
+
+    # --- Plot
+    fig = plt.figure(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
+        if hasattr(plot_cfg, "plot") else (9, 5),
+        dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
+    )
+    ax = fig.add_subplot(1, 1, 1)
+    x = np.arange(len(labels))
+    ax.bar(x, heights, color=palette[:len(labels)])
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha='right')
+    ax.set_ylabel(ylab)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, bbox_inches="tight")
+
 
 
 

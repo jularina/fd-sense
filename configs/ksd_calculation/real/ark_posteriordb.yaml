@@ -97,73 +97,73 @@ ksd:
             family: Gaussian
             parameters_box_range:
               ranges:
-                mu:    [-20, -19]
-                sigma: [3, 4]
+                mu: [ -5, 20 ]
+                sigma: [ 4, 8 ]
               nums:
-                mu: 2
-                sigma: 2
+                mu: 5
+                sigma: 5
           - name: beta1
             family: Gaussian
             parameters_box_range:
               ranges:
-                mu:    [-20, -19]
-                sigma: [3, 4]
+                mu: [ -20, 20 ]
+                sigma: [ 3, 7 ]
               nums:
-                mu: 2
-                sigma: 2
+                mu: 11
+                sigma: 5
           - name: beta2
             family: Gaussian
             parameters_box_range:
               ranges:
-                mu:    [-20, -19]
-                sigma: [3, 4]
+                mu: [ -20, 20 ]
+                sigma: [ 3, 7 ]
               nums:
-                mu: 2
-                sigma: 2
+                mu: 11
+                sigma: 5
           - name: beta3
             family: Gaussian
             parameters_box_range:
               ranges:
-                mu:    [-20, -19]
-                sigma: [3, 4]
+                mu: [ -20, 20 ]
+                sigma: [ 3, 7 ]
               nums:
-                mu: 2
-                sigma: 2
+                mu: 11
+                sigma: 5
           - name: beta4
             family: Gaussian
             parameters_box_range:
               ranges:
-                mu:    [-20, -19]
-                sigma: [3, 4]
+                mu: [ -20, 20 ]
+                sigma: [ 3, 7 ]
               nums:
-                mu: 2
-                sigma: 2
+                mu: 11
+                sigma: 5
           - name: beta5
             family: Gaussian
             parameters_box_range:
               ranges:
-                mu:    [-20, -19]
-                sigma: [3, 4]
+                mu: [ -20, 20 ]
+                sigma: [ 3, 7 ]
               nums:
-                mu: 2
-                sigma: 2
+                mu: 11
+                sigma: 5
           - name: sigma
-#            family: LogNormal
-#            parameters_box_range:
-#              ranges:
-#                mu_log: [ 1, 2]
-#                sigma_log: [ 1.0, 2.0 ]
-#              nums:
-#                mu_log: 11
-#                sigma_log: 11
+            #            family: LogNormal
+            #            parameters_box_range:
+            #              ranges:
+            #                mu_log: [ 1, 2]
+            #                sigma_log: [ 1.0, 2.0 ]
+            #              nums:
+            #                mu_log: 11
+            #                sigma_log: 11
             family: Gamma
             parameters_box_range:
               ranges:
-                alpha: [ 1.2, 1.3]
-                theta: [ 4.0, 4.1 ]
+                alpha: [ 1.1, 2.5 ]
+                theta: [ 2.0, 4.5 ]
               nums:
-                alpha: 2
-                theta: 2
+                alpha: 5
+                theta: 10
 flags:
   plots:
     generate_plots:

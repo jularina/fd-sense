@@ -18,7 +18,7 @@ def pick_optimizer(cfg: DictConfig, ksd_estimator: PosteriorKSDParametric):
     if hasattr(prior_cfg, "InverseWishart"):
         return OptimizationCornerPointsInverseWishart(ksd_estimator, prior_cfg.InverseWishart)
     if hasattr(prior_cfg, "Composite"):
-        return OptimizationCornerPointsCompositePrior(ksd_estimator, prior_cfg.Composite)
+        return OptimizationCornerPointsCompositePrior(ksd_estimator, prior_cfg.Composite, precomputed_qfs=True)
     raise ValueError(
         "No supported prior found under cfg.ksd.optimize.prior. "
         "Supported: Gaussian, MultivariateGaussian, InverseWishart, Composite"

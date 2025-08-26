@@ -1,3 +1,5 @@
+from functools import cached_property
+
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Tuple
@@ -76,6 +78,35 @@ class PosteriorKSDBase:
         return (2 / self.model.m ** 2) * np.sum(term)
 
     def compute_ksd_for_loss_term(self) -> float:
+        """
+        Direct computation of the KSD value for the loss term.
+
+        Returns:
+            float: KSD value for likelihood component
+        """
+        m, d = self.samples.shape
+        scores = self.model.loss_score(self.samples)
+
+        K = self.kernel.value
+        grad1 = self.kernel.grad_x1
+        grad2 = self.kernel.grad_x2
+        hess = self.kernel.hess_xy
+
+        if hess.ndim == 2:
+            term4 = hess
+        elif hess.ndim == 4:
+            term4 = np.trace(hess, axis1=-2, axis2=-1)
+        else:
+            raise ValueError(f"Unexpected hessian shape: {hess.shape}")
+
+        term1 = np.einsum('ik,jk,ij->ij', scores, scores, K)
+        term2 = np.einsum('ik,ijk->ij', scores, grad2)
+        term3 = np.einsum('jk,ijk->ij', scores, grad1)
+
+        return np.sum(term1 + term2 + term3 + term4) / (m ** 2)
+
+    @cached_property
+    def precomputed_ksd_for_loss_term(self) -> float:
         """
         Direct computation of the KSD value for the loss term.
 
@@ -213,6 +244,20 @@ class PosteriorKSDParametric(PosteriorKSDBase):
         super().__init__(samples=samples, model=model, kernel=kernel)
 
     def compute_ksd_quadratic_form_for_prior(
+        self,
+    ) -> Tuple:
+        """
+        Compute components of the KSD quadratic form specific to the prior term.
+        """
+        JT_aug_T = self._compute_augmented_jacobians_for_prior()
+        Lambda_m = self._compute_Lambda_for_prior(JT_aug_T)
+        b_prior = self._compute_b_prior(JT_aug_T)
+        b_cross = self._compute_b_cross_for_prior(JT_aug_T)
+        b_m = b_prior + b_cross
+        return Lambda_m, b_m, b_prior, b_cross
+
+    @cached_property
+    def precomputed_ksd_quadratic_form_for_prior(
         self,
     ) -> Tuple:
         """

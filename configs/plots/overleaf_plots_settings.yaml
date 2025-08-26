@@ -6,14 +6,13 @@ plot:
 
   figure:
     size:
-      width: 4  # 4 in inches, 2.5 for 4-col
-      height: 3.2 # 3.2 in inches, 1.67 for 4-col
+      width: 4.7  # 4 in inches, 2.5 for 4-col
+      height: 1.7 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: true
 
   color_palette:
     colors:
-      - "#5b9bd5"  # lighter blue
       - "#450314" # dark cherry
       - "#5A051A"  # cherry
 #      - "#D20A2E"  # red
@@ -23,10 +22,10 @@ plot:
 #      - "#FF6B90"  # light-pink
 #      - "#1f77b4"  # blue
 #      - "#D20A2E"   # red (keep)
-      - "#EE1E52"  # pink
+#      - "#EE1E52"  # pink
 #      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
-#      - "#5b9bd5"  # lighter blue
+      - "#5b9bd5"  # lighter blue
 #      - "#009E73"   # forest green
 #      - "#E69F00"   # orange
 #      - "#F0E442"   # golden yellow
@@ -50,11 +49,13 @@ plot:
     prior_beta3: "$\\pi(\\beta_3)$"
     nonparametric_prior: "$\\pi$"
     baseprior: "$\\Pi_\\text{ref}$"
+    candidateprior: "$\\Pi$"
     logbaseprior: "$\\log\\Pi_\\text{ref}$"
     estimatedKSD: "$\\widehat{\\mathrm{KSD}}^2$"
     estimatedposterior: "$\\tilde{\\Pi}^m_\\text{ref}$"
     candidateposterior: "$\\tilde{\\Pi}$"
     estimatedKSDposteriors: "$\\widehat{\\mathrm{KSD}}^2(\\tilde{\\Pi}^m_{\\mathrm{ref}},\\ \\tilde{\\Pi})$"
+    estimatedKSDposteriorsShort: "$\\mathrm{KSD}_\\text{post}$"
     estimatedKSDposteriorsQuadraticForm: "$L_m(\\gamma)$"
     lr: "lr"
 

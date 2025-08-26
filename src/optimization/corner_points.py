@@ -4,6 +4,8 @@ import itertools
 import numpy as np
 from collections import OrderedDict
 from scipy.spatial import ConvexHull
+from itertools import product
+from tqdm import tqdm
 
 from src.distributions.gaussian import Gaussian
 from src.discrepancies.posterior_ksd import PosteriorKSDParametric
@@ -11,6 +13,7 @@ from src.utils.distributions import DISTRIBUTION_MAP
 from src.utils.files_operations import instantiate_from_target_str
 from src.utils.distributions import is_basedistribution_like
 from src.distributions.composite import CompositeProduct
+from src.optimization.corners import get_corners
 
 
 class OptimizationCornerPointsBase:
@@ -313,7 +316,7 @@ class OptimizationCornerPointsCompositePrior:
         - model.set_prior_parameters({"components": params, "combine_rule": ...}, distribution_cls="CompositePrior")
     """
 
-    def __init__(self, posterior_ksd: PosteriorKSDParametric, config: Dict):
+    def __init__(self, posterior_ksd: PosteriorKSDParametric, config: Dict, precomputed_qfs: bool = False):
         self.posterior_ksd = posterior_ksd
         self.combine_rule: str = config.get("combine_rule", "product")
         self.components_cfg: List[Dict[str, Any]] = list(config["components"])
@@ -328,8 +331,8 @@ class OptimizationCornerPointsCompositePrior:
         ]
         # Map each component grid to eta and keep only eta-corners
         self.component_corner_records = [
-            self._component_gamma_corners_from_grid(comp_cfg, grid_lambda)
-            for comp_cfg, grid_lambda in zip(self.components_cfg, self.component_grids_lambda)
+            self._component_corners_from_predefined(comp_cfg)
+            for comp_cfg in self.components_cfg
         ]
         # Expose lambda-params of eta-corners for your existing loops
         self.component_corners = [
@@ -338,20 +341,37 @@ class OptimizationCornerPointsCompositePrior:
 
         self._reset_prior_baseline_for_qf()
 
-        # Precompute QF pieces once
-        (
-            self.Lambda_m_prior,
-            self.b_m_prior,
-            self.b_prior,
-            self.b_cross_prior,
-        ) = self.posterior_ksd.compute_ksd_quadratic_form_for_prior()
-        (
-            self.Lambda_m_loss_lr,
-            self.b_m_loss_lr,
-            self.b_loss_lr,
-            self.b_cross_loss_lr,
-        ) = self.posterior_ksd.compute_ksd_quadratic_form_for_loss()
-        self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
+        # QFs
+        if not precomputed_qfs:
+            (
+                self.Lambda_m_prior,
+                self.b_m_prior,
+                self.b_prior,
+                self.b_cross_prior,
+            ) = self.posterior_ksd.compute_ksd_quadratic_form_for_prior()
+            self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
+        else:
+            (
+                self.Lambda_m_prior,
+                self.b_m_prior,
+                self.b_prior,
+                self.b_cross_prior,
+            ) = self.posterior_ksd.precomputed_ksd_quadratic_form_for_prior
+            self.ksd_for_loss_init = self.posterior_ksd.precomputed_ksd_for_loss_term
+
+
+    def _component_corners_from_predefined(self, comp_cfg):
+        """
+        Prefer analytic corners when available, else fall back to grid + hull.
+        Returns: [{"params": lambda_dict, "eta": eta_vec}, ...]
+        """
+        fam = comp_cfg["family"]
+        ranges_cfg = comp_cfg["parameters_box_range"]["ranges"]
+        ranges_tuples = {k: (float(v[0]), float(v[1])) for k, v in ranges_cfg.items()}
+        recs = get_corners(fam, ranges_tuples)
+        recs = [{"params": r["params"], "eta": np.asarray(r["eta"], dtype=float).ravel()} for r in recs]
+
+        return recs
 
     def _component_gamma_corners_from_grid(self, comp_cfg, grid_lambda):
         """
@@ -383,47 +403,10 @@ class OptimizationCornerPointsCompositePrior:
         if n <= p + 1:
             return sorted(keep_idx.tolist())
 
-        hull = ConvexHull(E_unique, qhull_options='QJ')
+        hull = ConvexHull(E_unique)
         verts_unique = hull.vertices
 
         return sorted(int(keep_idx[i]) for i in verts_unique)
-
-    # def _gamma_extreme_indices_via_hull(self, etas: np.ndarray, decimals: int = 12, area_tol: float = 1e-12):
-    #     E = np.asarray(etas, float)
-    #
-    #     # 1) de-dup with small tolerance (no per-row normalization!)
-    #     Euniq, keep_idx = np.unique(np.round(E, decimals), axis=0, return_index=True)
-    #
-    #     # 2) if tiny set, all are vertices
-    #     n, p = Euniq.shape
-    #     if n <= p + 1:
-    #         return sorted(keep_idx.tolist())
-    #
-    #     # 3) optional affine preconditioning (center+whiten): preserves hull
-    #     M = Euniq.mean(axis=0, keepdims=True)
-    #     X = Euniq - M
-    #     U, s, Vt = np.linalg.svd(X, full_matrices=False)
-    #     W = X @ Vt.T / np.maximum(s, 1e-12)
-    #
-    #     # 4) convex hull with joggle to avoid degeneracy
-    #     hull = ConvexHull(W, qhull_options='QJ')
-    #     verts = hull.vertices.tolist()
-    #
-    #     # 5) prune collinear boundary points (keep only true polygon vertices)
-    #     V = W[verts]
-    #     keep_local = []
-    #     m = len(verts)
-    #     for i in range(m):
-    #         a = V[(i - 1) % m]
-    #         b = V[i]
-    #         c = V[(i + 1) % m]
-    #         # 2D signed area of triangle (a,b,c); if ~0, b is collinear
-    #         area2 = abs(np.cross(b - a, c - b))
-    #         if area2 > area_tol:
-    #             keep_local.append(verts[i])
-    #
-    #     # map back to indices in original 'etas'
-    #     return sorted(int(keep_idx[i]) for i in keep_local)
 
     def _reset_prior_baseline_for_qf(self) -> None:
         """
@@ -513,7 +496,9 @@ class OptimizationCornerPointsCompositePrior:
 
     def evaluate_all_prior_corners(self) -> Tuple:
         results = []
-        for combo in product(*self.component_corners):
+        total = int(np.prod([len(c) for c in self.component_corners]))
+
+        for combo in tqdm(product(*self.component_corners), total=total, desc="Evaluating corners"):
             composite_payload = {
                 comp_cfg["name"]: {"family": comp_cfg["family"], "params": params}
                 for comp_cfg, params in zip(self.components_cfg, combo)
@@ -522,7 +507,6 @@ class OptimizationCornerPointsCompositePrior:
             eta_tilde = self.posterior_ksd.model.prior.augmented_natural_parameters()
             ksd_est = self._evaluate_prior_qf_ksd(eta_tilde)
             results.append((composite_payload, eta_tilde, ksd_est))
-            print(f"Composite corner: {composite_payload} => Estimated KSD: {ksd_est:.3f}")
 
         results.sort(key=lambda x: x[2], reverse=True)
         print(f"Corner with the largest sensitivity {results[0][2]}: {results[0][0]}.")
