@@ -16,6 +16,7 @@ class OptimizationNonparametricBase:
         prior_ksd: PriorKSDNonParametric,
         config: Dict,
         radius_lower_bound: float = 0.0,
+        precomputed_qfs: bool = False
     ):
         """
         Base class to handle nonparametric quadratic form optimization.
@@ -35,18 +36,31 @@ class OptimizationNonparametricBase:
         self.basis_function = basis_cls(**basis_kwargs)
         self._validate_basis_function(self.posterior_ksd.samples.shape[1])
 
-        self.Lambda_m_prior, self.b_m_prior, _, _ = self.posterior_ksd.compute_ksd_quadratic_form_for_nonparametric_prior(
-            self.basis_function, scale_samples=config["scale_samples"])
-        self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
-        self.C_posterior = self.posterior_ksd.compute_hessian_term()
+        if not precomputed_qfs:
+            self.Lambda_m_prior, self.b_m_prior, _, _ = self.posterior_ksd.compute_ksd_quadratic_form_for_nonparametric_prior(
+                self.basis_function, scale_samples=config["scale_samples"])
+            self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
+            self.C_posterior = self.posterior_ksd.compute_hessian_term()
 
-        self.Lambda_prior, self.b_prior = self.prior_ksd.compute_ksd_quadratic_form_for_nonparametric_prior(
-            self.basis_function,
-            scale_samples=config["scale_samples"]
-        )
-        self.Lambda_prior = self._sym(self.Lambda_prior)
-        self.Lambda_m_prior = self._sym(self.Lambda_m_prior)
-        self.C_prior = self.prior_ksd.compute_hessian_term()
+            self.Lambda_prior, self.b_prior = self.prior_ksd.compute_ksd_quadratic_form_for_nonparametric_prior(
+                self.basis_function,
+                scale_samples=config["scale_samples"]
+            )
+            self.Lambda_prior = self._sym(self.Lambda_prior)
+            self.Lambda_m_prior = self._sym(self.Lambda_m_prior)
+            self.C_prior = self.prior_ksd.compute_hessian_term()
+        else:
+            self.Lambda_m_prior, self.b_m_prior, _, _ = self.posterior_ksd.compute_ksd_quadratic_form_for_nonparametric_prior(
+                self.basis_function, scale_samples=config["scale_samples"])
+            self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
+            self.C_posterior = self.posterior_ksd.compute_hessian_term()
+            self.Lambda_prior, self.b_prior = self.prior_ksd.compute_ksd_quadratic_form_for_nonparametric_prior(
+                self.basis_function,
+                scale_samples=config["scale_samples"]
+            )
+            self.Lambda_prior = self._sym(self.Lambda_prior)
+            self.Lambda_m_prior = self._sym(self.Lambda_m_prior)
+            self.C_prior = self.prior_ksd.compute_hessian_term()
 
         # Scale-aware ridge (use trace/D to match the matrix scale)
         D = self.Lambda_prior.shape[0]

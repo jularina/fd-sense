@@ -579,7 +579,7 @@ def run_gaussian_priors_nonparametric_diff_basis_funcs_nums(cfg) -> None:
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
-def run_multivariate_gaussian_priors_nonparametric(cfg) -> None:
+def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
 
@@ -589,18 +589,24 @@ def run_multivariate_gaussian_priors_nonparametric(cfg) -> None:
     psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
     
     model = instantiate(cfg.model, data_config=cfg.data)
-    posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+    posterior_samples = model.posterior_samples_init #model.sample_posterior(cfg.data.posterior_samples_num)
     kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
     ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
     # Nonparametric optimization
-    prior_samples = model.sample_from_base_prior(cfg.data.prior_samples_num)
+    prior_samples = model.prior_samples_init #model.sample_from_base_prior(cfg.data.prior_samples_num)
     kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
     ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
     ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
 
-    for radius_lower_bound in [2.0, 6.0]:
+    # output_dir = os.path.join(get_original_cwd(), "data")
+    # os.makedirs(output_dir, exist_ok=True)
+    # np.save(output_dir+"/posterior_samples.npy", posterior_samples)
+    # np.save(output_dir + "/prior_samples.npy", prior_samples)
+    # np.save(output_dir + "/observations.npy", model.observations)
+
+    for radius_lower_bound in [5.0, 10.0, 15.0]:
         optimizer = OptimizationNonparametricBase(
             ksd_estimator,
             ksd_estimator_prior,
@@ -623,8 +629,65 @@ def run_multivariate_gaussian_priors_nonparametric(cfg) -> None:
         prior_distribution=model.prior_init,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
-        domain=((-40, 40), (-40, 40)),
+        domain=((-10, 25), (-15, 25)),
         resolution=300
+    )
+
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+            config_name="multivariate_gaussian")
+def run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums(cfg) -> None:
+    """
+    Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
+
+    model = instantiate(cfg.model, data_config=cfg.data)
+    posterior_samples = model.posterior_samples_init  # model.sample_posterior(cfg.data.posterior_samples_num)
+    kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+    ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+    print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+
+    # Nonparametric optimization
+    prior_samples = model.prior_samples_init  # model.sample_from_base_prior(cfg.data.prior_samples_num)
+    kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
+    ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
+    ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
+
+    basis_funcs_nums = [5, 10, 15, 20]
+    basis_list = []
+    for basis_funcs_num in basis_funcs_nums:
+        cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
+        optimizer = OptimizationNonparametricBase(
+            ksd_estimator,
+            ksd_estimator_prior,
+            cfg.ksd.optimize.prior.nonparametric,
+            radius_lower_bound=5.0
+        )
+        result_sdp = optimizer.optimize_through_sdp_relaxation()
+        psi_sdp_list.append(result_sdp["psi_opt"])
+        ksd_estimates_list.append(result_sdp["ksd_est"])
+        basis_list.append(optimizer.basis_function)
+
+    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    plot_cfg = load_plot_config(plot_config_path)
+
+    plot_sdp_2d_densities_flexible(
+        basis_functions=basis_list,
+        psi_sdp_list=psi_sdp_list,
+        labels=basis_funcs_nums,
+        ksd_estimates=ksd_estimates_list,
+        label_template=r"B = {label} ({approx} {ksd:.2f})",
+        legend_title=plot_cfg.plot.param_latex_names.get("estimatedKSDposteriors", ""),
+        prior_distribution=model.prior_init,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        domain=((-10, 25), (-15, 25)),
+        resolution=300,
     )
 
 
@@ -817,6 +880,7 @@ if __name__ == "__main__":
     # run_multivariate_gaussian_priors()
     # run_inverse_wishart_priors()
     # run_gaussian_priors_nonparametric_diff_radii()
-    run_multivariate_gaussian_priors_nonparametric()
+    # run_multivariate_gaussian_priors_nonparametric_diff_radii()
+    run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums()
     # run_gaussian_priors_nonparametric_diff_basis_funcs_nums()
     # run_gaussian_priors_diff_samples_num()

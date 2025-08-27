@@ -18,15 +18,15 @@ plot:
 #      - "#D20A2E"  # red
 #      - "#EE1E52"  # pink
 #      - "#6E3D6F" # darker purple
-      - "#7c397d" # purple
+#      - "#7c397d" # purple
 #      - "#FF6B90"  # light-pink
 #      - "#1f77b4"  # blue
 #      - "#D20A2E"   # red (keep)
-#      - "#EE1E52"  # pink
-      - "#F2BDCD"  # light-light-pink
+      - "#EE1E52"  # pink
+#      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
       - "#5b9bd5"  # lighter blue
-#      - "#009E73"   # forest green
+      - "#009E73"   # forest green
 #      - "#E69F00"   # orange
 #      - "#F0E442"   # golden yellow
 #      - "#3F3FFF"   # indigo
@@ -40,6 +40,8 @@ plot:
     mu: "$\\mu$"
     sigma: "$\\sigma$"
     mu_0: "$\\mu_0$"
+    mu_01: "$\\mu_{01}$"
+    mu_02: "$\\mu_{02}$"
     sigma_0: "$\\sigma_0$"
     alpha: "$\\alpha$"
     beta: "$\\beta$"
