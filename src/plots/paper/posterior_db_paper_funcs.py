@@ -524,6 +524,13 @@ def plot_complexity_bar(
     filename: str | None = None,
     nuts_exponent: float = 5/4,
     use_log10: bool = True,
+    # --- Nonparametric options ---
+    include_nonparametric: bool = True,
+    l: int | None = None,          # constraint sample size
+    K: int | None = None,          # SDP size t=K (e.g., AR order)
+    w: float = 2.37,               # matrix mult exponent
+    eps: float = 1e-3,             # SDP accuracy
+    show_nonparam_breakdown: bool = True,  # show eval+SDP separately
 ):
     try:
         _apply_plot_rc(plot_cfg)
@@ -534,7 +541,7 @@ def plot_complexity_bar(
     if filename is None:
         filename = f"{prefix}_complexity_bar.pdf"
 
-    # --- Infer H_total if not provided
+    # --- Infer H_total and components (cfg is expected at ...prior.Composite)
     comps = cfg.get("components", [])
     if H_total is None:
         H_total = 0
@@ -542,6 +549,7 @@ def plot_complexity_bar(
             ranges = c.get("parameters_box_range", {}).get("ranges", {})
             H_total += len(ranges)
 
+    # --- Grid size ∏ G_h
     Gprod = 1
     for c in comps:
         nums = c.get("parameters_box_range", {}).get("nums", {})
@@ -550,27 +558,58 @@ def plot_complexity_bar(
             gk *= int(v)
         Gprod *= gk
 
-    # --- Our method terms
+    # --- Parametric (ours)
     corners = 2 ** H_total
-    cost_ours_data = (m ** 2) * D
-    cost_ours_corners = corners * (P ** 2)
-    cost_ours_total = cost_ours_data + cost_ours_corners
+    cost_ours_data    = (m ** 2) * D                 # O(m^2 D)
+    cost_ours_corners = corners * (P ** 2)           # O(2^H P^2)
 
-    # --- MCMC grid term
+    # labels = [
+    #     r"$\mathcal{O}(m^2 D)$",
+    #     r"$\mathcal{O}(2^H P^2)$",
+    # ]
+    # values = [cost_ours_data, cost_ours_corners]
+    labels = [
+        r"$\mathcal{O}(m^2 D + 2^H P^2)$",
+    ]
+    values = [cost_ours_data]
+
+    # --- Nonparametric: add if requested
+    if include_nonparametric:
+        if l is None:
+            raise ValueError("Nonparametric selected but 'l' (constraint sample size) was not provided.")
+        if K is None:
+            raise ValueError("Nonparametric selected but 'K' (SDP size) was not provided.")
+
+        cost_np_eval = D * ((m ** 2) + (l ** 2))                       # O(D(m^2 + l^2))
+        cost_np_sdp  = (K ** (w + 0.5)) * math.log(1.0 / eps)          # O(K^{w+1/2} log(1/eps))
+        cost_np_total = cost_np_eval + cost_np_sdp
+
+        if show_nonparam_breakdown:
+            labels += [
+                r"$\mathcal{O}(D(m^2{+}l^2) + K^{w+\tfrac12}\log(1/\epsilon))$",
+                # r"$\mathcal{O}(K^{w+\tfrac12}\log(1/\epsilon))$",
+            ]
+            # values += [cost_np_eval, cost_np_sdp]
+            values += [cost_np_eval]
+        else:
+            labels += ["nonparam: total"]
+            values += [cost_np_total]
+
+    # --- Brute-force MCMC grid
     nuts_factor = D ** nuts_exponent
     cost_mcmc = Gprod * m * nuts_factor
 
-    # --- Assemble bars
-    labels = [
-        r"$\mathcal{O}(m^2 D)$ (dominating terms, ours)",
-        r"$\mathcal{O}(2^H P^2)$ (ours)",
-        "MCMC-based grid-search",
+    labels += [
+        # "MCMC-based",
+        r"$\mathcal{O}((\Pi_{h=1}^H G_h)m D^{\frac{5}{4}})$",
     ]
-    values = np.array([cost_ours_data, cost_ours_corners, cost_mcmc], dtype=float)
+    values += [cost_mcmc]
+
+    values = np.array(values, dtype=float)
     heights = np.log10(values) if use_log10 else values
     ylab = r"$\log_{10}(\text{cost})$" if use_log10 else "cost"
 
-    # --- Get palette colors
+    # --- Colors
     try:
         palette = list(plot_cfg.plot.color_palette.colors)
     except Exception:
@@ -579,12 +618,11 @@ def plot_complexity_bar(
         reps = int(np.ceil(len(labels) / len(palette)))
         palette = (palette * reps)[:len(labels)]
 
-    # --- Plot
-    style = "lollipop"  # options: "lollipop", "float_rect", "bar"
-
+    # --- Plot (lightweight look)
+    style = "lollipop"  # "lollipop", "float_rect", or "bar"
     fig = plt.figure(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
-        if hasattr(plot_cfg, "plot") else (9, 5),
+        if hasattr(plot_cfg, "plot") else (10, 5),
         dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
     )
     ax = fig.add_subplot(1, 1, 1)
@@ -593,30 +631,25 @@ def plot_complexity_bar(
     if style == "bar":
         ax.bar(x, heights, color=palette[:len(labels)], width=0.55)
     elif style == "lollipop":
-        # stems
         for xi, yi, c in zip(x, heights, palette):
             ax.vlines(xi, 0, yi, colors=c, linewidth=1.5, alpha=0.9)
-        # markers at the top (small rectangles)
         rect_w = 0.28
         rect_h = 0.25 if use_log10 else 0.02 * np.max(heights)
         for xi, yi, c in zip(x, heights, palette):
-            ax.add_patch(plt.Rectangle((xi - rect_w / 2, yi - rect_h / 2),
+            ax.add_patch(plt.Rectangle((xi - rect_w/2, yi - rect_h/2),
                                        rect_w, rect_h,
                                        facecolor=c, edgecolor=c, alpha=0.9, linewidth=1.5))
     elif style == "float_rect":
-        # only floating rectangles (no stems)
         rect_w = 0.35
         rect_h = 0.28 if use_log10 else 0.02 * np.max(heights)
         for xi, yi, c in zip(x, heights, palette):
-            ax.add_patch(plt.Rectangle((xi - rect_w / 2, yi - rect_h / 2),
+            ax.add_patch(plt.Rectangle((xi - rect_w/2, yi - rect_h/2),
                                        rect_w, rect_h,
                                        facecolor=c, edgecolor=c, alpha=0.2, linewidth=1.8))
 
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=0, ha='center')
-    ax.set_ylabel(r"$\log_{10}(\text{cost})$" if use_log10 else "cost")
-
-    # light styling
+    ax.set_ylabel(ylab)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.grid(axis='y', linestyle=':', alpha=0.35)

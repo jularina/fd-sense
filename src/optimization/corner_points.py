@@ -78,7 +78,9 @@ class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
             eta_tilde = self.model.prior.augmented_natural_parameters()
             ksd_est = self._evaluate_prior_qf_ksd(eta_tilde)
             results.append((corner, eta_tilde, ksd_est))
-            print(f"Corner: {corner} => Estimated KSD: {ksd_est:.6f}")
+            print(f"Corner: {corner} => Estimated KSD: {ksd_est:.3f}")
+
+        results.sort(key=lambda x: x[2], reverse=True)
 
         return results
 

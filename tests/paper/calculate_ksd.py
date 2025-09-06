@@ -681,7 +681,7 @@ def run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums(cfg) -> None
         psi_sdp_list=psi_sdp_list,
         labels=basis_funcs_nums,
         ksd_estimates=ksd_estimates_list,
-        label_template=r"B = {label} ({approx} {ksd:.2f})",
+        label_template=r"K = {label} ({approx} {ksd:.2f})",
         legend_title=plot_cfg.plot.param_latex_names.get("estimatedKSDposteriors", ""),
         prior_distribution=model.prior_init,
         plot_cfg=plot_cfg,

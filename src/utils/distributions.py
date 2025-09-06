@@ -4,6 +4,7 @@ from src.distributions.cauchy import Cauchy, HalfCauchy
 from src.distributions.inverse_wishart import InverseWishart
 from src.distributions.uniform import Uniform
 from src.distributions.gamma import Gamma
+from src.distributions.laplace import Laplace
 
 DISTRIBUTION_MAP = {
     "Gaussian": Gaussian,
@@ -14,6 +15,7 @@ DISTRIBUTION_MAP = {
     "Uniform": Uniform,
     "InverseWishart": InverseWishart,
     "Gamma": Gamma,
+    "Laplace": Laplace
 }
 
 

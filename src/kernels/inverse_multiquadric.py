@@ -7,7 +7,7 @@ from src.utils.typing import ArrayLike
 
 class InverseUnivariateMultiquadricKernel(BaseKernel):
     def __init__(self, lengthscale=1.0, alpha=1.0, heuristic=False, reference_data=None):
-        super().__init__(lengthscale=lengthscale, heuristic=heuristic)
+        super().__init__(lengthscale=lengthscale, heuristic=heuristic, reference_data=reference_data)
         self.alpha = alpha
         self._X1 = self._X2 = np.asarray(reference_data)
         self._sq_dist = self._squared_distance(self._X1, self._X2)

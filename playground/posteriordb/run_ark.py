@@ -118,12 +118,12 @@ def main_for_paper_several_variants(cfg: DictConfig) -> None:
     print("=== Parametric KSD (ArK pooled from the posteriordb) ===")
 
     # 0) One-time instantiate model → samples → kernel → KSD estimator
-    model: BayesianModel = hydra.utils.instantiate(cfg.model, data_config=cfg.data)
-    plot_ar_results(model.observations, model.posterior_samples_init, plot_cfg=plot_cfg, save=True, output_dir=output_dir,
-                    prefix=prefix)
-    posterior_samples = model.posterior_samples_init
-    kernel: BaseKernel = hydra.utils.instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-    ksd_est = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+    # model: BayesianModel = hydra.utils.instantiate(cfg.model, data_config=cfg.data)
+    # plot_ar_results(model.observations, model.posterior_samples_init, plot_cfg=plot_cfg, save=True, output_dir=output_dir,
+    #                 prefix=prefix)
+    # posterior_samples = model.posterior_samples_init
+    # kernel: BaseKernel = hydra.utils.instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+    # ksd_est = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
     # start = time.perf_counter()
     # ksd_value = float(ksd_est.estimate_ksd())
     # elapsed = time.perf_counter() - start
@@ -149,61 +149,77 @@ def main_for_paper_several_variants(cfg: DictConfig) -> None:
     #     filename="ark_param_three_panel_priors.pdf"
     # )
 
+    # plot_complexity_bar(
+    #     cfg = cfg.ksd.optimize.prior.Composite, plot_cfg=plot_cfg, output_dir=output_dir, m=10000, D=7, P=14, H_total=14,prefix=prefix,filename="ark_computational_cost.pdf",
+    #     nuts_exponent= 5 / 4, use_log10= True,
+    # )
+
     plot_complexity_bar(
-        cfg = cfg.ksd.optimize.prior.Composite, plot_cfg=plot_cfg, output_dir=output_dir, m=10000, D=7, P=14, H_total=14,prefix=prefix,filename="ark_computational_cost.pdf",
-        nuts_exponent= 5 / 4, use_log10= True,
+        cfg=cfg.ksd.optimize.prior.Composite,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        m=10_000,
+        D=7,
+        P=14,
+        H_total=14,
+        prefix=prefix,
+        filename="ark_computational_cost.pdf",
+        nuts_exponent=5 / 4,
+        use_log10=True,
+        include_nonparametric=True,
+        l=10_000,
+        K=5,
+        w=2.37,
+        eps=1e-3,
+        show_nonparam_breakdown=True,
     )
 
-    params = ["sigma", "alpha", "beta1", "beta2", "beta3", "beta4", "beta5"]
-    for i in range(1, 7):
-        params_used = params[:i]
-        print(f"Started working with {len(params_used)} parameters.")
-        cfg_new = _filter_components(cfg, keep_names=params_used)
-        start = time.perf_counter()
-        rows_new = _eval_corners_with_cfg(ksd_est, cfg_new)
-        elapsed = time.perf_counter() - start
-        print(f"Time for optimisation of {len(params_used)} parameters: {elapsed:.3f} sec")
-
-    param = "sigma"
-    start = time.perf_counter()
-    cfg_sigma = _filter_components(cfg, keep_names=[param])
-    rows_sigma = _eval_corners_with_cfg(ksd_est, cfg_sigma)
-    elapsed = time.perf_counter() - start
-    print(f"Time for optimisation of 1 parameter {param}: {elapsed:.3f} sec")
-
-    param = "alpha"
-    start = time.perf_counter()
-    cfg_alpha = _filter_components(cfg, keep_names=[param])
-    rows_alpha, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_alpha)
-    elapsed = time.perf_counter() - start
-    print(f"Time for {param}: {elapsed:.3f} sec")
-
-    param = "beta1"
-    start = time.perf_counter()
-    cfg_beta1 = _filter_components(cfg, keep_names=[param])
-    rows_beta1, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta1)
-    elapsed = time.perf_counter() - start
-    print(f"Time for {param}: {elapsed:.3f} sec")
-
-    cfg_beta2 = _filter_components(cfg, keep_names=["beta2"])
-    rows_beta2, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta2)
-
-    cfg_beta3 = _filter_components(cfg, keep_names=["beta3"])
-    rows_beta3, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta3)
-
-    cfg_beta4 = _filter_components(cfg, keep_names=["beta4"])
-    rows_beta4, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta4)
-
-    cfg_beta5 = _filter_components(cfg, keep_names=["beta5"])
-    rows_beta5, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta5)
+    # params = ["sigma", "alpha", "beta1", "beta2", "beta3", "beta4", "beta5"]
+    # for i in range(1, 7):
+    #     params_used = params[:i]
+    #     print(f"Started working with {len(params_used)} parameters.")
+    #     cfg_new = _filter_components(cfg, keep_names=params_used)
+    #     start = time.perf_counter()
+    #     rows_new = _eval_corners_with_cfg(ksd_est, cfg_new)
+    #     elapsed = time.perf_counter() - start
+    #     print(f"Time for optimisation of {len(params_used)} parameters: {elapsed:.3f} sec")
+    #
+    # param = "sigma"
+    # start = time.perf_counter()
+    # cfg_sigma = _filter_components(cfg, keep_names=[param])
+    # rows_sigma = _eval_corners_with_cfg(ksd_est, cfg_sigma)
+    # elapsed = time.perf_counter() - start
+    # print(f"Time for optimisation of 1 parameter {param}: {elapsed:.3f} sec")
+    #
+    # param = "alpha"
+    # start = time.perf_counter()
+    # cfg_alpha = _filter_components(cfg, keep_names=[param])
+    # rows_alpha, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_alpha)
+    # elapsed = time.perf_counter() - start
+    # print(f"Time for {param}: {elapsed:.3f} sec")
+    #
+    # param = "beta1"
+    # start = time.perf_counter()
+    # cfg_beta1 = _filter_components(cfg, keep_names=[param])
+    # rows_beta1, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta1)
+    # elapsed = time.perf_counter() - start
+    # print(f"Time for {param}: {elapsed:.3f} sec")
+    #
+    # cfg_beta2 = _filter_components(cfg, keep_names=["beta2"])
+    # rows_beta2, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta2)
+    #
+    # cfg_beta3 = _filter_components(cfg, keep_names=["beta3"])
+    # rows_beta3, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta3)
+    #
+    # cfg_beta4 = _filter_components(cfg, keep_names=["beta4"])
+    # rows_beta4, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta4)
+    #
+    # cfg_beta5 = _filter_components(cfg, keep_names=["beta5"])
+    # rows_beta5, worst_corner_dict = _eval_corners_with_cfg(ksd_est, cfg_beta5)
 
     # A) beta1 + beta3 (as given)
     # cfg_A = _filter_components(cfg, keep_names=["beta1", "beta3", "sigma"])
     # rows_A = _eval_corners_with_cfg(ksd_est, cfg_A)
-
-    t = 0
-
-    # Plots
 
 
 

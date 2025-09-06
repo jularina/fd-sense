@@ -34,10 +34,14 @@ class BayesianModel(ABC):
             getattr(data_config, "posterior_samples_path", None),
             name="posterior"
         )
+        if self.m is None:
+            self.m = len(self.posterior_samples_init)
         self.prior_samples_init = self._prepare_array_from_presaved_samples(
             getattr(data_config, "prior_samples_path", None),
             name="prior"
         )
+        if self.m_prior is None and self.prior_samples_init:
+            self.m_prior = len(self.prior_samples_init)
 
     def back_to_prior_init(self, *, deep: bool = True):
         """

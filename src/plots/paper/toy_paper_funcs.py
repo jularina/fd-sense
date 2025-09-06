@@ -2039,7 +2039,7 @@ def plot_sdp_2d_densities(
         plt.tight_layout(rect=[0, 0, 0.95, 1])
 
     # Save
-    filename = "toy_multivariate_gaussian_nonparametric_densities_contours_only.pdf"
+    filename = "toy_multivariate_gaussian_model_nonparametric_optimisation_densities_per_radius.pdf"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -2058,7 +2058,7 @@ def plot_sdp_2d_densities_flexible(
     ksd_estimates: list = None,            # optional list; same length as psi_sdp_list
     label_template: str = None,                       # e.g. r"r {geq} {label} ({approx} {ksd:.2f})" or r"B = {label}"
     legend_title: str = None,                         # title above legend
-    true_contour_color: str = "dimgray",              # color for Π_ref contours
+    true_contour_color: str = "grey",              # color for Π_ref contours
 ) -> None:
     """
     2D plot:
@@ -2151,7 +2151,7 @@ def plot_sdp_2d_densities_flexible(
         X, Y, prior_density_true,
         levels=contour_levels,
         colors=true_contour_color,
-        linewidths=1.5,
+        linewidths=1,
     )
 
     ax.set_xlabel(xlabel)
@@ -2161,7 +2161,7 @@ def plot_sdp_2d_densities_flexible(
     ax.spines["right"].set_visible(False)
 
     # Legend handles: Π_ref first
-    legend_handles = [Line2D([0], [0], color=true_contour_color, lw=1.5, label=r"$\Pi_{\mathrm{ref}}$")]
+    legend_handles = [Line2D([0], [0], color=true_contour_color, lw=1, label=r"$\Pi_{\mathrm{ref}}$")]
 
     # --- SDP curves ---
     for i, (psi, label_val, bf) in enumerate(zip(psi_sdp_list, labels, basis_list)):
@@ -2206,7 +2206,7 @@ def plot_sdp_2d_densities_flexible(
         plt.tight_layout(rect=[0, 0, 0.95, 1])
 
     # Save
-    filename = "toy_multivariate_gaussian_nonparametric_densities_contours_only.pdf"
+    filename = "toy_multivariate_gaussian_model_nonparametric_optimisation_densities_per_basis_functions_num.pdf"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
