@@ -38,6 +38,8 @@ class OptimizationCornerPointsBase:
         self.ksd_for_prior_init = self.posterior_ksd.compute_ksd_for_prior_term()
         self.Lambda_m_loss_lr, self.b_m_loss_lr, self.b_loss_lr, self.b_cross_loss_lr = self.posterior_ksd.compute_ksd_quadratic_form_for_loss()
         self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
+        self.ksd_for_cross_term = self.posterior_ksd.compute_cross_term()
+        print(f"KSD terms: prior = {self.ksd_for_prior_init}, loss = {self.ksd_for_loss_init}, cross = {self.ksd_for_cross_term}")
 
     def _generate_corner_points(self) -> List[Dict[str, float]]:
         keys = list(self.param_ranges.keys())

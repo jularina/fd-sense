@@ -3,13 +3,17 @@ data:
     _target_: src.distributions.gaussian.Gaussian
     mu: 2
     sigma: 4
+#  candidate_prior:
+#    _target_: src.distributions.gaussian.Gaussian
+#    mu: 0
+#    sigma: 10 #1.414
   candidate_prior:
     _target_: src.distributions.laplace.Laplace
     mu: 0
     b: 1.376
 #  candidate_prior:
 #    _target_: src.distributions.cauchy.Cauchy
-#    x0: 0
+#    x: 0
 #    gamma: 0.954
   true_dgp:
     _target_: src.distributions.gaussian.Gaussian
@@ -46,6 +50,14 @@ ksd:
             nums:
               mu: 1
               b: 5
+      Gaussian:
+          parameters_box_range:
+            ranges:
+              mu: [ -4, 8]
+              sigma: [1, 1]
+            nums:
+              mu: 13
+              sigma: 1
 
 flags:
   plots:
@@ -54,7 +66,7 @@ flags:
       line_plot: True
       density_plot: True
       quadratic_form: True
-    output_dir: outputs/paper/plots/univariate
+    output_dir: outputs/paper/plots/comparison
 playground:
   save_json: True
   save_csv: True

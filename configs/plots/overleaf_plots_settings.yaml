@@ -1,13 +1,13 @@
 plot:
   font:
-    size: 11  # 32 match Overleaf 10pt font
+    size: 10  # 32 match Overleaf 10pt font
     family: serif  # for LaTeX compatibility
     use_tex: true  # render text with LaTeX
 
   figure:
     size:
-      width: 5.5  # 4 in inches, 2.5 for 4-col
-      height: 1.5 # 3.2 in inches, 1.67 for 4-col
+      width: 5.0  # 4 in inches, 2.5 for 4-col
+      height: 3.2 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: true
 
@@ -46,18 +46,21 @@ plot:
     alpha: "$\\alpha$"
     beta: "$\\beta$"
     prior: "$\\pi(\\mu_0)$"
+    posterior: "$\\tilde{\\pi}$"
+    referenceposterior: "$\\tilde{\\Pi}_{\\mathrm{ref}}$"
+    likelihood: "$p_{\\theta}(x)$"          # OK
     log_prior: "$\\log\\pi$"
     prior_beta1: "$\\pi(\\beta_1)$"
     prior_beta3: "$\\pi(\\beta_3)$"
     nonparametric_prior: "$\\pi$"
-    baseprior: "$\\Pi_\\text{ref}$"
+    baseprior: "$\\Pi_{\\mathrm{ref}}$"
     candidateprior: "$\\Pi$"
-    logbaseprior: "$\\log\\Pi_\\text{ref}$"
+    logbaseprior: "$\\log\\Pi_{\\mathrm{ref}}$"             # CHANGED
     estimatedKSD: "$\\widehat{\\mathrm{KSD}}^2$"
-    estimatedposterior: "$\\tilde{\\Pi}^m_\\text{ref}$"
+    estimatedposterior: "$\\tilde{\\Pi}^m_{\\mathrm{ref}}$"  # CHANGED
     candidateposterior: "$\\tilde{\\Pi}$"
     estimatedKSDposteriors: "$\\widehat{\\mathrm{KSD}}^2(\\tilde{\\Pi}^m_{\\mathrm{ref}},\\ \\tilde{\\Pi})$"
-    estimatedKSDposteriorsShort: "$\\mathrm{KSD}_\\text{post}$"
+    estimatedKSDposteriorsShort: "$\\mathrm{KSD}_{\\mathrm{post}}$"  # CHANGED
     estimatedKSDposteriorsQuadraticForm: "$L_m(\\gamma)$"
     lr: "lr"
 
