@@ -133,20 +133,21 @@ def exponential_corners(ranges: Dict[str, Tuple[float, float]]) -> List[Record]:
 
 def lognormal_corners(ranges):
     """
-    LogNormal parameterized by (mu, sigma) where log X ~ N(mu, sigma^2).
-    Natural parameters (minimal): eta = [ mu/sigma^2,  -1/(2 sigma^2) ].
-    ranges: {"mu": (mu_min, mu_max), "sigma": (s_min, s_max)}
+    LogNormal parameterized by (mu_log, sigma_log) where log X ~ N(mu_log, sigma_log^2).
+    Natural parameters (minimal): eta = [ mu_log/sigma_log^2,  -1/(2 sigma_log^2) ].
+
+    ranges: {"mu_log": (mu_min, mu_max), "sigma_log": (s_min, s_max)}
     Returns: list of {"params": {...}, "eta": np.ndarray}
     """
-    mu_min, mu_max = float(ranges["mu"][0]), float(ranges["mu"][1])
-    s_min,  s_max  = float(ranges["sigma"][0]), float(ranges["sigma"][1])
+    mu_min, mu_max = float(ranges["mu_log"][0]), float(ranges["mu_log"][1])
+    s_min, s_max = float(ranges["sigma_log"][0]), float(ranges["sigma_log"][1])
 
     recs = []
     for mu in (mu_min, mu_max):
         for s in (s_min, s_max):
             s2 = s * s
             eta = np.array([mu / s2, -0.5 / s2], dtype=float)
-            recs.append({"params": {"mu": mu, "sigma": s}, "eta": eta})
+            recs.append({"params": {"mu_log": mu, "sigma_log": s}, "eta": eta})
     return recs
 
 

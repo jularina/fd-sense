@@ -316,3 +316,15 @@ class GaussianARLogLikelihood(BaseLoss):
         g_gamma = -self.n / sigma + Q / (sigma * sigma2)  # (m,1)
 
         return np.concatenate([g_alpha, g_beta, g_gamma], axis=1)  # (m, 2+K)
+
+
+class GaussianLogLikelihoodWithGivenGrads(BaseLoss):
+    """
+    Gaussian log-likelihood with given grads for the posterior samples.
+    """
+
+    def __init__(self):
+        self.grad_log_likelihood = None
+
+    def grad_log_pdf(self) -> np.ndarray:
+        return self.grad_log_likelihood

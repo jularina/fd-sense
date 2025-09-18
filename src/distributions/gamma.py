@@ -23,7 +23,6 @@ class Gamma(BaseDistribution):
         assert theta > 0, "Scale must be positive."
         self.alpha = alpha
         self.theta = theta
-        # log normalizing constant: - (α log θ + log Γ(α))
         self._log_norm_const = - (self.alpha * np.log(self.theta) + math.lgamma(self.alpha))
 
     def sample(self, n_samples: int = 1) -> np.ndarray:

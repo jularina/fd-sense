@@ -52,11 +52,11 @@ ksd:
             family: Gaussian
             parameters_box_range:
               ranges:
-                mu: [ -15, 5 ]
-                sigma: [ 3, 7 ]
+                mu: [ -15, 0 ]
+                sigma: [ 2, 5 ]
               nums:
-                mu: 41
-                sigma: 5
+                mu: 16
+                sigma: 9
           - name: theta2
             family: Gaussian
             parameters_box_range:

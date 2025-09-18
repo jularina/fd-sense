@@ -76,13 +76,10 @@ class ArkBayesianModel(ABC):
         if len(y) != T:
             raise ValueError(f"Mismatch: T={T} but len(y)={len(y)}.")
 
-        # Inform loss (build sufficient stats)
-        # NOTE: must be a loss that supports AR(K), e.g., GaussianARLogLikelihood
         if hasattr(self.loss, "set_data"):
             self.loss.set_data(y, K)
 
-        # Observations for general bookkeeping (not used by AR loss)
-        obs = y[K:].reshape(-1, 1)  # (n,1)
+        obs = y[K:].reshape(-1, 1)
         return obs, K
 
     def _norm_warmup(self, warmup, n_chains: int):
@@ -109,9 +106,6 @@ class ArkBayesianModel(ABC):
         return np.concatenate(trimmed, axis=0)
 
     def _flatten_param_draws(self, name: str, arr: np.ndarray) -> Tuple[np.ndarray, List[str]]:
-        """
-        Flatten (n_draws, *shape) -> (n_draws, k) and produce colnames.
-        """
         if arr.ndim == 1:
             flat = arr.reshape(-1, 1)
             cols = [name]
@@ -174,32 +168,25 @@ class ArkBayesianModel(ABC):
         if combine_rule != "product":
             raise NotImplementedError("Only product composites are supported right now.")
 
-        # --- choose a clean base to overlay on ---
         base = self.prior_init if reset_from_init else self.prior
 
         if not isinstance(base, CompositeProduct):
             raise TypeError("Expected CompositeProduct as base prior.")
 
-        # Deep-copy base to avoid mutating prior_init
         base_names = list(base.names)
         base_map = {n: copy.deepcopy(c) for n, c in zip(base.names, base.components)}
-
-        # Start from the clean base and overlay user-specified components
         new_map: Dict[str, Any] = dict(base_map)
 
         for name, spec in components.items():
-            # 1) already-instantiated distribution
             if is_basedistribution_like(spec):
                 new_map[name] = spec
                 continue
 
-            # 2) hydra-style instantiation
             if isinstance(spec, dict) and "_target_" in spec:
                 kwargs = {k: v for k, v in spec.items() if k != "_target_"}
                 new_map[name] = instantiate_from_target_str(spec["_target_"], kwargs)
                 continue
 
-            # 3) family/params shorthand
             if isinstance(spec, dict) and "family" in spec:
                 fam = spec["family"]
                 params = spec.get("params", {k: v for k, v in spec.items() if k != "family"})
@@ -209,7 +196,6 @@ class ArkBayesianModel(ABC):
                 new_map[name] = cls(**params)
                 continue
 
-            # 4) bare params: reuse the *base* component's class (not the current self.prior)
             if isinstance(spec, dict) and name in base_map:
                 cls = base_map[name].__class__
                 new_map[name] = cls(**spec)
@@ -220,13 +206,11 @@ class ArkBayesianModel(ABC):
                 f"a dict with '_target_', a dict with 'family'/params, or bare params matching a base component."
             )
 
-        # Preserve base ordering; append any truly new names at the end
         ordered_map: Dict[str, Any] = {n: new_map[n] for n in base_names if n in new_map}
         for n, v in new_map.items():
             if n not in ordered_map:
                 ordered_map[n] = v
 
-        # Finalize
         self.prior = CompositeProduct(distributions=ordered_map)
 
     def set_lr_parameter(self, lr: float) -> None:

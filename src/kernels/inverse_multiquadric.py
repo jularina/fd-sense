@@ -86,6 +86,7 @@ class InverseMultivariateMultiquadricKernel(BaseKernel):
         else:
             self.lengthscale = np.asarray(lengthscale, dtype=np.float64)
 
+        print(f"Lengthscale is {self.lengthscale}..")
         self.M = self._compute_inverse_scale_matrix(d)
 
         self.X1M = self._X1 @ self.M
