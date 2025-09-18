@@ -100,17 +100,15 @@ def plot_turin_four_theta_priors(
     col_cand = "red"
 
     theta_labels = {
-        "theta_1": r"$\theta_1$",
-        "theta_2": r"$\theta_2$",
-        "theta_3": r"$\theta_3$",
-        "theta_4": r"$\theta_4$",
+        "theta_1": r"$\mathrm{G}_0$",
+        "theta_2": r"$T$",
+        "theta_3": r"$\nu$",
+        "theta_4": r"$\sigma_W^2$",
     }
 
     for ax, tname in zip(axes, ["theta_1", "theta_2", "theta_3", "theta_4"]):
-        # base prior (Uniform from cfg)
         low, high = _base_uniform_params(tname)
         base = _make_dist("Uniform", {"low": low, "high": high})
-        # candidate (largest sensitivity)
         cand_info = largest_sens[tname]
         cand_fam = cand_info["family"]
         cand_params = cand_info["params"]

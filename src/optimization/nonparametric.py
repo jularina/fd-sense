@@ -142,7 +142,13 @@ class OptimizationNonparametricBase:
             Lp = self._pinv_psd(self.Lambda_prior_reg)
             quad_term = -0.25 * float(self.b_prior.T @ (Lp @ self.b_prior))
 
-        print(f"Min radius: {quad_term}.")
+        print(f"Computed min radius: {quad_term}.")
+        if quad_term < 0:
+            quad_term = 0
+
+        print(f"C_prior is {self.C_prior}.")
+        print(f"Updates min radius: {quad_term}.")
+        print(f"Chosen min radius: {quad_term + self.C_prior}.")
         return float(quad_term + self.C_prior)
 
     def optimize_through_sdp_relaxation(self):

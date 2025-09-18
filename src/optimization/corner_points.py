@@ -320,11 +320,18 @@ class OptimizationCornerPointsCompositePrior:
         - model.set_prior_parameters({"components": params, "combine_rule": ...}, distribution_cls="CompositePrior")
     """
 
-    def __init__(self, posterior_ksd: PosteriorKSDParametric, config: Dict, precomputed_qfs: bool = False):
+    def __init__(self, posterior_ksd: PosteriorKSDParametric, config: Dict, loss_config: Dict, precomputed_qfs: bool = False):
         self.posterior_ksd = posterior_ksd
         self.combine_rule: str = config.get("combine_rule", "product")
         self.components_cfg: List[Dict[str, Any]] = list(config["components"])
         self._validate_components()
+
+        # QFs for loss
+        self.loss_config = loss_config
+        self.loss_lr_corners= self._generate_loss_lr_corner_points()
+        self.loss_lr_full_grid = self._generate_full_loss_lr_grid()
+        self.ksd_for_prior_init = self.posterior_ksd.compute_ksd_for_prior_term()
+        self.Lambda_m_loss_lr, self.b_m_loss_lr, self.b_loss_lr, self.b_cross_loss_lr = self.posterior_ksd.compute_ksd_quadratic_form_for_loss()
 
         # Per-component corner lists and full grids
         self.component_corners_lambda: List[List[Dict[str, float]]] = [
@@ -345,7 +352,7 @@ class OptimizationCornerPointsCompositePrior:
 
         self._reset_prior_baseline_for_qf()
 
-        # QFs
+        # QFs for prior
         if not precomputed_qfs:
             (
                 self.Lambda_m_prior,
@@ -534,3 +541,48 @@ class OptimizationCornerPointsCompositePrior:
             for comp_cfg, corners in zip(self.components_cfg, self.component_corners_lambda)
         ]
         return results, corner_summaries
+
+    def _generate_loss_lr_corner_points(self) -> List[Dict[str, float]]:
+        param_ranges = self.loss_config["parameters_box_range"]["ranges"]
+        keys = list(param_ranges.keys())
+        endpoints = [[bounds[0], bounds[1]] for bounds in param_ranges.values()]
+        all_combinations = list(product(*endpoints))
+        return [dict(zip(keys, values)) for values in all_combinations]
+
+
+    def _generate_full_loss_lr_grid(self) -> dict:
+        param_ranges = self.loss_config["parameters_box_range"]["ranges"]
+        param_nums = self.loss_config["parameters_box_range"]["nums"]
+        lr_grid = {"lr":np.linspace(param_ranges["lr"][0], param_ranges["lr"][1], param_nums["lr"])}
+
+        return lr_grid
+
+    def evaluate_all_lr_corners(self) -> List:
+        self.posterior_ksd.model.back_to_prior_candidate()
+        results = []
+        for corner in self.loss_lr_corners:
+            self.posterior_ksd.model.set_lr_parameter(corner["lr"])
+            lr = self.posterior_ksd.model.loss_lr
+            ksd_est = lr**2 * self.Lambda_m_loss_lr + self.b_m_loss_lr * lr + self.ksd_for_prior_init
+            results.append((corner, ksd_est))
+            print(f"Corner: {corner} => Estimated KSD: {ksd_est:.6f}")
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        print(f"Corner with the largest sensitivity {results[0][1]}: {results[0][0]}.")
+
+        return results
+
+    def evaluate_all_lr_grid(self) -> List:
+        self.posterior_ksd.model.back_to_prior_candidate()
+        results = []
+        for lr in self.loss_lr_full_grid["lr"]:
+            self.posterior_ksd.model.set_lr_parameter(lr)
+            lr = self.posterior_ksd.model.loss_lr
+            ksd_est = lr**2 * self.Lambda_m_loss_lr + self.b_m_loss_lr * lr + self.ksd_for_prior_init
+            results.append((lr, ksd_est))
+            print(f"Lr: {lr} => Estimated KSD: {ksd_est:.6f}")
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        print(f"Lr with the largest sensitivity {results[0][1]}: {results[0][0]}.")
+
+        return results

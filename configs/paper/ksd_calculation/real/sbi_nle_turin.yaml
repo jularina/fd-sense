@@ -186,6 +186,14 @@ ksd:
         radius_lower_bound: null
         scale_samples: False
 
+    loss:
+      GaussianLogLikelihoodWithGivenGrads:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.01, 2.5 ]
+          nums:
+            lr: 21
+
 flags:
   plots:
     output_dir: outputs/paper/plots/sbi_turin

@@ -70,8 +70,12 @@ def main(cfg: DictConfig) -> None:
     ksd_value = float(ksd_est.estimate_ksd())
     print(f"[KSD] Posterior KSD (baseline prior): {ksd_value:.2f}")
 
-    # Parametric
-    optimizer = OptimizationCornerPointsCompositePrior(ksd_est, cfg.ksd.optimize.prior.Composite, precomputed_qfs=False)
+    # Parametric prior
+    optimizer = OptimizationCornerPointsCompositePrior(ksd_est,
+                                                       cfg.ksd.optimize.prior.Composite,
+                                                       cfg.ksd.optimize.loss.GaussianLogLikelihoodWithGivenGrads,
+                                                       precomputed_qfs=False
+                                                       )
     qf_corners, corner_largest_sens = optimizer.evaluate_all_prior_corners()
     rows = []
     for corners in qf_corners:
@@ -84,6 +88,9 @@ def main(cfg: DictConfig) -> None:
     for r in rows_sorted:
         print("  ", r)
 
+    # Parametric lr
+    lr_corners = optimizer.evaluate_all_lr_corners()
+    lr_grid = optimizer.evaluate_all_lr_grid()
 
     # Non-parametric
     ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
@@ -92,7 +99,7 @@ def main(cfg: DictConfig) -> None:
     ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
     psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
 
-    for radius_lower_bound in [0.5, 20]:
+    for radius_lower_bound in [1, 2, 3]:
         optimizer = OptimizationNonparametricBase(
             ksd_estimator,
             ksd_estimator_prior,
