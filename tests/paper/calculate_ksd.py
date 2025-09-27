@@ -754,6 +754,71 @@ def run_gaussian_priors_diff_samples_num(cfg) -> None:
         output_dir,
     )
 
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
+    """
+    Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    times_list_parametric, times_list_nonparametric = [], []
+    samples_nums_list = [int(x) for x in np.linspace(1000, 10000, 10)]
+    basis_funcs_num_list = [int(x) for x in np.linspace(5, 15, 3)]
+    # samples_nums_list = [int(x) for x in np.linspace(1000, 3000, 3)]
+    # basis_funcs_num_list = [int(x) for x in np.linspace(5, 10, 2)]
+
+    for sample_nums in samples_nums_list:
+        cfg.data.posterior_samples_num = sample_nums
+        model = instantiate(cfg.model, data_config=cfg.data)
+        posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+
+        start = time.perf_counter()
+        kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+        optimizer = OptimizationCornerPointsMultivariateGaussian(ksd_estimator, cfg.ksd.optimize.prior.MultivariateGaussian)
+        qf_prior = optimizer.evaluate_all_prior_corners()
+        elapsed = time.perf_counter() - start
+        largest_ksd = max(qf_prior, key=lambda x: x[2])[2]
+        times_list_parametric.append((sample_nums, elapsed))
+        print(f"***Parametric*** Samples: {sample_nums}, Initial KSD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
+
+    for sample_nums in samples_nums_list:
+        for basis_funcs_num in basis_funcs_num_list:
+            cfg.data.posterior_samples_num = sample_nums
+            cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
+            model = instantiate(cfg.model, data_config=cfg.data)
+            posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
+
+            start = time.perf_counter()
+            kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+            prior_samples = model.sample_from_base_prior(cfg.data.prior_samples_num)
+            kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
+            ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
+            ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
+            optimizer = OptimizationNonparametricBase(
+                ksd_estimator,
+                ksd_estimator_prior,
+                cfg.ksd.optimize.prior.nonparametric,
+            )
+            result_sdp = optimizer.optimize_through_sdp_relaxation()
+            elapsed = time.perf_counter() - start
+            largest_ksd = result_sdp["ksd_est"]
+            times_list_nonparametric.append((sample_nums, basis_funcs_num, elapsed))
+            print(f"***Non-parametric*** Samples: {sample_nums}, Basis Functions num: {basis_funcs_num}, Initial KSD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
+
+    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    plot_cfg = load_plot_config(plot_config_path)
+    plot_runtime_parametric_nonparametric(
+        times_list_parametric,
+        times_list_nonparametric,
+        plot_cfg,
+        output_dir,
+    )
+
+
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_gaussian_lr(cfg) -> None:
     """
@@ -880,7 +945,8 @@ if __name__ == "__main__":
     # run_multivariate_gaussian_priors()
     # run_inverse_wishart_priors()
     # run_gaussian_priors_nonparametric_diff_radii()
-    run_multivariate_gaussian_priors_nonparametric_diff_radii()
+    # run_multivariate_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums()
-    # run_gaussian_priors_nonparametric_diff_basis_funcs_nums()
-    # run_gaussian_priors_diff_samples_num()
+    run_gaussian_priors_nonparametric_diff_basis_funcs_nums()
+    run_gaussian_priors_diff_samples_num()
+    # run_multivariate_gaussian_priors_diff_samples_num()

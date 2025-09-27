@@ -65,9 +65,9 @@ class TurinBayesianModel(ABC):
         posterior_samples = ckpt["posterior_samples_nle"].cpu().numpy()
         prior_samples = ckpt["theta_nle"].cpu().numpy()
         observations = ckpt["obs_x"].cpu().numpy()
-        likelihod_grads = ckpt["likelihod_grads"].cpu().numpy()
+        likelihood_grads = ckpt["likelihod_grads"].cpu().numpy()
 
-        return observations, posterior_samples, likelihod_grads, prior_samples
+        return observations, posterior_samples, likelihood_grads, prior_samples
 
     def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
         return self.prior_init.sample(n_samples)

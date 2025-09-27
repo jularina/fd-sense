@@ -28,7 +28,7 @@ class OptimizationNonparametricBase:
         basis_cls = BASIS_FUNCTIONS_REGISTRY[basis_cls_name]
         basis_kwargs = config.get("basis_funcs_kwargs", {})
 
-        if "RBFBasisFunction" in basis_cls_name or basis_cls_name == "SigmoidBasisFunction":
+        if "RBFBasisFunction" in basis_cls_name or "SigmoidBasisFunction" in basis_cls_name:
             basis_kwargs = OmegaConf.to_container(basis_kwargs, resolve=True)
             basis_kwargs["prior_samples"] = self.prior_ksd.samples
             basis_kwargs["posterior_samples"] = self.posterior_ksd.samples
@@ -77,6 +77,7 @@ class OptimizationNonparametricBase:
             radius_lower_bound = config["radius_lower_bound"]
 
         self.r = self._compute_min_radius() + radius_lower_bound
+        print(f"Radius after lower bound additions {self.r}.")
         self.prior_ksd_val = self.prior_ksd.estimate_ksd()
 
     def _sym(self, A: np.ndarray) -> np.ndarray:
@@ -118,7 +119,10 @@ class OptimizationNonparametricBase:
         w_inv[mask] = 1.0 / w[mask]
         return (V * w_inv) @ V.T
 
-    def _evaluate_prior_qf_ksd(self, eta_tilde: np.ndarray) -> float:
+    def _evaluate_prior_qf_ksd(self, eta_tilde: np.ndarray, wo_loss: bool = False) -> float:
+        if wo_loss:
+            return eta_tilde @ self.Lambda_m_prior_reg @ eta_tilde + self.b_m_prior @ eta_tilde
+
         return eta_tilde @ self.Lambda_m_prior_reg @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
 
     def _validate_basis_function(self, dim: int):
@@ -146,24 +150,26 @@ class OptimizationNonparametricBase:
         if quad_term < 0:
             quad_term = 0
 
-        print(f"C_prior is {self.C_prior}.")
-        print(f"Updates min radius: {quad_term}.")
-        print(f"Chosen min radius: {quad_term + self.C_prior}.")
-        return float(quad_term + self.C_prior)
+        print(f"Updated min radius: {quad_term}.")
+        return float(quad_term)
 
-    def optimize_through_sdp_relaxation(self):
+    def optimize_through_sdp_relaxation(self, nuggets_to_obj: bool = True,):
         D = self.b_m_prior.shape[0]
         psi = cp.Variable(D)
         Psi = cp.Variable((D, D), symmetric=True)
 
         lam = 1e-2
-        objective = cp.Minimize(
-            cp.trace(-self.Lambda_m_prior_reg @ Psi) - self.b_m_prior @ psi + lam * cp.trace(Psi)
-        )
+        if nuggets_to_obj:
+            objective = cp.Minimize(
+                cp.trace(-self.Lambda_m_prior_reg @ Psi) - self.b_m_prior @ psi + lam * cp.trace(Psi)
+            )
+        else:
+            objective = cp.Minimize(
+                cp.trace(-self.Lambda_m_prior_reg @ Psi) - self.b_m_prior @ psi
+            )
         constraint1 = (
             cp.trace(self.Lambda_prior_reg @ Psi)
             + self.b_prior @ psi
-            + self.C_prior
             <= self.r
         )
         schur_matrix = cp.bmat([
@@ -184,7 +190,7 @@ class OptimizationNonparametricBase:
         if problem.status not in ["optimal", "optimal_inaccurate"]:
             raise ValueError(f"SDP optimization failed: {problem.status}")
 
-        ksd_est = self._evaluate_prior_qf_ksd(psi.value)
+        ksd_est = self._evaluate_prior_qf_ksd(psi.value, wo_loss=True)
         gap = np.linalg.norm(Psi.value - np.outer(psi.value, psi.value), ord='fro')
         print("||Ψ - ψψ^T||_F:", gap)
         print("eig(Psi) min/max:", np.min(np.linalg.eigvalsh(Psi.value)), np.max(np.linalg.eigvalsh(Psi.value)))

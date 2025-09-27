@@ -7,7 +7,7 @@ from scipy.spatial import ConvexHull
 from itertools import product
 from tqdm import tqdm
 
-from src.distributions.gaussian import Gaussian
+from src.distributions.gaussian import Gaussian, MultivariateGaussian
 from src.discrepancies.posterior_ksd import PosteriorKSDParametric
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.utils.files_operations import instantiate_from_target_str
@@ -117,7 +117,7 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
         self,
         posterior_ksd: PosteriorKSDParametric,
         config: Dict,
-        distribution_cls=Gaussian,
+        distribution_cls=MultivariateGaussian,
     ):
         """
         Grid/corner quadratic form generation and optimization for multivariate gaussian.

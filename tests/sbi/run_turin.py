@@ -1,5 +1,7 @@
 import os
 import warnings
+from collections import defaultdict
+
 import hydra
 from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
@@ -61,6 +63,12 @@ def _eval_corners_with_cfg(ksd_est, cfg_like: DictConfig) -> Tuple:
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="sbi_nle_turin")
 def main(cfg: DictConfig) -> None:
+
+    # Plots
+    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    plot_cfg = load_plot_config(plot_config_path)
+
     print("=== KSD for SBI NLE Turin model ===")
     model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
     posterior_samples = model.posterior_samples_init
@@ -88,39 +96,63 @@ def main(cfg: DictConfig) -> None:
     for r in rows_sorted:
         print("  ", r)
 
-    # Parametric lr
     lr_corners = optimizer.evaluate_all_lr_corners()
     lr_grid = optimizer.evaluate_all_lr_grid()
 
     # Non-parametric
+    model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    posterior_samples = model.posterior_samples_init
+    kernel: BaseKernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
     ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
     prior_samples = model.prior_samples_init
     kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
     ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
-    psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
+    psi_sdp_list, ksd_estimates_list = [], []
+    # basis_funcs_num_list = [2, 3]
+    # radii_list = [0.1, 0.5, 5.0]
+    basis_funcs_num_list = [3, 5, 10, 15, 25]
+    radii_list = [0.05, 0.1, 0.5, 5.0]
+    nonparam_metrics = defaultdict(dict)
 
-    for radius_lower_bound in [1, 2, 3]:
-        optimizer = OptimizationNonparametricBase(
-            ksd_estimator,
-            ksd_estimator_prior,
-            cfg.ksd.optimize.prior.nonparametric,
-            radius_lower_bound=radius_lower_bound
-        )
-        result_sdp = optimizer.optimize_through_sdp_relaxation()
-        psi_sdp_list.append(result_sdp["psi_opt"])
-        ksd_estimates_list.append(result_sdp["ksd_est"])
-        radius_labels.append(radius_lower_bound)
+    for radius in radii_list:
+        for basis_funcs_num in basis_funcs_num_list:
+            # cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["degree"] = basis_funcs_num
+            cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
+            optimizer = OptimizationNonparametricBase(
+                ksd_estimator,
+                ksd_estimator_prior,
+                cfg.ksd.optimize.prior.nonparametric,
+                radius_lower_bound=radius
+            )
+            result_sdp = optimizer.optimize_through_sdp_relaxation(nuggets_to_obj=False)
+            nonparam_metrics[basis_funcs_num][radius] = result_sdp["ksd_est"]
+            psi_sdp_list.append(result_sdp["psi_opt"])
+            ksd_estimates_list.append(result_sdp["ksd_est"])
+            print(f"Radius: {radius}, basis funcs num: {basis_funcs_num}, ksd: {result_sdp["ksd_est"]}.")
 
-    # Plots
-    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
-    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
-    plot_cfg = load_plot_config(plot_config_path)
+    plot_ksd_heatmap(data_dict=nonparam_metrics, plot_cfg=plot_cfg, output_dir=output_dir)
+    plot_ksd_heatmap_continuous(
+        data_dict=nonparam_metrics,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        colorbar_label=plot_cfg.plot.param_latex_names["logOptimisationProblem"],
+        log_y=True,
+        log_x=True,
+        method="linear",
+    )
     plot_turin_four_theta_priors(
         largest_sens=corner_largest_sens,
         cfg=cfg,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
         filename="sbi_experiment_turin_prior_four_panel.pdf",
+    )
+    plot_lr_vs_ksd(
+        lr_grid=lr_grid,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        filename="sbi_experiment_turin_lr_vs_ksd.pdf",
+        xlabel=r"learning rate",
     )
 
 

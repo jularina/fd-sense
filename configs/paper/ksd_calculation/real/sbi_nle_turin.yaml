@@ -21,26 +21,26 @@ data:
   candidate_prior:
     _target_: src.distributions.composite.CompositeProduct
     distributions:
-      theta_1:
-        _target_: src.distributions.log_normal.LogNormal
-        mu_log: -19.57
-        sigma_log: 0.58
-      theta_2:
-        _target_: src.distributions.log_normal.LogNormal
-        mu_log: -19.57
-        sigma_log: 0.58
+#      theta_1:
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: -19.57
+#        sigma_log: 0.58
+#      theta_2:
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: -19.57
+#        sigma_log: 0.58
 #      theta_3:
 #        _target_: src.distributions.log_normal.LogNormal
 #        mu_log: 19.23
 #        sigma_log: 1.55
-      theta_3:
-        _target_: src.distributions.gamma.Gamma
-        alpha: 4.48148
-        theta: 1.22727e9
-      theta_4:
-        _target_: src.distributions.log_normal.LogNormal
-        mu_log: -21.87
-        sigma_log: 0.58
+#      theta_3:
+#        _target_: src.distributions.gamma.Gamma
+#        alpha: 4.48148
+#        theta: 1.22727e9
+#      theta_4:
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: -21.87
+#        sigma_log: 0.58
 
 #      theta_1:
 #        _target_: src.distributions.uniform.Uniform
@@ -58,7 +58,44 @@ data:
 #        _target_: src.distributions.uniform.Uniform
 #        low: 1e-10
 #        high: 1e-9
+#
+      theta_1:
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 10.0
+      theta_2:
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 10.0
+      theta_3:
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 500.0
+      theta_4:
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 10.0
 
+#      theta_1:
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 1.151
+#        sigma_log: 0.576
+#
+#      theta_2:
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 1.151
+#        sigma_log: 0.576
+#
+#      theta_3:
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 3.107
+#        sigma_log: 1.554
+#
+#      theta_4:
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 1.151
+#        sigma_log: 0.576
+#
 #      theta_1:
 #        _target_: src.distributions.gaussian.Gaussian
 #        mu: -0.25
@@ -88,7 +125,7 @@ data:
   observations_num: null
   posterior_samples_num: null
   prior_samples_num: null
-  archive_path: "/Users/arinaodv/Desktop/folder/study_phd/code/cost-aware-sbi/sims/turin/mixture/nle/0/ckpt_with_unnormalized_likelihood_grads_multiple_mcmc_chains.tar"
+  archive_path: "/Users/arinaodv/Desktop/folder/study_phd/code/cost-aware-sbi/sims/turin/mixture/nle/0/ckpt_with_normalized_likelihood_grads_multiple_mcmc_chains.tar"
 
 model:
   _target_: src.bayesian_model.sbi.turin.TurinBayesianModel
@@ -140,49 +177,49 @@ ksd:
 #              nums:
 #                mu_log: 4
 #                sigma_log: 11
-        - name: theta_1
-          family: LogNormal
-          parameters_box_range:
-            ranges:
-              mu_log: [ -22, -19 ]
-              sigma_log: [ 0.5, 0.7 ]
-            nums:
-              mu_log: 4
-              sigma_log: 11
+          - name: theta_1
+            family: LogNormal
+            parameters_box_range:
+              ranges:
+                mu_log:   [ 0.85, 1.95 ]
+                sigma_log: [ 0.40, 0.90 ]
+              nums:
+                mu_log: 4
+                sigma_log: 11
 
-        - name: theta_2
-          family: LogNormal
-          parameters_box_range:
-            ranges:
-              mu_log: [ -22, -14 ]       # shifted center ~exp(-15) ≈ 3e-7, above the reference box
-              sigma_log: [ 0.5, 0.9 ]    # allow moderate spread
-            nums:
-              mu_log: 4
-              sigma_log: 11
+          - name: theta_2
+            family: LogNormal
+            parameters_box_range:
+              ranges:
+                mu_log:   [ 0.95, 1.75 ]
+                sigma_log: [ 0.45, 0.80 ]
+              nums:
+                mu_log: 4
+                sigma_log: 11
 
-        - name: theta_3
-          family: Gamma
-          parameters_box_range:
-            ranges:
-              alpha: [ 3, 5 ]
-              theta: [ 1e9, 2e9 ]
-            nums:
-              alpha: 3
-              theta: 11
+          - name: theta_3
+            family: LogNormal
+            parameters_box_range:
+              ranges:
+                mu_log:   [ 2.90, 3.70 ]
+                sigma_log: [ 1.20, 1.90 ]
+              nums:
+                mu_log: 4
+                sigma_log: 11
 
-        - name: theta_4
-          family: LogNormal
-          parameters_box_range:
-            ranges:
-              mu_log: [ -24, -21 ]
-              sigma_log: [ 0.5, 0.7 ]
-            nums:
-              mu_log: 4
-              sigma_log: 11
+          - name: theta_4
+            family: LogNormal
+            parameters_box_range:
+              ranges:
+                mu_log:   [ 0.95, 1.75 ]
+                sigma_log: [ 0.45, 0.80 ]
+              nums:
+                mu_log: 4
+                sigma_log: 11
 
       nonparametric:
-        basis_funcs_type: RBFBasisFunctionMultidim
-        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "kmeans", "lengthscale": null, "scale_multiplier": 2, "metric": "full" }
+        basis_funcs_type:  RBFBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim   # RBFBasisFunctionMultidim
+        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" } # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
         radius_lower_bound: null
         scale_samples: False
 

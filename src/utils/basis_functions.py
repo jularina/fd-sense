@@ -1,4 +1,10 @@
-from src.basis_functions.basis_functions import PolynomialBasisFunction, RBFBasisFunction, SigmoidBasisFunction, RBFBasisFunctionMultidim
+from src.basis_functions.basis_functions import (PolynomialBasisFunction,
+                                                 RBFBasisFunction,
+                                                 SigmoidBasisFunction,
+                                                 RBFBasisFunctionMultidim,
+                                                 SigmoidBasisFunctionMultidim,
+                                                 PolynomialBasisFunctionMultidim
+                                                 )
 
 
 BASIS_FUNCTIONS_REGISTRY = {
@@ -6,4 +12,6 @@ BASIS_FUNCTIONS_REGISTRY = {
     "RBFBasisFunction": RBFBasisFunction,
     "SigmoidBasisFunction": SigmoidBasisFunction,
     "RBFBasisFunctionMultidim": RBFBasisFunctionMultidim,
+    "SigmoidBasisFunctionMultidim": SigmoidBasisFunctionMultidim,
+    "PolynomialBasisFunctionMultidim": PolynomialBasisFunctionMultidim,
 }
