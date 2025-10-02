@@ -40,7 +40,7 @@ class BayesianModel(ABC):
             getattr(data_config, "prior_samples_path", None),
             name="prior"
         )
-        if self.m_prior is None and self.prior_samples_init:
+        if self.m_prior is None:
             self.m_prior = len(self.prior_samples_init)
 
     def back_to_prior_init(self, *, deep: bool = True):
@@ -118,12 +118,12 @@ class BayesianModel(ABC):
             arr = arr.reshape(-1, 1)
         return arr
 
-    @abstractmethod
+
     def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
         """
         Draw samples from the posterior distribution.
         """
-        raise NotImplementedError
+        pass
 
     def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
         """

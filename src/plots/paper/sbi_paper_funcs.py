@@ -265,6 +265,9 @@ def plot_ksd_heatmap(
     filename: str = "ksd_heatmap.pdf",
     title: str = None,  # if None -> no title
 ):
+    # Apply plotting RC params globally up front
+    _apply_plot_rc(plot_cfg)
+
     basis_funcs = sorted(data_dict.keys())
     radii = sorted({float(r) for bf in data_dict for r in data_dict[bf].keys()})
     colorbar_label = plot_cfg.plot.param_latex_names["optimisationProblem"]
@@ -285,7 +288,6 @@ def plot_ksd_heatmap(
     dpi = plot_cfg.plot.figure["dpi"]
     labelsize = plot_cfg.plot.font["size"]
     tick_labelsize = getattr(pc, "tick_labelsize", 10)
-    fontfamily = getattr(pc, "fontfamily", None)
     cbar_labelsize = getattr(pc, "colorbar_labelsize", labelsize)
     vmin = getattr(pc, "vmin", None)
     vmax = getattr(pc, "vmax", None)
@@ -294,35 +296,36 @@ def plot_ksd_heatmap(
     # Mask NaNs so they render as transparent
     Hmask = np.ma.masked_invalid(heatmap)
 
-    rc_update = {"font.family": fontfamily} if fontfamily else {}
-    with plt.rc_context(rc_update):
-        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-        cax = ax.imshow(
-            Hmask,
-            cmap=cmap,
-            aspect="auto",
-            origin="lower",
-            vmin=vmin, vmax=vmax,
-        )
-        cbar = fig.colorbar(cax, ax=ax)
-        cbar.set_label(colorbar_label, fontsize=cbar_labelsize)
-        cbar.ax.tick_params(labelsize=tick_labelsize)
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    cax = ax.imshow(
+        Hmask,
+        cmap=cmap,
+        aspect="auto",
+        origin="lower",
+        vmin=vmin, vmax=vmax,
+    )
 
-        # Set ticks and labels
-        ax.set_xticks(range(len(basis_funcs)))
-        ax.set_xticklabels(basis_funcs)
-        ax.set_yticks(range(len(radii)))
-        ax.set_yticklabels([str(r) for r in radii])
+    cbar = fig.colorbar(cax, ax=ax)
+    # cbar.set_label(colorbar_label, fontsize=cbar_labelsize)
+    cbar.ax.tick_params(labelsize=tick_labelsize)
 
-        ax.set_xlabel(param_names.get("K", "K"), fontsize=labelsize)
-        ax.set_ylabel(param_names.get("r", "r"), fontsize=labelsize)
-        ax.tick_params(axis="both", which="both", labelsize=tick_labelsize)
+    # Set ticks and labels
+    ax.set_xticks(range(len(basis_funcs)))
+    ax.set_xticklabels(basis_funcs)
+    ax.set_yticks(range(len(radii)))
+    ax.set_yticklabels([str(r) for r in radii])
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
-        if title:
-            ax.set_title(title, fontsize=labelsize)
+    ax.set_xlabel(param_names.get("K", "K"), fontsize=labelsize)
+    ax.set_ylabel(param_names.get("r", "r"), fontsize=labelsize)
+    ax.tick_params(axis="both", which="both", labelsize=tick_labelsize)
 
-        _save_fig(fig, output_dir, filename, plot_cfg)
-        plt.close(fig)
+    if title:
+        ax.set_title(title, fontsize=labelsize)
+
+    _save_fig(fig, output_dir, filename, plot_cfg)
+    plt.close(fig)
 
 
 def _mix(c1, c2, t):
@@ -353,7 +356,7 @@ def _resolve_cmap_from_cfg(plot_cfg):
     base_color = colors[0]
 
     # Stronger contrast than before (less pale): lower low_light, add darken
-    low_light = float(getattr(pc, "cmap_low_light", 0.75))   # 0.60–0.85 is good; 0.92 was too pale
+    low_light = float(getattr(pc, "cmap_low_light", 0.95))   # 0.60–0.85 is good; 0.92 was too pale
     darken    = float(getattr(pc, "cmap_darken", 0.40))      # 0–0.6; higher = deeper high end
     reverse   = bool(getattr(pc, "cmap_reverse", False))
     N         = int(getattr(pc, "cmap_N", 256))
@@ -379,7 +382,7 @@ def plot_ksd_heatmap_continuous(
     dpi = plot_cfg.plot.figure["dpi"]
     labelsize = plot_cfg.plot.font["size"]
     tick_labelsize = getattr(pc, "tick_labelsize", 10)
-    fontfamily = getattr(pc, "fontfamily", None)
+    fontfamily = plot_cfg.plot.font["family"]
     cbar_labelsize = getattr(pc, "colorbar_labelsize", labelsize)
     vmin = getattr(pc, "vmin", None)
     vmax = getattr(pc, "vmax", None)

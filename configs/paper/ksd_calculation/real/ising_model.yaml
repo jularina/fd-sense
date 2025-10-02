@@ -1,0 +1,66 @@
+data:
+  base_prior:
+    _target_: src.distributions.chi_squared.ChiSquared
+    k: 3
+  candidate_prior:
+    _target_: src.distributions.chi_squared.ChiSquared
+    k: 3
+  true_dgp: null
+  loss:
+    _target_: src.losses.ising.ising_likelihood.IsingLikelihoodGivenGrads
+  loss_lr: 1.0
+#  observations_path:  /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/FDBayes_size=2_theta=5.0_dnum=1000_pnum=2000_data.npy
+#  posterior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/FDBayes_size=2_theta=5.0_dnum=1000_pnum=2000_posteriors_samples.npy
+#  prior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/FDBayes_size=2_theta=5.0_dnum=1000_pnum=2000_prior_samples.npy
+  observations_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=2_theta=5.0_dnum=1000_pnum=2000_data.npy
+  posterior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=2_theta=5.0_dnum=1000_pnum=2000_posteriors_samples.npy
+  prior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=2_theta=5.0_dnum=1000_pnum=2000_prior_samples.npy
+  pseudoliklelhood_grads_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=2_theta=5.0_dnum=1000_pnum=2000_pseudoliklelhood_grads.npy
+  observations_num: null
+  posterior_samples_num: null
+  prior_samples_num: null
+
+model:
+  _target_: src.bayesian_model.ising.ising.IsingBayesianModel
+
+ksd:
+  kernel:
+    _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
+    lengthscale: null
+    alpha: 0.5
+    heuristic: True
+  optimize:
+    prior:
+      Composite:
+        combine_rule: product
+        components:
+          - name: theta
+            family: LogNormal
+            parameters_box_range:
+              ranges:
+                mu_log:   [ 0.85, 1.95 ]
+                sigma_log: [ 0.40, 0.90 ]
+              nums:
+                mu_log: 4
+                sigma_log: 11
+
+      nonparametric:
+        basis_funcs_type:  SigmoidBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim   # RBFBasisFunctionMultidim
+        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" } # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
+        radius_lower_bound: null
+        scale_samples: False
+
+    loss:
+      GaussianLogLikelihoodWithGivenGrads:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.01, 2.5 ]
+          nums:
+            lr: 21
+
+flags:
+  plots:
+    output_dir: outputs/paper/plots/ising
+
+playground:
+  output_prefix: ising

@@ -5,6 +5,7 @@ from src.distributions.inverse_wishart import InverseWishart
 from src.distributions.uniform import Uniform
 from src.distributions.gamma import Gamma
 from src.distributions.laplace import Laplace
+from src.distributions.chi_squared import ChiSquared
 
 DISTRIBUTION_MAP = {
     "Gaussian": Gaussian,
@@ -15,7 +16,8 @@ DISTRIBUTION_MAP = {
     "Uniform": Uniform,
     "InverseWishart": InverseWishart,
     "Gamma": Gamma,
-    "Laplace": Laplace
+    "Laplace": Laplace,
+    "ChiSquared": ChiSquared,
 }
 
 

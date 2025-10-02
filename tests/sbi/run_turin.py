@@ -100,35 +100,57 @@ def main(cfg: DictConfig) -> None:
     lr_grid = optimizer.evaluate_all_lr_grid()
 
     # Non-parametric
-    model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
-    posterior_samples = model.posterior_samples_init
-    kernel: BaseKernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-    ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
-    prior_samples = model.prior_samples_init
-    kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
-    ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
-    psi_sdp_list, ksd_estimates_list = [], []
+    # model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    # posterior_samples = model.posterior_samples_init
+    # kernel: BaseKernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
+    # ksd_estimator = PosteriorKSDNonParametric(samples=posterior_samples, model=model, kernel=kernel)
+    # prior_samples = model.prior_samples_init
+    # kernel_prior = instantiate(cfg.ksd.kernel, reference_data=prior_samples)
+    # ksd_estimator_prior = PriorKSDNonParametric(samples=prior_samples, model=model, kernel=kernel_prior)
+    # psi_sdp_list, ksd_estimates_list = [], []
     # basis_funcs_num_list = [2, 3]
     # radii_list = [0.1, 0.5, 5.0]
     basis_funcs_num_list = [3, 5, 10, 15, 25]
     radii_list = [0.05, 0.1, 0.5, 5.0]
-    nonparam_metrics = defaultdict(dict)
+    # nonparam_metrics = defaultdict(dict)
+    #
+    # for radius in radii_list:
+    #     for basis_funcs_num in basis_funcs_num_list:
+    #         # cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["degree"] = basis_funcs_num
+    #         cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
+    #         optimizer = OptimizationNonparametricBase(
+    #             ksd_estimator,
+    #             ksd_estimator_prior,
+    #             cfg.ksd.optimize.prior.nonparametric,
+    #             radius_lower_bound=radius
+    #         )
+    #         result_sdp = optimizer.optimize_through_sdp_relaxation(nuggets_to_obj=False)
+    #         nonparam_metrics[basis_funcs_num][radius] = result_sdp["ksd_est"]
+    #         psi_sdp_list.append(result_sdp["psi_opt"])
+    #         ksd_estimates_list.append(result_sdp["ksd_est"])
+    #         print(f"Radius: {radius}, basis funcs num: {basis_funcs_num}, ksd: {result_sdp["ksd_est"]}.")
 
-    for radius in radii_list:
-        for basis_funcs_num in basis_funcs_num_list:
-            # cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["degree"] = basis_funcs_num
-            cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
-            optimizer = OptimizationNonparametricBase(
-                ksd_estimator,
-                ksd_estimator_prior,
-                cfg.ksd.optimize.prior.nonparametric,
-                radius_lower_bound=radius
-            )
-            result_sdp = optimizer.optimize_through_sdp_relaxation(nuggets_to_obj=False)
-            nonparam_metrics[basis_funcs_num][radius] = result_sdp["ksd_est"]
-            psi_sdp_list.append(result_sdp["psi_opt"])
-            ksd_estimates_list.append(result_sdp["ksd_est"])
-            print(f"Radius: {radius}, basis funcs num: {basis_funcs_num}, ksd: {result_sdp["ksd_est"]}.")
+#     nonparam_metrics = {2:
+# {0.1: 0.059138362469974885, 0.5: 0.29254066591467137, 5.0: 2.908638509389252},
+#
+# 3:
+# {0.1: 0.02398357319298377, 0.5: 0.11663343316146658, 5.0: 1.1481947690363985}}
+
+    nonparam_metrics = {3:
+{0.05: 0.43044202095702494, 0.1: 1.2812758050287645, 0.5: 2.8770761461387226, 5.0: 24.590955176277223},
+
+5:
+{0.05: 0.5046775802398636, 0.1: 1.0208909930170573, 0.5: 2.5295428951672685, 5.0: 26.305785468969624},
+
+10:
+{0.05: 1.9436202144940384, 0.1: 3.0387898898447534, 0.5: 10.024080659636736, 5.0: 110.32329413671725},
+
+15:
+{0.05: 2.131006102008526, 0.1: 3.5192233026478363, 0.5: 12.679214256103643, 5.0: 124.73881645552885},
+
+25:
+{0.05: 2.622211630337094, 0.1: 4.409561047561388, 0.5: 17.467573162214986, 5.0: 154.60061263245098}}
+
 
     plot_ksd_heatmap(data_dict=nonparam_metrics, plot_cfg=plot_cfg, output_dir=output_dir)
     plot_ksd_heatmap_continuous(
