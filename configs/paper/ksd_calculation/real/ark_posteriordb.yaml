@@ -164,13 +164,21 @@ ksd:
               nums:
                 alpha: 15
                 theta: 26
+    loss:
+      GaussianARLogLikelihood:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.01, 2.5 ]
+          nums:
+            lr: 21
+
 flags:
   plots:
     generate_plots:
       heatmap: false
       line_plot: false
       density_plot: true
-    output_dir: outputs/paper/plots/ark
+    output_dir: outputs/paper/plots/fisher/ark
 
 playground:
   output_prefix: ark_param

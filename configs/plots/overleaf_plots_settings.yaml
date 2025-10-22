@@ -6,8 +6,8 @@ plot:
 
   figure:
     size:
-      width: 4.0  # 4 in inches, 2.5 for 4-col
-      height: 3.0 # 3.2 in inches, 1.67 for 4-col
+      width: 6.0  # 4 in inches, 2.5 for 4-col
+      height: 2.2 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: true
 

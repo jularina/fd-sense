@@ -128,9 +128,18 @@ class TurinBayesianModel(ABC):
     def prior_score(self, x: np.ndarray) -> np.ndarray:
         return self.prior.grad_log_pdf(x)
 
+    def reference_prior_score(self, x) -> np.ndarray:
+        """Compute gradient of reference log prior."""
+        return self.prior_init.grad_log_pdf(x)
+
     def loss_score(self, x: np.ndarray, multiply_by_lr: bool = True) -> np.ndarray:
         grad = self.loss.grad_log_pdf()
         return self.loss_lr * grad if multiply_by_lr else grad
+
+    def reference_loss_score(self, x: np.ndarray, multiply_by_lr: bool = True) -> np.ndarray:
+        """Compute gradient of reference log loss."""
+        grad = self.loss.grad_log_pdf()
+        return self.loss_lr_init * grad if multiply_by_lr else grad
 
     def posterior_score(self, x: np.ndarray) -> np.ndarray:
         prior = self.prior_score(x)
@@ -142,3 +151,7 @@ class TurinBayesianModel(ABC):
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
         return self.prior.grad_log_base_measure(x)
+
+    def reference_prior_score(self, x) -> np.ndarray:
+        """Compute gradient of reference log prior."""
+        return self.prior_init.grad_log_pdf(x)

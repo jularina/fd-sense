@@ -18,7 +18,7 @@ SCALE_MAP = {
 
 def _base_uniform_params_original(cfg, theta_name: str) -> Tuple[float, float]:
     """Read (possibly scaled) low/high from cfg and divide by s to get original-scale bounds."""
-    base_path = f"data.candidate_prior.distributions.{theta_name}"
+    base_path = f"data.base_prior.distributions.{theta_name}"
     low_s = float(_deep_get(cfg, base_path + ".low"))
     high_s = float(_deep_get(cfg, base_path + ".high"))
     s = SCALE_MAP[theta_name]
@@ -202,6 +202,7 @@ def plot_lr_vs_ksd(
     filename: str = "sbi_experiment_turin_lr_scan.pdf",
     xlabel: str = None,
     title: str = None,
+    ylbl: str = "estimatedKSDposteriorsShort",
 ):
     """
     Plot KSD vs learning rate from a grid of (lr, ksd) pairs.
@@ -250,7 +251,7 @@ def plot_lr_vs_ksd(
 
     # remove y-axis ticks and labels completely
     # ax.set_yticks([])
-    ax.set_ylabel(plot_cfg.plot.param_latex_names["estimatedKSDposteriorsShort"])
+    ax.set_ylabel(plot_cfg.plot.param_latex_names[ylbl])
     # ax.tick_params(axis="y", left=False, right=False, labelleft=False)
 
     # labels

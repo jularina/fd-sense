@@ -10,10 +10,10 @@ data:
   loss:
     _target_: src.losses.ising.ising_likelihood.IsingLikelihoodGivenGrads
   loss_lr: 1.0
-  observations_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=4_theta=5.0_dnum=1000_pnum=2000_data.npy
-  posterior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=4_theta=5.0_dnum=1000_pnum=2000_posteriors_samples.npy
-  prior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=4_theta=5.0_dnum=1000_pnum=2000_prior_samples.npy
-  pseudoliklelhood_grads_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=4_theta=5.0_dnum=1000_pnum=2000_pseudoliklelhood_grads.npy
+  observations_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=6_theta=5.0_dnum=1000_pnum=2000_data.npy
+  posterior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=6_theta=5.0_dnum=1000_pnum=2000_posteriors_samples.npy
+  prior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=6_theta=5.0_dnum=1000_pnum=2000_prior_samples.npy
+  pseudoliklelhood_grads_path: /Users/arinaodv/Desktop/folder/study_phd/code/Discrete-Fisher-Bayes/Ising/samplesForKSDSensitivityAnalysis/PseudoBayes_size=6_theta=5.0_dnum=1000_pnum=2000_pseudoliklelhood_grads.npy
 
   observations_num: null
   posterior_samples_num: null
@@ -41,7 +41,7 @@ ksd:
 
       nonparametric:
         basis_funcs_type:  RBFBasisFunction # PolynomialBasisFunction # SigmoidBasisFunction  # RBFBasisFunction
-        basis_funcs_kwargs: { "num_basis_functions": 25, "method": "kmeans", "lengthscale": null, "scale_multiplier": 1} # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1}   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1}
+        basis_funcs_kwargs: { "num_basis_functions": 10, "method": "kmeans", "lengthscale": null, "scale_multiplier": 1} # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1}   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1}
         radius_lower_bound: null
         scale_samples: False
 
@@ -55,7 +55,7 @@ ksd:
 
 flags:
   plots:
-    output_dir: outputs/paper/plots/ising
+    output_dir: outputs/paper/plots/fisher/ising
 
 playground:
   output_prefix: ising

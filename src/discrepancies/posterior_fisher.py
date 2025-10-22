@@ -47,6 +47,52 @@ class PosteriorFDBase:
 
         return Lambda_prior, b_prior
 
+    def compute_fisher_quadratic_form_for_loss(
+        self,
+    ) -> Tuple:
+        """
+        Compute components of the FD quadratic form specific to the prior term.
+        """
+        scores_loss = self.model.loss_score(self.samples, multiply_by_lr=False)
+        Lambda_loss = self._compute_Lambda_for_loss(scores_loss)
+        b_loss = self._compute_b_loss(scores_loss)
+
+        return Lambda_loss, b_loss
+
+    def _compute_Lambda_for_loss(self, scores: np.ndarray) -> float:
+        """
+        Compute Lambda term for the loss KSD quadratic form.
+
+        Returns:
+            float: Scalar Lambda value
+        """
+        Lambda = np.einsum('ik,jk->ij', scores, scores)
+        return np.sum(Lambda) / (2*self.model.m)
+
+    def _compute_b_loss(self, scores: np.ndarray) -> np.ndarray:
+        """
+        Computes b_prior = (1/m^2) * sum_{i,j} (J_i^T grad1_{i,j} + J_j^T grad2_{i,j})
+        """
+        term = np.einsum('ik,jk->ij', scores, self.loss_scores_ref)
+
+        return -1*np.sum(term) / (self.model.m)
+
+    def compute_c_loss(self) -> np.ndarray:
+        """
+        Computes prior constant
+        """
+        term = np.einsum('ik,jk->ij', self.loss_scores_ref, self.loss_scores_ref)
+
+        return 1*np.sum(term) / (2*self.model.m)
+
+    def compute_c_prior(self) -> np.ndarray:
+        """
+        Computes prior constant
+        """
+        term = np.einsum('ik,jk->ij', self.prior_scores_ref, self.prior_scores_ref)
+
+        return 1*np.sum(term) / (2*self.model.m)
+
     def _compute_augmented_jacobians_for_prior(self) -> np.ndarray:
         """
         Compute augmented Jacobians including sufficient statistics and base measure gradient.

@@ -46,7 +46,6 @@ class OptimisationNonparametricBase:
         print("Eigenvalues:", eigvals)
         print("Eigenvectors (columns):\n", eigvecs)
         self.principle_eigenvector = self.Lambda_m_prior[:,0]
-
         self.Lambda_prior, self.b_prior = self.prior_estimator.compute_quadratic_form_for_nonparametric_prior(
             self.basis_function,
             scale_samples=config["scale_samples"],

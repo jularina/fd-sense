@@ -676,3 +676,292 @@ def plot_sdp_densities_and_logprior(
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
+
+
+def plot_sdp_2d_densities(
+    basis_function,
+    psi_sdp_list: list[np.ndarray],
+    radius_labels: list[float],
+    ksd_estimates: list[float],
+    prior_distribution,
+    plot_cfg,
+    output_dir: str,
+    domain: tuple = ((-5, 5), (-5, 5)),
+    resolution: int | tuple = 200,
+    contour_levels: int = 8,
+) -> None:
+    """
+    2D plot:
+      True prior contours (dark gray) + SDP density contours (palette).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    def _f_grid(Phi_XY: np.ndarray, psi: np.ndarray, nx: int, ny: int) -> np.ndarray:
+        fN2 = np.tensordot(Phi_XY, psi, axes=([-1], [0]))
+        fN = fN2.sum(axis=1)
+        return fN.reshape(ny, nx)
+
+    # --- rcParams (LaTeX + font) ---
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    # --- Colors ---
+    palette = list(getattr(plot_cfg.plot.color_palette, "colors", []))
+    if not palette:
+        raise ValueError("plot_cfg.plot.color_palette.colors is empty.")
+    sdp_palette = palette if len(palette) > 0 else ["C0"]
+
+    # --- Labels ---
+    names = getattr(plot_cfg.plot, "param_latex_names", {})
+    ksd_label = names.get("estimatedFDposteriorsShort")
+    xlabel = names.get("mu_01", r"$\mu_{01}$")
+    ylabel = names.get("mu_02", r"$\mu_{02}$")
+    approx_sym = r"$\approx$"
+    geq_sym = r"$\geq$"
+
+    # --- Grid ---
+    if isinstance(resolution, int):
+        nx = ny = resolution
+    else:
+        nx, ny = resolution
+    (x_min, x_max), (y_min, y_max) = domain
+    x = np.linspace(x_min, x_max, nx)
+    y = np.linspace(y_min, y_max, ny)
+    dx = float(x[1] - x[0])
+    dy = float(y[1] - y[0])
+    X, Y = np.meshgrid(x, y)
+
+    XY = np.column_stack([X.ravel(), Y.ravel()])
+    Phi_XY = basis_function.evaluate(XY)
+
+    # True prior density (reshaped to grid)
+    prior_density_true = prior_distribution.pdf(XY).reshape(ny, nx)
+
+    # --- Figure ---
+    fig, ax = plt.subplots(
+        1, 1,
+        figsize=(plot_cfg.plot.figure.size.width*1.2,
+                 plot_cfg.plot.figure.size.height*1.2),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    # True prior contours (dark gray)
+    ax.contour(
+        X, Y, prior_density_true,
+        levels=contour_levels,
+        colors="grey",
+        linewidths=1.5,
+    )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.15)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    legend_handles = []
+
+    # SDP priors (contours in palette colors)
+    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+        f = _f_grid(Phi_XY, psi, nx, ny)
+        logZ = logsumexp(f) + np.log(dx * dy)
+        p_hat = np.exp(f - logZ)
+
+        color = sdp_palette[i % len(sdp_palette)]
+        label = rf"r {geq_sym} {r_label} ({ksd:.1f})"
+        ax.contour(
+            X, Y, p_hat,
+            levels=contour_levels,
+            colors=color,
+            linewidths=1.5,
+        )
+        legend_handles.append(Line2D([0], [0], color=color, lw=1.8, label=label))
+
+    legend_handles.append(Line2D([0], [0], color="dimgray", lw=1.5, label=r"$\Pi_{\mathrm{ref}}$"))
+    fig.legend(
+        handles=legend_handles,
+        title=ksd_label,
+        loc="center left",
+        bbox_to_anchor=(0.96, 0.5),
+        frameon=False,
+    )
+
+    if getattr(plot_cfg.plot.figure, "tight_layout", False):
+        plt.tight_layout(rect=[0, 0, 0.95, 1])
+
+    # Save
+    filename = "toy_multivariate_gaussian_model_nonparametric_optimisation_densities_per_radius.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_sdp_2d_densities_flexible(
+    basis_functions,  # single basis or list aligned with psi_sdp_list
+    psi_sdp_list,                # list of psi (each shape (B_i,))
+    labels,                                  # radii OR basis sizes (one per psi)
+    prior_distribution,
+    plot_cfg,
+    output_dir,
+    domain: ((-5, 5), (-5, 5)),               # ((x_min, x_max), (y_min, y_max))
+    resolution: 200,              # int or (nx, ny)
+    contour_levels: int = 8,                          # number of contour levels
+    ksd_estimates: list = None,            # optional list; same length as psi_sdp_list
+    label_template: str = None,                       # e.g. r"r {geq} {label} ({approx} {ksd:.2f})" or r"B = {label}"
+    legend_title: str = None,                         # title above legend
+    true_contour_color: str = "grey",              # color for Π_ref contours
+) -> None:
+    """
+    2D plot:
+      True prior contours (dark gray) + SDP density contours (palette).
+    Works with:
+      - a single basis_function (reused for all psi), or
+      - a list of basis_functions aligned with psi_sdp_list (e.g., different #basis per curve).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # ---- helpers ----
+    def _as_list(x, length: int):
+        """Broadcast a single item to a list of given length, or validate list length."""
+        if isinstance(x, (list, tuple)):
+            if len(x) != length:
+                raise ValueError(f"Expected {length} basis_functions, got {len(x)}.")
+            return list(x)
+        return [x] * length
+
+    def _f_grid(Phi_XY: np.ndarray, psi: np.ndarray, nx: int, ny: int) -> np.ndarray:
+        """
+        Contract Phi_XY over basis (last axis) with psi, then sum over dimensions.
+        - Phi_XY: (N, d, B_i) where B_i=#basis for curve i, d=#dims (2)
+        - psi   : (B_i,)
+        Returns f on grid as (ny, nx).
+        """
+        # (N, d, B) · (B,) -> (N, d) -> sum over d -> (N,) -> (ny, nx)
+        fN2 = np.tensordot(Phi_XY, psi, axes=([-1], [0]))  # (N, d)
+        fN = fN2.sum(axis=1)                                # (N,)
+        return fN.reshape(ny, nx)
+
+    # --- rcParams (LaTeX + font) ---
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    # --- Colors (from config) ---
+    palette = list(getattr(plot_cfg.plot.color_palette, "colors", []))
+    if not palette:
+        raise ValueError("plot_cfg.plot.color_palette.colors is empty.")
+    sdp_palette = palette
+
+    # --- Labels & names ---
+    names = getattr(plot_cfg.plot, "param_latex_names", {})
+    if legend_title is None:
+        legend_title = names.get("estimatedKSDposteriorsShort")
+    xlabel = names.get("mu_01", r"$\mu_{01}$")
+    ylabel = names.get("mu_02", r"$\mu_{02}$")
+    geq_sym = r"$\geq$"
+    approx_sym = r"$\approx$"
+
+    # Default legend entry format
+    if label_template is None:
+        label_template = (r"{label} ({ksd:.1f})" if ksd_estimates is not None else r"{label}")
+
+    # --- Grid ---
+    if isinstance(resolution, int):
+        nx = ny = resolution
+    else:
+        nx, ny = resolution
+    (x_min, x_max), (y_min, y_max) = domain
+    x = np.linspace(x_min, x_max, nx)
+    y = np.linspace(y_min, y_max, ny)
+    dx = float(x[1] - x[0])
+    dy = float(y[1] - y[0])
+    X, Y = np.meshgrid(x, y)
+
+    XY = np.column_stack([X.ravel(), Y.ravel()])  # (N, 2)
+    N = XY.shape[0]
+
+    # --- Basis list aligned with curves ---
+    basis_list = _as_list(basis_functions, len(psi_sdp_list))
+
+    # --- True prior (draw once) ---
+    prior_density_true = prior_distribution.pdf(XY).reshape(ny, nx)
+
+    # --- Figure ---
+    fig, ax = plt.subplots(
+        1, 1,
+        figsize=(plot_cfg.plot.figure.size.width*1.2,
+                 plot_cfg.plot.figure.size.height*1.2),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    # True prior contours (dark gray)
+    ax.contour(
+        X, Y, prior_density_true,
+        levels=contour_levels,
+        colors=true_contour_color,
+        linewidths=1,
+    )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, alpha=0.15)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Legend handles: Π_ref first
+    legend_handles = []
+
+    # --- SDP curves ---
+    for i, (psi, label_val, bf) in enumerate(zip(psi_sdp_list, labels, basis_list)):
+        # Evaluate the *matching* basis for this curve
+        Phi_XY_i = bf.evaluate(XY)  # expected shape (N, 2, B_i)
+        if Phi_XY_i.ndim != 3 or Phi_XY_i.shape[0] != N or Phi_XY_i.shape[1] != 2:
+            raise ValueError(f"basis_functions[{i}].evaluate(XY) must return (N, 2, B), got {Phi_XY_i.shape}")
+
+        if psi.ndim != 1 or psi.shape[0] != Phi_XY_i.shape[-1]:
+            raise ValueError(
+                f"psi_sdp_list[{i}] shape {psi.shape} must match #basis {Phi_XY_i.shape[-1]} for that curve."
+            )
+
+        f = _f_grid(Phi_XY_i, psi, nx, ny)
+        logZ = logsumexp(f) + np.log(dx * dy)   # grid normalization
+        p_hat = np.exp(f - logZ)
+
+        color = sdp_palette[i % len(sdp_palette)]
+        if ksd_estimates is not None:
+            entry = label_template.format(label=label_val, ksd=ksd_estimates[i], geq=geq_sym, approx=approx_sym)
+        else:
+            entry = label_template.format(label=label_val, geq=geq_sym, approx=approx_sym)
+
+        ax.contour(
+            X, Y, p_hat,
+            levels=contour_levels,
+            colors=color,
+            linewidths=1.5,
+        )
+        legend_handles.append(Line2D([0], [0], color=color, lw=1.8, label=entry))
+
+    legend_handles.append(Line2D([0], [0], color=true_contour_color, lw=1, label=r"$\Pi_{\mathrm{ref}}$"))
+    fig.legend(
+        handles=legend_handles,
+        title=legend_title,
+        loc="center left",
+        bbox_to_anchor=(0.96, 0.5),
+        frameon=False,
+    )
+
+    if getattr(plot_cfg.plot.figure, "tight_layout", False):
+        plt.tight_layout(rect=[0, 0, 0.95, 1])
+
+    # Save
+    filename = "toy_multivariate_gaussian_model_nonparametric_optimisation_densities_per_basis_functions_num.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[INFO] Saved 2D contours-only plot: {save_path}")

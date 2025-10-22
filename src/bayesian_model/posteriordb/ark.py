@@ -219,9 +219,16 @@ class ArkBayesianModel(ABC):
     def prior_score(self, x: np.ndarray) -> np.ndarray:
         return self.prior.grad_log_pdf(x)
 
+    def reference_prior_score(self, x) -> np.ndarray:
+        return self.prior_init.grad_log_pdf(x)
+
     def loss_score(self, x: np.ndarray, multiply_by_lr: bool = True) -> np.ndarray:
         grad = self.loss.grad_log_pdf(x)
         return self.loss_lr * grad if multiply_by_lr else grad
+
+    def reference_loss_score(self, x, multiply_by_lr: bool = True) -> np.ndarray:
+        grad = self.loss.grad_log_pdf(x)
+        return self.loss_lr_init * grad if multiply_by_lr else grad
 
     def posterior_score(self, x: np.ndarray) -> np.ndarray:
         return self.prior_score(x) + self.loss_score(x)

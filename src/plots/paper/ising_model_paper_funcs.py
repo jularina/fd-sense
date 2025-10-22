@@ -260,6 +260,7 @@ def plot_lr_vs_ksd_multi(
     filename: str = "ising_experiment_multi_d_lr_vs_ksd.pdf",
     xlabel: str = None,
     legend: bool = True,
+    ylbl: str = "estimatedKSDposteriorsShort",
 ):
     _apply_plot_rc(plot_cfg)
 
@@ -281,7 +282,7 @@ def plot_lr_vs_ksd_multi(
 
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.set_ylabel(plot_cfg.plot.param_latex_names["estimatedKSDposteriorsShort"])
+    ax.set_ylabel(plot_cfg.plot.param_latex_names[ylbl])
     ax.set_xlabel(xlabel if xlabel is not None else r"lr")
 
     xmin = min(grid[:, 0].min() for grid in lr_grids)
@@ -306,6 +307,7 @@ def plot_sdp_densities_only(
     domain: tuple = (-2, 5),
     resolution: int = 200,
     filename = "toy_gaussian_model_nonparametric_optimisation_densities.pdf",
+    ylbl: str = "estimatedKSDposteriorsShort",
 ) -> None:
     """
     Plot true prior density and normalized SDP densities (no samples).
@@ -340,7 +342,7 @@ def plot_sdp_densities_only(
 
     # Names/labels map
     names = plot_cfg.plot.param_latex_names
-    ksd_label = names.get("estimatedKSDposteriorsShort")
+    ksd_label = names.get(ylbl)
     xlabel = names.get("theta")
     ylabel = names.get("nonparametric_prior", "Density")
     true_label = names.get("baseprior", "True Prior Density")

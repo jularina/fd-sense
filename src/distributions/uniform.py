@@ -72,7 +72,7 @@ class Uniform(BaseDistribution):
             raise NotImplementedError("grad_log_pdf is undefined for infinite bounds.")
         x = np.asarray(x)
         grad = np.zeros_like(x, dtype=float)
-        grad[(x < self.low) | (x > self.high)] = np.nan
+        # grad[(x < self.low) | (x > self.high)] = np.nan
         return grad
 
     def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:

@@ -23,3 +23,4 @@ def pick_optimizer(cfg: DictConfig, ksd_estimator: PosteriorKSDParametric):
         "No supported prior found under cfg.ksd.optimize.prior. "
         "Supported: Gaussian, MultivariateGaussian, InverseWishart, Composite"
     )
+
