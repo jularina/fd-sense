@@ -1,10 +1,9 @@
 import numpy as np
 
-from src.bayesian_model.base import BayesianModel
-from src.utils.typing import ArrayLike
+from bayesian_model.base import BayesianModelExtended
 
 
-class IsingBayesianModel(BayesianModel):
+class IsingBayesianModel(BayesianModelExtended):
     def __init__(self, data_config):
         super().__init__(data_config)
         self.likelihood_grads = self._prepare_array_from_presaved_samples(

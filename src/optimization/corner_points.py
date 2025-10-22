@@ -7,7 +7,9 @@ from scipy.spatial import ConvexHull
 from itertools import product
 from tqdm import tqdm
 
+from distributions.inverse_wishart import InverseWishart
 from src.distributions.gaussian import Gaussian, MultivariateGaussian
+from src.distributions.gamma import Gamma
 from src.discrepancies.posterior_ksd import PosteriorKSDParametric
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.utils.files_operations import instantiate_from_target_str
@@ -20,7 +22,8 @@ class OptimizationCornerPointsBase:
     def __init__(
         self,
         posterior_ksd: PosteriorKSDParametric,
-        config: Dict,
+        prior_config: Dict,
+        loss_config: Dict,
         distribution_cls=Gaussian,
     ):
         """
@@ -30,101 +33,226 @@ class OptimizationCornerPointsBase:
         self.model = posterior_ksd.model
         self.distribution_cls = distribution_cls
 
-        self.param_ranges: Dict[str, Tuple[float, float]] = config["parameters_box_range"]["ranges"]
-        self.param_nums: Dict[str, int] = config["parameters_box_range"]["nums"]
+        self.param_ranges: Dict[str, Tuple[float, float]] = prior_config["parameters_box_range"]["ranges"]
+        self.param_nums: Dict[str, int] = prior_config["parameters_box_range"]["nums"]
         self.param_names = list(self.param_ranges.keys())
 
-        self.Lambda_m_prior, self.b_m_prior, self.b_prior, self.b_cross_prior = self.posterior_ksd.compute_ksd_quadratic_form_for_prior()
+        self.lr_ranges: Dict[str, Tuple[float, float]] = loss_config["parameters_box_range"]["ranges"]["lr"]
+        self.lr_nums: Dict[str, int] = loss_config["parameters_box_range"]["nums"]["lr"]
+
+        self.Lambda_m_prior, self.b_m_prior, _, _ = self.posterior_ksd.compute_ksd_quadratic_form_for_prior()
         self.ksd_for_prior_init = self.posterior_ksd.compute_ksd_for_prior_term()
-        self.Lambda_m_loss_lr, self.b_m_loss_lr, self.b_loss_lr, self.b_cross_loss_lr = self.posterior_ksd.compute_ksd_quadratic_form_for_loss()
+        self.Lambda_m_loss_lr, self.b_m_loss_lr, _, _ = self.posterior_ksd.compute_ksd_quadratic_form_for_loss()
         self.ksd_for_loss_init = self.posterior_ksd.compute_ksd_for_loss_term()
         self.ksd_for_cross_term = self.posterior_ksd.compute_cross_term()
         print(f"KSD terms: prior = {self.ksd_for_prior_init}, loss = {self.ksd_for_loss_init}, cross = {self.ksd_for_cross_term}")
 
-    def _generate_corner_points(self) -> List[Dict[str, float]]:
-        keys = list(self.param_ranges.keys())
-        endpoints = [[bounds[0], bounds[1]] for bounds in self.param_ranges.values()]
-        all_combinations = list(product(*endpoints))
-        return [dict(zip(keys, values)) for values in all_combinations]
+        self.parameter_grid = self._generate_full_parameter_grid()
+        self.distribution_corner_points: List[Dict[str, float]] = self._generate_corner_points()
+        self.lr_grid = self._generate_full_lr_grid()
+        self.lr_corners = self._generate_lr_corners()
+
+    def _generate_corner_points(self):
+        eta_list = []
+        dists = []
+        for v in self.parameter_grid.values():
+            eta_list.append(np.asarray(v["natural_parameters"], dtype=float))
+            dists.append(v["distribution"])
+
+        all_eta = np.vstack(eta_list)
+        hull = ConvexHull(all_eta)
+        vertex_idxs = sorted(set(hull.vertices.tolist()))
+        return [dists[i] for i in vertex_idxs]
 
     def _evaluate_prior_qf_ksd(self, eta_tilde: np.ndarray) -> float:
         return eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
 
+    def _generate_full_parameter_grid(self) -> Dict:
+        pass
 
-class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
-    def __init__(
-        self,
-        posterior_ksd: PosteriorKSDParametric,
-        config: Dict,
-        distribution_cls=Gaussian,
-    ):
-        """
-        Grid/corner quadratic form generation and optimization for univariate gaussian.
-        """
-        super().__init__(posterior_ksd=posterior_ksd, config=config, distribution_cls=distribution_cls)
-        self.corner_points: List[Dict[str, float]] = self._generate_corner_points()
-        self.parameter_grid = self._generate_full_parameter_grid()
+    def _generate_full_lr_grid(self):
+        lr_grid = np.linspace(self.lr_ranges[0], self.lr_ranges[-1], self.lr_nums).tolist()
 
-    def _generate_full_parameter_grid(self) -> List[Tuple[float, ...]]:
-        param_grids = [
-            np.linspace(self.param_ranges[name][0], self.param_ranges[name][1], self.param_nums[name])
-            for name in self.param_names
-        ]
-        return list(product(*param_grids))
+        return lr_grid
 
-    def evaluate_all_prior_corners(self) -> List:
+    def _generate_lr_corners(self):
+        return [self.lr_ranges[0], self.lr_ranges[-1]]
+
+    def evaluate_all_prior_corners(self) -> Tuple:
         results = []
 
-        for corner in self.corner_points:
-            self.model.set_prior_parameters(corner, distribution_cls=self.distribution_cls)
+        for corner_distribution in self.distribution_corner_points:
+            params = corner_distribution.parameters_dict
+            self.model.set_prior_parameters(params, distribution_cls=self.distribution_cls)
             eta_tilde = self.model.prior.augmented_natural_parameters()
             ksd_est = self._evaluate_prior_qf_ksd(eta_tilde)
-            results.append((corner, eta_tilde, ksd_est))
-            print(f"Corner: {corner} => Estimated KSD: {ksd_est:.3f}")
+            results.append((params, eta_tilde, ksd_est))
 
         results.sort(key=lambda x: x[2], reverse=True)
+        self.model.back_to_prior_candidate()
 
-        return results
+        return results, results[0][0]
 
-    def evaluate_all_lr_corners(self) -> List:
-        results = []
-
-        for corner in self.corner_points:
-            self.model.set_lr_parameter(corner["lr"])
-            lr = self.model.loss_lr
-            ksd_est = lr**2 * self.Lambda_m_loss_lr + self.b_m_loss_lr * lr + self.ksd_for_prior_init
-            results.append((corner, ksd_est))
-            print(f"Corner: {corner} => Estimated KSD: {ksd_est:.6f}")
-
-        return results
-
-    def evaluate_all_prior_combinations(self) -> Tuple[List, List]:
+    def evaluate_all_prior_combinations(self) -> Tuple:
         results = []
 
         for values in self.parameter_grid:
             param_dict = dict(zip(self.param_names, values))
             self.model.set_prior_parameters(param_dict, distribution_cls=self.distribution_cls)
             eta_tilde = self.model.prior.augmented_natural_parameters()
-            ksd_est = self._evaluate_prior_qf_ksd(eta_tilde)
+            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
             results.append((param_dict, eta_tilde, ksd_est))
             print(f"Corner: {param_dict} => Estimated KSD: {ksd_est:.6f}")
 
-        return results, self.corner_points
+        results.sort(key=lambda x: x[2], reverse=True)
+        self.model.back_to_prior_candidate()
+
+        return results
+
+
+    def evaluate_all_lr_corners(self) -> List:
+        results = []
+
+        for lr_corner in self.lr_corners:
+            self.model.set_lr_parameter(lr_corner)
+            lr = self.model.loss_lr
+            ksd_est = lr**2 * self.Lambda_m_loss_lr + self.b_m_loss_lr * lr + self.ksd_for_prior_init
+            results.append((lr_corner, ksd_est))
+            print(f"Corner: {lr_corner} => Estimated KSD: {ksd_est:.6f}")
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        self.model.back_to_lr_init()
+
+        return results
+
+
+    def evaluate_full_lr_grid(self) -> List:
+        results = []
+
+        for lr in self.lr_grid:
+            self.model.set_lr_parameter(lr)
+            lr = self.model.loss_lr
+            ksd_est = lr**2 * self.Lambda_m_loss_lr + self.b_m_loss_lr * lr + self.ksd_for_prior_init
+            results.append((lr, ksd_est))
+            print(f"Corner: {lr} => Estimated KSD: {ksd_est:.6f}")
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        self.model.back_to_lr_init()
+
+        return results
+
+
+class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
+    def __init__(
+        self,
+        posterior_ksd: PosteriorKSDParametric,
+        prior_config: Dict,
+        loss_config: Dict,
+        distribution_cls=Gaussian,
+    ):
+        """
+        Grid/corner quadratic form generation and optimization for univariate gaussian.
+        """
+        super().__init__(posterior_ksd=posterior_ksd, prior_config=prior_config, loss_config=loss_config, distribution_cls=distribution_cls)
+
+    def _generate_mu_grid(self) -> List:
+        mu_ranges = self.param_ranges['mu']
+        mu_num = self.param_nums['mu']
+        mu_grid = np.linspace(mu_ranges[0], mu_ranges[-1], mu_num).tolist()
+
+        return mu_grid
+
+    def _generate_sigma_grid(self) -> List[np.ndarray]:
+        sigma_ranges = self.param_ranges['sigma']
+        sigma_num = self.param_nums['sigma']
+        sigma_grid = np.linspace(sigma_ranges[0], sigma_ranges[-1], sigma_num).tolist()
+
+        return sigma_grid
+
+    def _generate_full_parameter_grid(self) -> Dict:
+        mu_grid = self._generate_mu_grid()
+        sigma_grid = self._generate_sigma_grid()
+        parameter_grid = {}
+
+        for mu, sigma in itertools.product(mu_grid, sigma_grid):
+            try:
+                dist = self.distribution_cls(mu=mu, sigma=sigma)
+            except Exception as e:
+                print(f"Exception: {e} while initializing the distribution with mu={mu}, aigma={sigma}.")
+                continue
+
+            augmented_eta = dist.augmented_natural_parameters()
+            eta = dist.natural_parameters()
+            parameter_grid[(mu, sigma)] = {
+                "augmented_natural_parameters": augmented_eta,
+                "natural_parameters": eta,
+                "distribution": dist
+            }
+
+        return parameter_grid
+
+
+class OptimizationCornerPointsGamma(OptimizationCornerPointsBase):
+    def __init__(
+        self,
+        posterior_ksd: PosteriorKSDParametric,
+        prior_config: Dict,
+        loss_config: Dict,
+        distribution_cls=Gamma,
+    ):
+        """
+        Grid/corner quadratic form generation and optimization for gamma.
+        """
+        super().__init__(posterior_ksd=posterior_ksd, prior_config=prior_config, loss_config=loss_config, distribution_cls=distribution_cls)
+
+    def _generate_alpha_grid(self) -> List:
+        alpha_ranges = self.param_ranges['alpha']
+        alpha_num = self.param_nums['alpha']
+        alpha_grid = np.linspace(alpha_ranges[0], alpha_ranges[-1], alpha_num).tolist()
+
+        return alpha_grid
+
+    def _generate_theta_grid(self) -> List[np.ndarray]:
+        theta_ranges = self.param_ranges['theta']
+        theta_num = self.param_nums['theta']
+        theta_grid = np.linspace(theta_ranges[0], theta_ranges[-1], theta_num).tolist()
+
+        return theta_grid
+
+    def _generate_full_parameter_grid(self) -> Dict:
+        alpha_grid = self._generate_alpha_grid()
+        theta_grid = self._generate_theta_grid()
+        parameter_grid = {}
+
+        for alpha, theta in itertools.product(alpha_grid, theta_grid):
+            try:
+                dist = self.distribution_cls(alpha=alpha, theta=theta)
+            except Exception as e:
+                print(f"Exception: {e} while initializing the distribution with alpha={alpha}, theta={theta}.")
+                continue
+
+            augmented_eta = dist.augmented_natural_parameters()
+            eta = dist.natural_parameters()
+            parameter_grid[(alpha, theta)] = {
+                "augmented_natural_parameters": augmented_eta,
+                "natural_parameters": eta,
+                "distribution": dist
+            }
+        return parameter_grid
 
 
 class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase):
     def __init__(
         self,
         posterior_ksd: PosteriorKSDParametric,
-        config: Dict,
+        prior_config: Dict,
+        loss_config: Dict,
         distribution_cls=MultivariateGaussian,
     ):
         """
         Grid/corner quadratic form generation and optimization for multivariate gaussian.
         """
-        super().__init__(posterior_ksd=posterior_ksd, config=config, distribution_cls=distribution_cls)
-        self.parameter_grid = self._generate_full_parameter_grid()
-        self.distribution_corner_points: List[Dict[str, float]] = self._generate_corner_points()
+        super().__init__(posterior_ksd=posterior_ksd, prior_config=prior_config, loss_config=loss_config, distribution_cls=distribution_cls)
 
     def _generate_mu_grid(self) -> List:
         mu_ranges = self.param_ranges['mu']
@@ -135,19 +263,17 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
         ]
         return list(itertools.product(*mu_axes))
 
-    def _generate_cov_grid(self) -> List[np.ndarray]:
+    def _generate_cov_grid(self) -> list[np.ndarray]:
+        uniq_keys = ["0_0", "0_1", "1_1"]
         cov_ranges = self.param_ranges['cov']
         cov_nums = self.param_nums['cov']
-        keys = sorted(cov_ranges.keys())
-        axes = [
-            np.linspace(*cov_ranges[k], cov_nums[k]) for k in keys
-        ]
+
+        axes = [np.linspace(*cov_ranges[k], cov_nums[k]) for k in uniq_keys]
         cov_matrices = []
-        for values in itertools.product(*axes):
-            cov = np.zeros((2, 2))
-            for idx, k in enumerate(keys):
-                i, j = map(int, k.split('_'))
-                cov[i, j] = values[idx]
+        for vals in itertools.product(*axes):
+            a00, a01, a11 = vals
+            cov = np.array([[a00, a01],
+                            [a01, a11]], dtype=float)  # symmetric
             cov_matrices.append(cov)
         return cov_matrices
 
@@ -163,9 +289,11 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
                 print(f"Exception: {e} while initializing the distribution with mu={mu}, cov={cov}.")
                 continue
 
-            eta = dist.augmented_natural_parameters()
+            augmented_eta = dist.augmented_natural_parameters()
+            eta = dist.natural_parameters()
             cov_key = tuple(tuple(row) for row in cov)
             parameter_grid[(mu, cov_key)] = {
+                "augmented_natural_parameters": augmented_eta,
                 "natural_parameters": eta,
                 "distribution": dist
             }
@@ -186,48 +314,19 @@ class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase)
 
         return selected_distributions
 
-    def evaluate_all_prior_corners(self) -> List:
-        results = []
-
-        for corner_distribution in self.distribution_corner_points:
-            params = corner_distribution.parameters_dict
-            self.model.set_prior_parameters(params, distribution_cls=self.distribution_cls)
-            eta_tilde = self.model.prior.augmented_natural_parameters()
-            ksd_est = self._evaluate_prior_qf_ksd(eta_tilde)
-            results.append((params, eta_tilde, ksd_est))
-            print(f"Corner: {params} => Estimated KSD: {ksd_est:.6f}")
-
-        return results
-
-    def evaluate_all_prior_combinations(self) -> Tuple:
-        results = []
-
-        for values in self.parameter_grid:
-            param_dict = dict(zip(self.param_names, values))
-            self.model.set_prior_parameters(param_dict, distribution_cls=self.distribution_cls)
-            eta_tilde = self.model.prior.augmented_natural_parameters()
-            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
-            results.append((param_dict, eta_tilde, ksd_est))
-            print(f"Corner: {param_dict} => Estimated KSD: {ksd_est:.6f}")
-
-        results.sort(key=lambda x: x[2], reverse=True)
-
-        return results, self.distribution_corner_points
-
 
 class OptimizationCornerPointsInverseWishart(OptimizationCornerPointsBase):
     def __init__(
         self,
         posterior_ksd: PosteriorKSDParametric,
-        config: Dict,
-        distribution_cls=Gaussian,
+        prior_config: Dict,
+        loss_config: Dict,
+        distribution_cls=InverseWishart,
     ):
         """
         Grid/corner quadratic form generation and optimization for Inverse Wishart.
         """
-        super().__init__(posterior_ksd=posterior_ksd, config=config, distribution_cls=distribution_cls)
-        self.parameter_grid = self._generate_full_parameter_grid()
-        self.distribution_corner_points: List[Dict[str, float]] = self._generate_corner_points()
+        super().__init__(posterior_ksd=posterior_ksd, prior_config=prior_config, loss_config=loss_config, distribution_cls=distribution_cls)
 
     def _generate_df_grid(self) -> np.ndarray:
         return np.linspace(self.param_ranges["df"][0], self.param_ranges["df"][1], self.param_nums["df"])
@@ -260,16 +359,18 @@ class OptimizationCornerPointsInverseWishart(OptimizationCornerPointsBase):
                 print(f"Exception: {e} while initializing the distribution with df={df}, scale={scale}.")
                 continue
 
-            eta = dist.augmented_natural_parameters()
+            augmented_eta = dist.augmented_natural_parameters()
+            eta = dist.natural_parameters()
             scale_key = tuple(tuple(row) for row in scale)
             parameter_grid[(df, scale_key)] = {
+                "augmented_natural_parameters": augmented_eta,
                 "natural_parameters": eta,
                 "distribution": dist
             }
 
         return parameter_grid
 
-    def _generate_corner_points(self) -> List:
+    def _generate_corner_points(self) -> List[Dict[str, float]]:
         all_eta = np.stack([v["natural_parameters"] for v in self.parameter_grid.values()])
         eta_min = all_eta.min(axis=0)
         eta_max = all_eta.max(axis=0)
@@ -282,34 +383,6 @@ class OptimizationCornerPointsInverseWishart(OptimizationCornerPointsBase):
         ]
 
         return selected_distributions
-
-    def evaluate_all_prior_corners(self) -> List:
-        results = []
-
-        for corner_distribution in self.distribution_corner_points:
-            params = corner_distribution.parameters_dict
-            self.model.set_prior_parameters(params, distribution_cls=self.distribution_cls)
-            eta_tilde = self.model.prior.augmented_natural_parameters()
-            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
-            results.append((params, eta_tilde, ksd_est))
-            print(f"Corner: {params} => Estimated KSD: {ksd_est:.6f}")
-
-        return results
-
-    def evaluate_all_prior_combinations(self) -> Tuple:
-        results = []
-
-        for values in self.parameter_grid:
-            param_dict = dict(zip(self.param_names, values))
-            self.model.set_prior_parameters(param_dict, distribution_cls=self.distribution_cls)
-            eta_tilde = self.model.prior.augmented_natural_parameters()
-            ksd_est = eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.ksd_for_loss_init
-            results.append((param_dict, eta_tilde, ksd_est))
-            print(f"Corner: {param_dict} => Estimated KSD: {ksd_est:.6f}")
-
-        results.sort(key=lambda x: x[2], reverse=True)
-
-        return results, self.distribution_corner_points
 
 
 class OptimizationCornerPointsCompositePrior:
@@ -383,41 +456,6 @@ class OptimizationCornerPointsCompositePrior:
         recs = [{"params": r["params"], "eta": np.asarray(r["eta"], dtype=float).ravel()} for r in recs]
 
         return recs
-
-    def _component_gamma_corners_from_grid(self, comp_cfg, grid_lambda):
-        """
-        1) Map a dense grid in lambda-space to eta-space.
-        2) Extract extreme points (hull vertices) in eta-space.
-        3) Return records [{"params": lambda_dict, "eta": eta_vec}, ...].
-        """
-        etas, lams = self._component_gamma_from_grid(comp_cfg, grid_lambda)
-        extreme_idx = self._gamma_extreme_indices_via_hull(etas)
-        recs = [{"params": lams[i], "eta": etas[i]} for i in extreme_idx]
-        return recs
-
-    def _component_gamma_from_grid(self, comp_cfg, grid_lambda):
-        """Map a component's lambda-grid to eta-vectors."""
-        etas = []
-        ls = []
-        for lam in grid_lambda:
-            dist = self._materialize_component({"family": comp_cfg["family"], "params": lam})
-            eta = dist.natural_parameters()
-            etas.append(eta.ravel())
-            ls.append(lam)
-        return np.asarray(etas, float), ls
-
-    def _gamma_extreme_indices_via_hull(self, etas: np.ndarray, decimals: int = 10):
-        E = np.asarray(etas, float)
-        E_unique, keep_idx = np.unique(np.round(E, decimals), axis=0, return_index=True)
-
-        n, p = E_unique.shape
-        if n <= p + 1:
-            return sorted(keep_idx.tolist())
-
-        hull = ConvexHull(E_unique)
-        verts_unique = hull.vertices
-
-        return sorted(int(keep_idx[i]) for i in verts_unique)
 
     def _reset_prior_baseline_for_qf(self) -> None:
         """

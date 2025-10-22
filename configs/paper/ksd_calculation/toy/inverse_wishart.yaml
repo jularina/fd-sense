@@ -51,6 +51,14 @@ ksd:
               "0_1": 4
               "1_0": 4
 
+    loss:
+      MultivariateGaussianLogLikelihood:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.05, 2.5 ]
+          nums:
+            lr: 15
+
 flags:
   plots:
     generate_plots:

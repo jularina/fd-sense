@@ -22,8 +22,8 @@ data:
   posterior_samples_path: null
   prior_samples_path: null
   observations_num: 500
-  posterior_samples_num: 5000
-  prior_samples_num: 5000
+  posterior_samples_num: 2000
+  prior_samples_num: 2000
 
 model:
   _target_: src.bayesian_model.gaussian.MultivariateGaussianModel
@@ -64,10 +64,18 @@ ksd:
         radius_lower_bound: null
         scale_samples: False
 
+    loss:
+      MultivariateGaussianLogLikelihood:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.05, 2.5 ]
+          nums:
+            lr: 15
+
 flags:
   plots:
     generate_plots:
       heatmap: False
       line_plot: False
       density_plot: True
-    output_dir: outputs/paper/plots/multivariate
+    output_dir: outputs/paper/plots/fisher/multivariate

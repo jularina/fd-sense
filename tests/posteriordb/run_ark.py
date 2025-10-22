@@ -225,6 +225,6 @@ def main_for_paper_several_variants(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # main()
     # main_for_paper()
-    # main_for_paper_several_variants()
+    main_for_paper_several_variants()

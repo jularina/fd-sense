@@ -150,6 +150,24 @@ def lognormal_corners(ranges):
             recs.append({"params": {"mu_log": mu, "sigma_log": s}, "eta": eta})
     return recs
 
+def laplace_corners(ranges: Dict[str, Tuple[float, float]]):
+    mu_min, mu_max = _endpoints(ranges["mu"])       # location
+    b_min, b_max   = _endpoints(ranges["b"])        # scale
+
+    if mu_min != mu_max:
+        return Exception
+
+    corners = [
+        {"mu": mu_min, "b": b}
+        for b in (b_min, b_max)
+    ]
+    recs = []
+    for p in corners:
+        # natural parameter: eta = -1/b
+        eta = np.array([-1.0 / p["b"]], dtype=float)
+        recs.append(_make_rec(p, eta))
+    return recs
+
 
 # --------- Generic dispatcher ---------
 def get_corners(family: str, ranges: Dict[str, Tuple[float, float]]) -> List[Record]:
@@ -171,4 +189,6 @@ def get_corners(family: str, ranges: Dict[str, Tuple[float, float]]) -> List[Rec
         return exponential_corners(ranges)
     if fam in ("lognormal"):
         return lognormal_corners(ranges)
+    if fam in ("laplace"):
+        return laplace_corners(ranges)
     raise ValueError(f"Unsupported family '{family}'.")

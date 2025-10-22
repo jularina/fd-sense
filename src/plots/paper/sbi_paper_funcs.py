@@ -1,9 +1,8 @@
 import os
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
-from matplotlib.colors import ListedColormap
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 
 from src.utils.distributions import DISTRIBUTION_MAP
@@ -16,10 +15,11 @@ SCALE_MAP = {
     "theta_4": 1e10,
 }
 
+
 def _base_uniform_params_original(cfg, theta_name: str) -> Tuple[float, float]:
     """Read (possibly scaled) low/high from cfg and divide by s to get original-scale bounds."""
     base_path = f"data.candidate_prior.distributions.{theta_name}"
-    low_s  = float(_deep_get(cfg, base_path + ".low"))
+    low_s = float(_deep_get(cfg, base_path + ".low"))
     high_s = float(_deep_get(cfg, base_path + ".high"))
     s = SCALE_MAP[theta_name]
     return (low_s / s, high_s / s)
@@ -42,6 +42,7 @@ def _candidate_params_original(theta_name: str, family: str, params: Dict) -> Tu
     else:
         return family, params
 
+
 def _deep_get(cfg, path, default=None):
     cur = cfg
     for key in path.split('.'):
@@ -53,6 +54,7 @@ def _deep_get(cfg, path, default=None):
             cur = getattr(cur, key, None)
     return default if cur is None else cur
 
+
 def _apply_plot_rc(plot_cfg):
     plt.rcParams.update({
         "font.size": plot_cfg.plot.font.size,
@@ -60,6 +62,7 @@ def _apply_plot_rc(plot_cfg):
         "text.usetex": plot_cfg.plot.font.use_tex,
         "text.latex.preamble": r"\usepackage{amsmath}\usepackage{type1cm}",
     })
+
 
 def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
     os.makedirs(output_dir, exist_ok=True)
@@ -70,6 +73,7 @@ def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
     plt.close(fig)
 
 # ============== main plotting function ==============
+
 
 def plot_turin_four_theta_priors(
     largest_sens: Dict,     # dict like {'theta_1': {'family': 'LogNormal', 'params': {...}}, ...}
@@ -104,12 +108,15 @@ def plot_turin_four_theta_priors(
         # expand based on candidate scale
         if candidate_family == "Gamma":
             # mean ~ alpha*theta; std ~ sqrt(alpha)*theta
-            a = float(candidate_params["alpha"]); th = float(candidate_params["theta"])
-            mean = a * th; std = (a ** 0.5) * th
+            a = float(candidate_params["alpha"])
+            th = float(candidate_params["theta"])
+            mean = a * th
+            std = (a ** 0.5) * th
             xmin = min(xmin, max(1e-20, mean - 5 * std))
             xmax = max(xmax, mean + 5 * std)
         elif candidate_family == "LogNormal":
-            mu = float(candidate_params["mu_log"]); sig = float(candidate_params["sigma_log"])
+            mu = float(candidate_params["mu_log"])
+            sig = float(candidate_params["sigma_log"])
             # cover exp(mu ± 5σ)
             xmin = min(xmin, np.exp(mu - 5 * sig))
             xmax = max(xmax, np.exp(mu + 5 * sig))
@@ -160,7 +167,8 @@ def plot_turin_four_theta_priors(
 
         # plot
         ax.plot(x, y_base, linestyle="--", color=col_ref, linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$")
-        ax.plot(x, y_cand, color=col_cand, linewidth=1.8, label=r"$\Pi$ (" + plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + ")")
+        ax.plot(x, y_cand, color=col_cand, linewidth=1.8, label=r"$\Pi$ (" +
+                plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + ")")
 
         # aesthetics
         ax.spines["top"].set_visible(False)
@@ -177,7 +185,8 @@ def plot_turin_four_theta_priors(
     # one shared legend
     handles = [
         plt.Line2D([], [], color=col_ref, linestyle="--", linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$"),
-        plt.Line2D([], [], color=col_cand, linestyle="-", linewidth=1.8, label=r"$\Pi$ (" + plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + ")"),
+        plt.Line2D([], [], color=col_cand, linestyle="-", linewidth=1.8, label=r"$\Pi$ (" +
+                   plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + ")"),
     ]
     fig.legend(handles=handles, labels=[h.get_label() for h in handles],
                loc="lower center", frameon=False, ncol=2, bbox_to_anchor=(0.5, -0.09))
@@ -185,9 +194,9 @@ def plot_turin_four_theta_priors(
     _save_fig(fig, output_dir, f"{filename}", plot_cfg)
 
 
-
 def plot_lr_vs_ksd(
-    lr_grid,                 # list of (lr, ksd) tuples, or list of dicts with keys {'lr'|'learning_rate', 'ksd'|'value'}
+    # list of (lr, ksd) tuples, or list of dicts with keys {'lr'|'learning_rate', 'ksd'|'value'}
+    lr_grid,
     plot_cfg,                # plotting config (rc + sizes)
     output_dir: str,
     filename: str = "sbi_experiment_turin_lr_scan.pdf",
@@ -231,16 +240,18 @@ def plot_lr_vs_ksd(
     fig, ax = plt.subplots(1, 1, figsize=(W, H), dpi=plot_cfg.plot.figure.dpi)
 
     # line + markers
-    ax.plot(xs, ys, marker="o", linewidth=1.8, color=plot_cfg.plot.color_palette.colors[0])
+    ax.plot(xs, ys, marker="o", linewidth=1.5, markersize=3.5, color=plot_cfg.plot.color_palette.colors[0])
+    max_idx = np.argmax(ys)
+    ax.plot(xs[max_idx], ys[max_idx], marker="*", color="red", markersize=6, zorder=5)
 
     # aesthetics
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
     # remove y-axis ticks and labels completely
-    ax.set_yticks([])
+    # ax.set_yticks([])
     ax.set_ylabel(plot_cfg.plot.param_latex_names["estimatedKSDposteriorsShort"])
-    ax.tick_params(axis="y", left=False, right=False, labelleft=False)
+    # ax.tick_params(axis="y", left=False, right=False, labelleft=False)
 
     # labels
     if xlabel is None:
@@ -333,9 +344,11 @@ def _mix(c1, c2, t):
     c2 = np.array(c2, dtype=float)
     return (1 - t) * c1 + t * c2
 
+
 def _smooth_palette_cmap(colors, N=256):
     # Smooth, continuous gradient through the provided colors
     return LinearSegmentedColormap.from_list("cfg_palette_grad", list(colors), N=N)
+
 
 def _single_hue_cmap(base_color, low_light=0.75, darken=0.35, reverse=False, N=256):
     # Low end: a tint toward white (low_light closer to 1.0 => lighter low end)
@@ -349,6 +362,7 @@ def _single_hue_cmap(base_color, low_light=0.75, darken=0.35, reverse=False, N=2
     cmap = LinearSegmentedColormap.from_list("single_hue_boosted", [tuple(low), tuple(base), tuple(high)], N=N)
     return cmap.reversed() if reverse else cmap
 
+
 def _resolve_cmap_from_cfg(plot_cfg):
     pc = getattr(plot_cfg, "plot", plot_cfg)
     palette = getattr(pc, "color_palette", None)
@@ -357,10 +371,11 @@ def _resolve_cmap_from_cfg(plot_cfg):
 
     # Stronger contrast than before (less pale): lower low_light, add darken
     low_light = float(getattr(pc, "cmap_low_light", 0.95))   # 0.60–0.85 is good; 0.92 was too pale
-    darken    = float(getattr(pc, "cmap_darken", 0.40))      # 0–0.6; higher = deeper high end
-    reverse   = bool(getattr(pc, "cmap_reverse", False))
-    N         = int(getattr(pc, "cmap_N", 256))
+    darken = float(getattr(pc, "cmap_darken", 0.40))      # 0–0.6; higher = deeper high end
+    reverse = bool(getattr(pc, "cmap_reverse", False))
+    N = int(getattr(pc, "cmap_N", 256))
     return _single_hue_cmap(base_color, low_light=low_light, darken=darken, reverse=reverse, N=N)
+
 
 def plot_ksd_heatmap_continuous(
     data_dict,
@@ -407,13 +422,15 @@ def plot_ksd_heatmap_continuous(
         raise ValueError("log_y=True but some radii are <= 0.")
 
     # Display grid
-    xi_vals = np.logspace(np.log10(xs.min()), np.log10(xs.max()), grid_res) if log_x else np.linspace(xs.min(), xs.max(), grid_res)
-    yi_vals = np.logspace(np.log10(ys.min()), np.log10(ys.max()), grid_res) if log_y else np.linspace(ys.min(), ys.max(), grid_res)
+    xi_vals = np.logspace(np.log10(xs.min()), np.log10(xs.max()),
+                          grid_res) if log_x else np.linspace(xs.min(), xs.max(), grid_res)
+    yi_vals = np.logspace(np.log10(ys.min()), np.log10(ys.max()),
+                          grid_res) if log_y else np.linspace(ys.min(), ys.max(), grid_res)
     Xi, Yi = np.meshgrid(xi_vals, yi_vals)
 
     # Interpolation space
-    ix  = np.log10(xs) if log_x else xs
-    iy  = np.log10(ys) if log_y else ys
+    ix = np.log10(xs) if log_x else xs
+    iy = np.log10(ys) if log_y else ys
     iXi = np.log10(Xi) if log_x else Xi
     iYi = np.log10(Yi) if log_y else Yi
 
@@ -464,4 +481,3 @@ def plot_ksd_heatmap_continuous(
 
         _save_fig(fig, output_dir, filename, plot_cfg)
         plt.close(fig)
-

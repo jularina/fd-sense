@@ -109,7 +109,6 @@ def plot_ar_time_series(
 
     _save_fig(fig, output_dir, filename, plot_cfg)
 
-
 def _get_component_cfg(cfg, name: str):
     """Find component config by name from cfg.ksd.optimize.prior.Composite.components."""
     comps = _deep_get(cfg, "ksd.optimize.prior.Composite.components", [])
@@ -119,7 +118,6 @@ def _get_component_cfg(cfg, name: str):
     raise KeyError(f"Component '{name}' not found in cfg.")
 
 def _parse_family_from_target(target: str) -> str:
-    # e.g. "src.distributions.gaussian.Gaussian" -> "Gaussian"
     return target.split(".")[-1]
 
 def _get_base_prior_spec(cfg, name: str) -> Tuple[str, Dict[str, float]]:
@@ -607,7 +605,7 @@ def plot_complexity_bar(
 
     values = np.array(values, dtype=float)
     heights = np.log10(values) if use_log10 else values
-    ylab = r"$\log_{10}(\text{cost})$" if use_log10 else "cost"
+    ylab = r"$\log_{10}(\text{time})$" if use_log10 else "cost"
 
     # --- Colors
     try:

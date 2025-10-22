@@ -1,11 +1,12 @@
 import numpy as np
 
+from bayesian_model.base import BayesianModelExtended
 from src.bayesian_model.base import BayesianModel
 from src.utils.typing import ArrayLike
 from src.distributions.inverse_wishart import InverseWishart
 
 
-class InverseWishartModel(BayesianModel):
+class InverseWishartModel(BayesianModelExtended):
     """
     Covariance estimation with known mean, Inverse Wishart prior.
     """

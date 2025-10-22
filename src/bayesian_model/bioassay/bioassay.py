@@ -1,96 +1,92 @@
+import os
+from hydra.utils import get_original_cwd
+from typing import Optional
 import copy
-from typing import Dict, Any
-
+from typing import Any, Dict
 import numpy as np
 
-from bayesian_model.base import BayesianModelExtended
+from src.utils.typing import ArrayLike
 from src.bayesian_model.base import BayesianModel
+from src.utils.files_operations import load_numpy_array
 from src.distributions.composite import CompositeProduct
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.utils.files_operations import instantiate_from_target_str
 from src.utils.distributions import is_basedistribution_like
 
 
-class SimpleGaussianModel(BayesianModelExtended):
+class BioassayModel(BayesianModel):
     """
-    Univariate Gaussian likelihood with Gaussian or LogNormal prior.
-    """
-
-    def __init__(self, data_config):
-        super().__init__(data_config)
-
-    def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
-        """
-        Sample from conjugate posterior: Normal(mu_n, sigma_n^2).
-        """
-        sigma_n2 = 1 / (self.observations_num / self.loss.var + 1 / self.prior.var)
-        mu_n = sigma_n2 * (self.observations_num * self.x_bar / self.loss.var + self.prior.mu / self.prior.var)
-
-        self.mu_n = mu_n
-        sigma_n = np.sqrt(sigma_n2)
-
-        return np.random.normal(mu_n, sigma_n, size=(n_samples, 1))
-
-
-class MultivariateGaussianModel(BayesianModelExtended):
-    """
-    Multivariate Gaussian likelihood with Gaussian prior on the mean.
+    Bioassay Model
     """
 
     def __init__(self, data_config):
         super().__init__(data_config)
-        self.dim = self.observations.shape[1]
+        self.x, self.y, self.n = self._prepare_observations(data_config)
+        self.observations_num = self.x.shape[0]
+        self.posterior_samples_init = self._prepare_array_from_presaved_samples(
+            getattr(data_config, "posterior_samples_path", None),
+            name="posterior"
+        )
+        if self.m is None:
+            self.m = len(self.posterior_samples_init)
 
-    def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
+    def _prepare_array_from_presaved_samples(self, path: Optional[str], name: str) -> Optional[np.ndarray]:
         """
-        Closed-form posterior for mean with known covariance.
+        Generic helper to load an array from a given path in config.
+        Returns None if no path is given.
         """
-        mu0, Sigma0 = self.prior.mu, self.prior.cov
-        Sigma_obs = self.loss.cov
+        if path is None:
+            return None
+        if not os.path.isabs(path):
+            path = os.path.join(get_original_cwd(), path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"{name.capitalize()} samples file not found: {path}")
 
-        Sigma_obs_inv = np.linalg.inv(Sigma_obs)
-        Sigma0_inv = np.linalg.inv(Sigma0)
+        arr = load_numpy_array(path)
+        arr = np.asarray(arr)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        return arr
 
-        Sigma_n_inv = self.observations_num * Sigma_obs_inv + Sigma0_inv
-        Sigma_n = np.linalg.inv(Sigma_n_inv)
+    def _prepare_observations(self, data_config: Any) -> tuple:
+        obs_path = getattr(data_config, "observations_path", None)
 
-        mu_n = Sigma_n @ (self.observations_num * Sigma_obs_inv @ self.x_bar + Sigma0_inv @ mu0)
+        if not os.path.isabs(obs_path):
+            obs_path = os.path.join(get_original_cwd(), obs_path)
 
-        self.mu_n = mu_n
-        self.Sigma_n = Sigma_n
+        obs = load_numpy_array(obs_path)
 
-        return np.random.multivariate_normal(mu_n, Sigma_n, size=n_samples)
+        return obs[:,0].reshape(-1,1), obs[:,1].reshape(-1,1), obs[:,2].reshape(-1,1)
 
-    def set_composite_prior_parameters(self, components: Dict[str, Any], combine_rule: str = "product", reset_from_init: bool = True,) -> None:
+    def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
+        """Compute gradient of log likelihood (scaled by learning rate)."""
+        grad = self.loss.grad_log_pdf(theta=x, y=self.y, x=self.x, n=self.n)
+        return self.loss_lr * grad if multiply_by_lr else grad
+
+    def set_composite_prior_parameters(self, components: Dict[str, Any], combine_rule: str = "product",
+                                       reset_from_init: bool = True, ) -> None:
         if combine_rule != "product":
             raise NotImplementedError("Only product composites are supported right now.")
 
-        # --- choose a clean base to overlay on ---
         base = self.prior_init if reset_from_init else self.prior
 
         if not isinstance(base, CompositeProduct):
             raise TypeError("Expected CompositeProduct as base prior.")
 
-        # Deep-copy base to avoid mutating prior_init
         base_names = list(base.names)
         base_map = {n: copy.deepcopy(c) for n, c in zip(base.names, base.components)}
-
-        # Start from the clean base and overlay user-specified components
         new_map: Dict[str, Any] = dict(base_map)
 
         for name, spec in components.items():
-            # 1) already-instantiated distribution
             if is_basedistribution_like(spec):
                 new_map[name] = spec
                 continue
 
-            # 2) hydra-style instantiation
             if isinstance(spec, dict) and "_target_" in spec:
                 kwargs = {k: v for k, v in spec.items() if k != "_target_"}
                 new_map[name] = instantiate_from_target_str(spec["_target_"], kwargs)
                 continue
 
-            # 3) family/params shorthand
             if isinstance(spec, dict) and "family" in spec:
                 fam = spec["family"]
                 params = spec.get("params", {k: v for k, v in spec.items() if k != "family"})
@@ -100,7 +96,6 @@ class MultivariateGaussianModel(BayesianModelExtended):
                 new_map[name] = cls(**params)
                 continue
 
-            # 4) bare params: reuse the *base* component's class (not the current self.prior)
             if isinstance(spec, dict) and name in base_map:
                 cls = base_map[name].__class__
                 new_map[name] = cls(**spec)
@@ -111,11 +106,9 @@ class MultivariateGaussianModel(BayesianModelExtended):
                 f"a dict with '_target_', a dict with 'family'/params, or bare params matching a base component."
             )
 
-        # Preserve base ordering; append any truly new names at the end
         ordered_map: Dict[str, Any] = {n: new_map[n] for n in base_names if n in new_map}
         for n, v in new_map.items():
             if n not in ordered_map:
                 ordered_map[n] = v
 
-        # Finalize
         self.prior = CompositeProduct(distributions=ordered_map)

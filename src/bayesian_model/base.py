@@ -1,5 +1,5 @@
 import copy
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Dict, Type
 import numpy as np
 import os
@@ -26,23 +26,6 @@ class BayesianModel(ABC):
         self.m: int = data_config.posterior_samples_num
         self.m_prior: int = data_config.prior_samples_num
 
-        # Prepare observations
-        self.observations = self._prepare_observations(data_config)
-        self.observations_num = self.observations.shape[0]
-        self.x_bar: np.ndarray = np.mean(self.observations, axis=0)
-        self.posterior_samples_init = self._prepare_array_from_presaved_samples(
-            getattr(data_config, "posterior_samples_path", None),
-            name="posterior"
-        )
-        if self.m is None:
-            self.m = len(self.posterior_samples_init)
-        self.prior_samples_init = self._prepare_array_from_presaved_samples(
-            getattr(data_config, "prior_samples_path", None),
-            name="prior"
-        )
-        if self.m_prior is None:
-            self.m_prior = len(self.prior_samples_init)
-
     def back_to_prior_init(self, *, deep: bool = True):
         """
         Reset the current prior to the initial/base prior.
@@ -54,6 +37,19 @@ class BayesianModel(ABC):
             self (for chaining)
         """
         self.prior = copy.deepcopy(self.prior_init) if deep else self.prior_init
+        return self
+
+    def back_to_lr_init(self, *, deep: bool = True):
+        """
+        Reset the current lr to the initial/base prior.
+
+        Args:
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.loss_lr` do not affect `self.loss_lr_init`.
+        Returns:
+            self (for chaining)
+        """
+        self.loss_lr = copy.deepcopy(self.loss_lr_init) if deep else self.loss_lr_init
         return self
 
     def back_to_prior_candidate(self, *, deep: bool = True):
@@ -68,6 +64,94 @@ class BayesianModel(ABC):
         """
         self.prior = copy.deepcopy(self.prior_candidate) if deep else self.prior_candidate
         return self
+
+    def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
+        """
+        Draw samples from the posterior distribution.
+        """
+        pass
+
+    def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
+        """
+        Draw samples from the posterior distribution.
+        """
+        return self.prior_init.sample(n_samples)
+
+    def set_prior_parameters(self, params: Dict[str, Any], distribution_cls: Type) -> None:
+        """
+        Set or update the prior distribution.
+
+        Args:
+            params: Dictionary of prior parameters.
+            distribution_cls: Distribution class to instantiate the prior.
+        """
+        self.prior = distribution_cls(**params)
+
+    def set_lr_parameter(self, lr: float) -> None:
+        """
+        Set or update the loss function parameters.
+
+        Args:
+            lr: Learning rate for the loss term.
+        """
+        self.loss_lr = lr
+
+    def prior_score(self, x: ArrayLike) -> np.ndarray:
+        """Compute gradient of log prior."""
+        return self.prior.grad_log_pdf(x)
+
+    def reference_prior_score(self, x: ArrayLike) -> np.ndarray:
+        """Compute gradient of reference log prior."""
+        return self.prior_init.grad_log_pdf(x)
+
+    def reference_loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
+        """Compute gradient of reference log loss."""
+        grad = self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
+        return self.loss_lr_init * grad if multiply_by_lr else grad
+
+    def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
+        """Compute gradient of log likelihood (scaled by learning rate)."""
+        grad = self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
+        return self.loss_lr * grad if multiply_by_lr else grad
+
+    def posterior_score(self, x: ArrayLike) -> np.ndarray:
+        """Compute posterior score (prior + likelihood)."""
+        prior_grad = self.prior_score(x)
+        loss_grad = self.loss_score(x)
+        return prior_grad + loss_grad
+
+    def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
+        """Return Jacobian of sufficient statistics."""
+        return self.prior.grad_sufficient_statistics(x)
+
+    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
+        """Gradient of log base measure."""
+        return self.prior.grad_log_base_measure(x)
+
+
+class BayesianModelExtended(BayesianModel):
+    def __init__(self, data_config: Any):
+        """
+        Base class for Extended Bayesian models.
+        """
+        super().__init__(data_config)
+        # Prepare observations
+        self.observations = self._prepare_observations(data_config)
+        self.observations_num = self.observations.shape[0]
+        self.x_bar: np.ndarray = np.mean(self.observations, axis=0)
+        self.posterior_samples_init = self._prepare_array_from_presaved_samples(
+            getattr(data_config, "posterior_samples_path", None),
+            name="posterior"
+        )
+        self.m = len(self.posterior_samples_init)
+        self.prior_samples_init = self._prepare_array_from_presaved_samples(
+            getattr(data_config, "prior_samples_path", None),
+            name="prior"
+        )
+        try:
+            self.m_prior = len(self.prior_samples_init)
+        except:
+            self.m_prior = None
 
     def _prepare_observations(self, data_config: Any) -> np.ndarray:
         """
@@ -105,8 +189,21 @@ class BayesianModel(ABC):
         Generic helper to load an array from a given path in config.
         Returns None if no path is given.
         """
-        if path is None:
-            return None
+        if path is None and name == "posterior":
+            try:
+                print("Posterior samples path not provided. Trying to sample from posterior.")
+                arr = self.sample_posterior()
+                return arr
+            except:
+                raise Exception("Was not able to sample from posterior.")
+        elif path is None and name == "prior":
+            try:
+                print("Prior samples path not provided. Trying to sample from prior.")
+                arr = self.sample_from_base_prior()
+                return arr
+            except:
+                raise Exception("Was not able to sample from prior.")
+
         if not os.path.isabs(path):
             path = os.path.join(get_original_cwd(), path)
         if not os.path.exists(path):
@@ -117,58 +214,3 @@ class BayesianModel(ABC):
         if arr.ndim == 1:
             arr = arr.reshape(-1, 1)
         return arr
-
-
-    def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
-        """
-        Draw samples from the posterior distribution.
-        """
-        pass
-
-    def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
-        """
-        Draw samples from the posterior distribution.
-        """
-        return self.prior_init.sample(n_samples)
-
-    def set_prior_parameters(self, params: Dict[str, Any], distribution_cls: Type) -> None:
-        """
-        Set or update the prior distribution.
-
-        Args:
-            params: Dictionary of prior parameters.
-            distribution_cls: Distribution class to instantiate the prior.
-        """
-        self.prior = distribution_cls(**params)
-
-    def set_lr_parameter(self, lr: float) -> None:
-        """
-        Set or update the loss function parameters.
-
-        Args:
-            lr: Learning rate for the loss term.
-        """
-        self.loss_lr = lr
-
-    def prior_score(self, x: ArrayLike) -> np.ndarray:
-        """Compute gradient of log prior."""
-        return self.prior.grad_log_pdf(x)
-
-    def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
-        """Compute gradient of log likelihood (scaled by learning rate)."""
-        grad = self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
-        return self.loss_lr * grad if multiply_by_lr else grad
-
-    def posterior_score(self, x: ArrayLike) -> np.ndarray:
-        """Compute posterior score (prior + likelihood)."""
-        prior_grad = self.prior_score(x)
-        loss_grad = self.loss_score(x)
-        return prior_grad + loss_grad
-
-    def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
-        """Return Jacobian of sufficient statistics."""
-        return self.prior.grad_sufficient_statistics(x)
-
-    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
-        """Gradient of log base measure."""
-        return self.prior.grad_log_base_measure(x)

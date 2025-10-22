@@ -1,0 +1,99 @@
+data:
+  base_prior:
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.uniform.Uniform
+        low: -4
+        high: 8
+      beta:
+        _target_: src.distributions.uniform.Uniform
+        low: -10
+        high: 40
+  candidate_prior:
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.cauchy.Cauchy
+        x: 0
+        gamma: 10.0
+      beta:
+        _target_: src.distributions.cauchy.Cauchy
+        x: 0
+        gamma: 10.0
+  true_dgp: null
+  loss:
+    _target_: src.losses.logistic_binomial_log_likelihood.LogisticBinomialLogLikelihood
+  loss_lr: 1
+  observations_path: /Users/arinaodv/Desktop/folder/study_phd/code/stein-sense/data/bioassay/observations.npy
+  posterior_samples_path: /Users/arinaodv/Desktop/folder/study_phd/code/stein-sense/data/bioassay/samples.npy
+  prior_samples_path: null
+  observations_num: null
+  posterior_samples_num: null
+  prior_samples_num: null
+
+model:
+  _target_: src.bayesian_model.bioassay.bioassay.BioassayModel
+
+ksd:
+  kernel:
+    _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
+    lengthscale: null
+    alpha: 0.5
+    heuristic: True
+  optimize:
+    prior:
+      Composite:
+        combine_rule: product
+        components:
+          - name: alpha
+            family: Laplace
+            parameters_box_range:
+              ranges:
+                mu: [ 0, 0 ]
+                b: [ 5, 20 ]
+              nums:
+                mu: 1
+                b: 12
+#          - name: beta
+#            family: Laplace
+#            parameters_box_range:
+#              ranges:
+#                mu: [ 0, 0 ]
+#                b: [ 3, 14 ]
+#              nums:
+#                mu: 1
+#                b: 12
+#          - name: alpha
+#            family: Gaussian
+#            parameters_box_range:
+#              ranges:
+#                mu: [ -5, 5 ]
+#                sigma: [ 5, 10 ]
+#              nums:
+#                mu: 11
+#                sigma: 6
+          - name: beta
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [ -2, 2 ]
+                sigma: [ 5, 20 ]
+              nums:
+                mu: 11
+                sigma: 6
+    loss:
+      LogisticBinomialLogLikelihood:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.01, 2.5 ]
+          nums:
+            lr: 21
+
+
+flags:
+  plots:
+    output_dir: outputs/paper/plots/comparison/bioassay
+
+playground:
+  output_prefix: bioassay

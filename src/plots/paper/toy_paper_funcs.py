@@ -1,6 +1,5 @@
 from collections import defaultdict
 from typing import List, Tuple, Dict, FrozenSet, Any
-import matplotlib.patches as mpatches
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -16,208 +15,10 @@ import os
 from typing import Any
 from matplotlib.legend_handler import HandlerBase
 from matplotlib.lines import Line2D
+from scipy.stats import sem, t
 
 from src.distributions.gaussian import Gaussian
 
-
-def plot_ksd_heatmaps(
-    ksd_results: Dict[Tuple[float, ...], float],
-    param_names: List[str],
-    plot_cfg: DictConfig,
-    output_dir: str,
-) -> None:
-    """
-    Plots and saves KSD heatmaps using styling from a plot config.
-
-    Args:
-        ksd_results: Dictionary mapping parameter value tuples to KSD values.
-        param_names: List of parameter names corresponding to the tuple order.
-        plot_cfg: Plot configuration (e.g., loaded from YAML and converted to DictConfig).
-        output_dir: Directory to save plots.
-    """
-    # Create output directory if needed
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Apply global matplotlib and seaborn settings
-    plt.rcParams.update({
-        "font.size": plot_cfg.plot.font.size,
-        "font.family": plot_cfg.plot.font.family,
-        "text.usetex": plot_cfg.plot.font.use_tex,
-    })
-    sns.set_style(plot_cfg.plot.seaborn.style)
-    sns.set_context(plot_cfg.plot.seaborn.context)
-    latex_param_names = plot_cfg.plot.param_latex_names
-
-    # Create custom color palette
-    colors = plot_cfg.plot.color_palette.colors
-    cmap = LinearSegmentedColormap.from_list("custom_cmap", colors)
-
-    # Extract values
-    num_params = len(param_names)
-    param_values = np.array(list(ksd_results.keys()))
-    ksd_values = np.array(list(ksd_results.values()))
-
-    # Loop through parameter pairs
-    for i in range(num_params):
-        for j in range(i + 1, num_params):
-            x_vals = param_values[:, i]
-            y_vals = param_values[:, j]
-
-            xi = np.unique(x_vals)
-            yi = np.unique(y_vals)
-            zi = np.full((len(yi), len(xi)), np.nan)
-
-            # Fill heatmap grid
-            for x, y, ksd in zip(x_vals, y_vals, ksd_values):
-                x_idx = np.where(xi == x)[0][0]
-                y_idx = np.where(yi == y)[0][0]
-                zi[y_idx, x_idx] = ksd
-
-            # Plot
-            x_label = latex_param_names.get(param_names[i], param_names[i])
-            y_label = latex_param_names.get(param_names[j], param_names[j])
-            fig, ax = plt.subplots(
-                figsize=(
-                    plot_cfg.plot.figure.size.width,
-                    plot_cfg.plot.figure.size.height,
-                ),
-                dpi=plot_cfg.plot.figure.dpi,
-            )
-
-            sns.heatmap(
-                zi,
-                xticklabels=np.round(xi, 3),
-                yticklabels=np.round(yi, 3),
-                cmap=cmap,
-                annot=True,
-                fmt=".3f",
-                ax=ax,
-            )
-
-            ax.set_xlabel(x_label)
-            ax.set_ylabel(y_label)
-            ax.set_title(f"KSD heatmap: {x_label} vs {y_label}")
-
-            if plot_cfg.plot.figure.tight_layout:
-                plt.tight_layout()
-
-            filename = f"ksd_heatmap_{param_names[i]}_vs_{param_names[j]}.pdf"
-            save_path = os.path.join(output_dir, filename)
-            fig.savefig(save_path, format="pdf", bbox_inches='tight')
-            plt.close(fig)
-
-            print(f"Saved heatmap to: {save_path}")
-
-
-# def plot_ksd_eta_surface(
-#     results: List[Tuple[Dict[str, float], np.ndarray, float]],
-#     corner_points: List[Dict[str, float]],
-#     plot_cfg: DictConfig,
-#     output_dir: str,
-# ) -> None:
-#     os.makedirs(output_dir, exist_ok=True)
-#
-#     latex_param_names = plot_cfg.plot.param_latex_names
-#
-#     x, y, z = [], [], []
-#     annotations = []
-#
-#     # Convert corner points to a set of frozensets for fast lookup
-#     corner_set: Set[FrozenSet[Tuple[str, float]]] = {
-#         frozenset({(k, float(f"{v:.8f}")) for k, v in cp.items()})
-#         for cp in corner_points
-#     }
-#
-#     for prior_params, eta_tilde, ksd_est in results:
-#         if len(eta_tilde) < 2:
-#             continue  # Skip if not enough dimensions
-#
-#         eta_0, eta_1 = eta_tilde[0], eta_tilde[1]
-#         x.append(eta_0)
-#         y.append(eta_1)
-#         z_val = np.log10(ksd_est) if plot_cfg.plot.y_axis.log_scale else ksd_est
-#         z.append(z_val)
-#
-#         # Format prior_params to match precision and check against corners
-#         param_key = frozenset({(k, float(f"{v:.8f}")) for k, v in prior_params.items()})
-#         if param_key in corner_set:
-#             label = "\n".join(
-#                 f"{latex_param_names.get(k+"_0", k)}={v}" for k, v in prior_params.items()
-#             )
-#         else:
-#             label = None
-#         annotations.append(label)
-#
-#     x = np.array(x)
-#     y = np.array(y)
-#     z = np.array(z)
-#
-#     # Create colormap from config
-#     palette_colors = plot_cfg.plot.color_palette.colors
-#     palette_colors = palette_colors[::-1]
-#     cmap = LinearSegmentedColormap.from_list("custom_cmap", palette_colors)
-#
-#     # Plot
-#     fig = plt.figure(
-#         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
-#         dpi=plot_cfg.plot.figure.dpi,
-#     )
-#     ax = fig.add_subplot(111, projection='3d')
-#
-#     surf = ax.plot_trisurf(x, y, z, cmap=cmap, edgecolor='none', linewidth=0.2, antialiased=True)
-#
-#     ax.set_xlabel(r"$\gamma_0=\frac{\mu_0}{\sigma_0^2}$")
-#     ax.set_ylabel(r"$\gamma_1=\frac{-0.5}{\sigma_0^2}$")
-#
-#     # ax.set_zlabel(ksd_qf_latex)
-#
-#     # Annotate only corner points
-#     for i in range(len(x)):
-#         if annotations[i] is not None:
-#             ax.text(x[i], y[i], z[i], annotations[i], fontsize=3, rotation=30, color='black', zorder=10)
-#
-#     if plot_cfg.plot.figure.tight_layout:
-#         plt.tight_layout()
-#
-#     # Mark min and max KSD points
-#     z = np.array(z)
-#     min_idx = np.argmin(z)
-#     max_idx = np.argmax(z)
-#
-#     min_x, min_y = x[min_idx], y[min_idx]
-#     max_x, max_y = x[max_idx], y[max_idx]
-#
-#     # Red star at maximum
-#     ax.scatter(
-#         max_x, max_y, z[max_idx],
-#         color="red",
-#         zorder=6,
-#         marker='*',
-#         s=50,
-#     )
-#     ax.view_init(elev=30, azim=50)
-#
-#     ksd_qf_latex = latex_param_names.get("estimatedKSDposteriorsQuadraticForm", "KSD")
-#     zmin, zmax = ax.get_zlim()
-#     xmid = np.max(ax.get_xlim())
-#     ymid = np.min(ax.get_ylim())
-#     ax.text(
-#         xmid, ymid-0.05, zmax-0.03,
-#         ksd_qf_latex,
-#         rotation=90,
-#         fontsize=10,
-#         va='bottom',
-#         ha='left'
-#     )
-#     ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
-#     ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
-#
-#     filename = "ksd_eta_surface_from_corners.pdf"
-#     save_path = os.path.join(output_dir, filename)
-#     fig.savefig(save_path, format="pdf", bbox_inches='tight')
-#     plt.close(fig)
-#
-#     print(f"Saved 3D eta surface with annotations to: {save_path}")
 
 
 def plot_ksd_eta_surface(
@@ -230,8 +31,7 @@ def plot_ksd_eta_surface(
     import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
-    from matplotlib.ticker import LinearLocator  # <-- added LinearLocator
-
+    from matplotlib.ticker import LinearLocator
     os.makedirs(output_dir, exist_ok=True)
     latex_param_names = plot_cfg.plot.param_latex_names
 
@@ -279,6 +79,7 @@ def plot_ksd_eta_surface(
     x, y, z = [], [], []
     coords_by_key: Dict[FrozenSet[Tuple[str, float]], Tuple[float, float, float]] = {}
 
+    corner_points = [cp[0] for cp in corner_points]
     corner_keys: List[FrozenSet[Tuple[str, float]]] = [_key_from_params(cp) for cp in corner_points]
     for prior_params, eta_tilde, ksd_est in results:
         if len(eta_tilde) < 2:
@@ -414,82 +215,6 @@ def plot_ksd_eta_surface(
         f"Saved 3D eta surface with straight path, smaller black corner points, 3 ticks/axis, and legend to: {save_path}")
 
 
-def plot_ksd_line_plots(
-    ksd_results: Dict[Tuple[float, ...], float],
-    param_names: List[str],
-    plot_cfg: DictConfig,
-    output_dir: str,
-) -> None:
-    os.makedirs(output_dir, exist_ok=True)
-
-    latex_param_names = plot_cfg.plot.param_latex_names
-
-    # Extract all unique values for each parameter
-    param_values = np.array(list(ksd_results.keys()))
-    ksd_values = np.array(list(ksd_results.values()))
-    num_params = len(param_names)
-
-    plt.rcParams.update({
-        "font.size": plot_cfg.plot.font.size,
-        "font.family": plot_cfg.plot.font.family,
-        "text.usetex": plot_cfg.plot.font.use_tex,
-    })
-
-    for fixed_idx in range(num_params):
-        # The other param index(s)
-        varying_idx = [i for i in range(num_params) if i != fixed_idx]
-
-        fixed_param_name = param_names[fixed_idx]
-        fixed_param_latex = latex_param_names.get(fixed_param_name, fixed_param_name)
-
-        for fixed_val in np.unique(param_values[:, fixed_idx]):
-            # Filter keys where fixed param == fixed_val
-            mask = param_values[:, fixed_idx] == fixed_val
-
-            # For each varying param (usually just one for 2D case)
-            for v_idx in varying_idx:
-                varying_param_name = param_names[v_idx]
-                varying_param_latex = latex_param_names.get(varying_param_name, varying_param_name)
-
-                x_vals = param_values[mask, v_idx]
-                y_vals = ksd_values[mask]
-
-                # Sort by x for nicer lines
-                sorted_idx = np.argsort(x_vals)
-                x_vals = x_vals[sorted_idx]
-                y_vals = y_vals[sorted_idx]
-
-                fig, ax = plt.subplots(
-                    figsize=(
-                        plot_cfg.plot.figure.size.width,
-                        plot_cfg.plot.figure.size.height,
-                    ),
-                    dpi=plot_cfg.plot.figure.dpi,
-                )
-
-                ax.plot(x_vals, y_vals, marker='.', color=plot_cfg.plot.color_palette.colors[0])
-
-                ax.set_xlabel(varying_param_latex)
-                ylabel = "log KSD" if plot_cfg.plot.y_axis.log_scale else "KSD"
-                ax.set_ylabel(ylabel)
-                ax.set_title(f"KSD vs {varying_param_latex} ({fixed_param_latex} = {fixed_val:.1f})")
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-
-                if plot_cfg.plot.figure.tight_layout:
-                    plt.tight_layout()
-
-                if plot_cfg.plot.y_axis.log_scale:
-                    ax.set_yscale("log")
-
-                filename = f"ksd_line_{fixed_param_name}_{fixed_val:.2f}_vs_{varying_param_name}.pdf"
-                save_path = os.path.join(output_dir, filename)
-                fig.savefig(save_path, format="pdf", bbox_inches='tight')
-                plt.close(fig)
-
-                print(f"Saved line plot to: {save_path}")
-
-
 def plot_ksd_single_param(
     ksd_results: Dict[float, float],
     param_name: str,
@@ -522,7 +247,7 @@ def plot_ksd_single_param(
     ax.plot(x_vals, y_vals, marker='.', color=plot_cfg.plot.color_palette.colors[0])
 
     ax.set_xlabel(latex_param_name)
-    ksd_latex = latex_param_names.get("estimatedKSDposteriors", "KSD")
+    ksd_latex = latex_param_names.get("estimatedKSDposteriorsShort")
     ylabel = f"log {ksd_latex}" if plot_cfg.plot.y_axis.log_scale else ksd_latex
     ax.set_ylabel(ylabel)
     ax.spines['top'].set_visible(False)
@@ -612,10 +337,6 @@ def plot_ksd_multi_line_plots(
             avg_ksd_per_line.append(np.mean(y))
         avg_ksd_per_line = np.array(avg_ksd_per_line)
 
-        # Normalize inverse brightness: low KSD = high brightness
-        # norm = (avg_ksd_per_line - np.min(avg_ksd_per_line)) / (
-        #             np.max(avg_ksd_per_line) - np.min(avg_ksd_per_line) + 1e-12)
-        # brightness_vals = 0.3 + 0.7 * (1-norm)  # range [0.3, 1.0]
         num_lines = len(fixed_vals)
         brightness_vals = np.linspace(0.2, 0.9, num_lines)
 
@@ -670,7 +391,7 @@ def plot_ksd_multi_line_plots(
                 )
 
         ax.set_xlabel(varying_param_latex)
-        ksd_latex = latex_param_names.get("estimatedKSDposteriors", "KSD")
+        ksd_latex = latex_param_names.get("estimatedKSDposteriorsShort")
         ylabel = f"log {ksd_latex}" if plot_cfg.plot.y_axis.log_scale else ksd_latex
         ax.set_ylabel(ylabel)
         # title = f"{ksd_latex} vs {varying_param_latex}"
@@ -700,7 +421,6 @@ def plot_ksd_multi_line_plots(
 
 def plot_gaussian_prior_densities_by_ksd(
     ksd_results: Dict[Tuple[float, ...], float],
-    param_names: List[str],
     cfg: DictConfig,
     plot_cfg: DictConfig,
     output_dir: str,
@@ -797,7 +517,7 @@ def plot_gaussian_prior_densities_by_ksd(
         right=False
     )
     cbar.set_ticks([])  # Also ensure no major ticks
-    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriorsShort)
 
     # Add subtle upward arrow inside the colorbar
     cbar.ax.annotate(
@@ -969,7 +689,7 @@ def plot_prior_densities_by_ksd(
         single_labels.append(_fmt(val))
 
     cbar = fig.colorbar(sm, ax=ax, boundaries=bounds, ticks=[0.5, 1.5, 2.5, 3.5])
-    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriorsShort)
     cbar.ax.tick_params(labelsize=plot_cfg.plot.font.size)
     cbar.set_ticklabels(single_labels)
 
@@ -979,7 +699,6 @@ def plot_prior_densities_by_ksd(
     output_path = os.path.join(output_dir, "prior_densities_by_ksd_ALL.pdf")
     fig.savefig(output_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"[INFO] Saved combined prior density plot: {output_path}")
 
 
 def plot_ksd_multi_line_plots_with_error_bands(
@@ -1162,11 +881,8 @@ def plot_multivariate_priors_densities_by_ksd(all_params, all_ksds, output_dir, 
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # Sort keys by KSD value ascending
-    sorted_keys = sorted(all_ksds, key=lambda k: all_ksds[k])
-    sorted_ksds = [all_ksds[k] for k in sorted_keys]
 
-    # Get 3 distinct fixed colors
+    sorted_keys = sorted(all_ksds, key=lambda k: all_ksds[k])
     palette_colors = plot_cfg.plot.color_palette.colors[:3]
     rgb_colors = [to_rgb(c) for c in palette_colors[::-1]]
 
@@ -1177,7 +893,7 @@ def plot_multivariate_priors_densities_by_ksd(all_params, all_ksds, output_dir, 
         "text.latex.preamble": r"\usepackage{amsmath}",
     })
 
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=(3.0, 3.0))
     grid = plt.GridSpec(4, 4, hspace=0.05, wspace=0.05)
 
     ax_main = fig.add_subplot(grid[1:, :-1])
@@ -1266,13 +982,12 @@ def plot_multivariate_priors_densities_by_ksd(all_params, all_ksds, output_dir, 
         ),
     )
 
-    cb.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+    cb.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriorsShort)
 
     fig.tight_layout(rect=[0, 0, 0.9, 1.0])
     output_path = os.path.join(output_dir, "multivariate_joint_prior_plot.pdf")
     fig.savefig(output_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"[INFO] Saved multivariate joint prior plot to: {output_path}")
 
 
 def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg, true_theta=None, true_cov=None):
@@ -1360,7 +1075,7 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
                 ax=ax,
                 fill=False,
                 levels=3,
-                linewidths=1.2,
+                linewidths=1.0,
                 alpha=1.0,
                 color="black",
             )
@@ -1380,15 +1095,13 @@ def plot_multivariate_joint_prior_densities_by_ksd(results, output_dir, plot_cfg
     sm = ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors)
+    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriorsShort)
 
     # Save
     output_path = os.path.join(output_dir, "joint_prior_ksd_contours.pdf")
     fig.tight_layout()
     fig.savefig(output_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-
-    print(f"[INFO] Saved joint prior KDE (contour) plot to: {output_path}")
 
 
 def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, plot_cfg):
@@ -1406,7 +1119,7 @@ def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, 
     # Normalize KSD values for colormap
     norm = Normalize(vmin=min_ksd, vmax=max_ksd)
     color_list = plot_cfg.plot.color_palette.colors
-    cmap = LinearSegmentedColormap.from_list("ksd_cmap", color_list[::-1])
+    cmap = LinearSegmentedColormap.from_list("ksd_cmap", color_list)
 
     # Prepare figure and style
     plt.rcParams.update({
@@ -1448,7 +1161,7 @@ def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, 
         is_max_ksd = np.allclose(scale, max_ksd_scale)
         if is_max_ksd:
             color = "red"
-            lw = 2.5
+            lw = 1.5
             alpha = 1.0
         else:
             color = cmap(norm(ksd))
@@ -1499,8 +1212,8 @@ def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, 
         cbar = fig.colorbar(sm, cax=cbar_ax, orientation='horizontal')
         cbar.set_ticks(tick_locs)
         cbar.set_ticklabels(tick_label_dict[i])
-        if i == 1:  # Label only the middle colorbar
-            cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriors, labelpad=25)
+        if i == 1:
+            cbar.set_label(plot_cfg.plot.param_latex_names.estimatedKSDposteriorsShort, labelpad=25)
 
         fig.text(
             box.x0 - 0.05,  # X position (left of colorbar)
@@ -1515,8 +1228,6 @@ def plot_inverse_wishart_scale_ellipses_by_ksd_one_subplot(results, output_dir, 
     fig.tight_layout()
     fig.savefig(output_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-
-    print(f"[INFO] Saved Inverse Wishart scale ellipse plot to: {output_path}")
 
 
 def plot_sdp_comparisons_multiple_radii(
@@ -1569,7 +1280,7 @@ def plot_sdp_comparisons_multiple_radii(
 
     # Plot SDP approximations (shifted by best constant to match mean on grid)
     names = plot_cfg.plot.param_latex_names
-    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    ksd_label = names.get("estimatedKSDposteriorsShort")
     approx_sym = r"$\approx$"
     geq_sym = r"$\geq$"
 
@@ -1661,6 +1372,7 @@ def plot_sdp_densities_only(
     output_dir: str,
     domain: tuple = (-5, 5),
     resolution: int = 200,
+    filename: str = "test",
 ) -> None:
     """
     Plot true prior density and normalized SDP densities (no samples).
@@ -1701,7 +1413,7 @@ def plot_sdp_densities_only(
 
     # Names/labels map
     names = plot_cfg.plot.param_latex_names
-    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    ksd_label = names.get("estimatedKSDposteriorsShort")
     xlabel = names.get("mu_0", "theta")
     ylabel = names.get("nonparametric_prior", "Density")
     true_label = names.get("logbaseprior", "True Prior Density")
@@ -1763,7 +1475,6 @@ def plot_sdp_densities_only(
         plt.tight_layout()
 
     # Save and close
-    filename = "toy_gaussian_model_nonparametric_optimisation_densities.pdf"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -1786,8 +1497,6 @@ def plot_sdp_densities_and_logprior(
     Single shared legend (same styling as plot_sdp_comparisons_multiple_radii).
     """
     os.makedirs(output_dir, exist_ok=True)
-
-    # --- rcParams (LaTeX + font) ---
     plt.rcParams.update({
         "font.size": plot_cfg.plot.font.size,
         "font.family": plot_cfg.plot.font.family,
@@ -1809,20 +1518,21 @@ def plot_sdp_densities_and_logprior(
 
     # --- Names & labels ---
     names = plot_cfg.plot.param_latex_names
-    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    ksd_label = names.get("estimatedKSDposteriorsShort")
     xlabel = names.get("mu_0", "theta")
     ylabel_density = names.get("nonparametric_prior", "Density")
     ylabel_logprior = names.get("log_prior", "log_prior")
     true_density_label = names.get("logbaseprior", "True Prior Density")
-    true_logprior_label = names.get("logbaseprior", "True Log Prior")
+    true_logprior_label = names.get("logbaseprior")
+    true_prior_label = names.get("baseprior")
     approx_sym = r"$\approx$"
     geq_sym = r"$\geq$"
 
     # --- Figure & Axes ---
     fig, (ax_density, ax_log) = plt.subplots(
         2, 1,
-        figsize=(plot_cfg.plot.figure.size.width*1.3,
-                 plot_cfg.plot.figure.size.height*2.0),
+        figsize=(plot_cfg.plot.figure.size.width,
+                 plot_cfg.plot.figure.size.height),
         dpi=plot_cfg.plot.figure.dpi,
         sharex=True
     )
@@ -1834,7 +1544,7 @@ def plot_sdp_densities_and_logprior(
         logZ = logsumexp(f) + np.log(dx)
         p_hat = np.exp(f - logZ)
         color = palette[i % len(palette)]
-        label = rf"r {geq_sym} {r_label} ({approx_sym} {ksd:.2f})"
+        label = rf"r {geq_sym} {r_label} ({ksd:.1f})"
         ax_density.plot(
             x.flatten(),
             p_hat,
@@ -1852,7 +1562,7 @@ def plot_sdp_densities_and_logprior(
     ax_density.plot(
         x.flatten(),
         prior_density_true,
-        label=true_density_label,
+        label=true_prior_label,
         linestyle="--",
         linewidth=1.5,
         color="black",
@@ -1884,7 +1594,7 @@ def plot_sdp_densities_and_logprior(
     ax_log.plot(
         x.flatten(),
         log_prior_true,
-        label=true_logprior_label,
+        label=true_prior_label,
         linestyle="--",
         linewidth=1.5,
         color="black",
@@ -1918,7 +1628,6 @@ def plot_sdp_densities_and_logprior(
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"[INFO] Saved combined densities/logprior plot: {save_path}")
 
 
 def plot_sdp_2d_densities(
@@ -1940,9 +1649,8 @@ def plot_sdp_2d_densities(
     os.makedirs(output_dir, exist_ok=True)
 
     def _f_grid(Phi_XY: np.ndarray, psi: np.ndarray, nx: int, ny: int) -> np.ndarray:
-        # (N, 2, B) · (B,) -> (N, 2), then sum over dim -> (N,) -> (ny, nx)
-        fN2 = np.tensordot(Phi_XY, psi, axes=([-1], [0]))  # (N, 2)
-        fN = fN2.sum(axis=1)                                # (N,)
+        fN2 = np.tensordot(Phi_XY, psi, axes=([-1], [0]))
+        fN = fN2.sum(axis=1)
         return fN.reshape(ny, nx)
 
     # --- rcParams (LaTeX + font) ---
@@ -1961,7 +1669,7 @@ def plot_sdp_2d_densities(
 
     # --- Labels ---
     names = getattr(plot_cfg.plot, "param_latex_names", {})
-    ksd_label = names.get("estimatedKSDposteriors", r"$\widehat{\mathrm{KSD}}^2$")
+    ksd_label = names.get("estimatedKSDposteriorsShort")
     xlabel = names.get("mu_01", r"$\mu_{01}$")
     ylabel = names.get("mu_02", r"$\mu_{02}$")
     approx_sym = r"$\approx$"
@@ -2006,9 +1714,7 @@ def plot_sdp_2d_densities(
     ax.grid(True, alpha=0.15)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-
-    # Legend handles
-    legend_handles = [Line2D([0], [0], color="dimgray", lw=1.5, label=r"$\Pi_{\mathrm{ref}}$")]
+    legend_handles = []
 
     # SDP priors (contours in palette colors)
     for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
@@ -2017,7 +1723,7 @@ def plot_sdp_2d_densities(
         p_hat = np.exp(f - logZ)
 
         color = sdp_palette[i % len(sdp_palette)]
-        label = rf"r {geq_sym} {r_label} ({approx_sym} {ksd:.2f})"
+        label = rf"r {geq_sym} {r_label} ({ksd:.1f})"
         ax.contour(
             X, Y, p_hat,
             levels=contour_levels,
@@ -2026,8 +1732,8 @@ def plot_sdp_2d_densities(
         )
         legend_handles.append(Line2D([0], [0], color=color, lw=1.8, label=label))
 
-    # Legend on the right
-    leg = fig.legend(
+    legend_handles.append(Line2D([0], [0], color="dimgray", lw=1.5, label=r"$\Pi_{\mathrm{ref}}$"))
+    fig.legend(
         handles=legend_handles,
         title=ksd_label,
         loc="center left",
@@ -2043,7 +1749,6 @@ def plot_sdp_2d_densities(
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"[INFO] Saved 2D contours-only plot: {save_path}")
 
 def plot_sdp_2d_densities_flexible(
     basis_functions,  # single basis or list aligned with psi_sdp_list
@@ -2107,7 +1812,7 @@ def plot_sdp_2d_densities_flexible(
     # --- Labels & names ---
     names = getattr(plot_cfg.plot, "param_latex_names", {})
     if legend_title is None:
-        legend_title = names.get("estimatedKSDposteriors", "")
+        legend_title = names.get("estimatedKSDposteriorsShort")
     xlabel = names.get("mu_01", r"$\mu_{01}$")
     ylabel = names.get("mu_02", r"$\mu_{02}$")
     geq_sym = r"$\geq$"
@@ -2115,7 +1820,7 @@ def plot_sdp_2d_densities_flexible(
 
     # Default legend entry format
     if label_template is None:
-        label_template = (r"{label} ({approx} {ksd:.2f})" if ksd_estimates is not None else r"{label}")
+        label_template = (r"{label} ({ksd:.1f})" if ksd_estimates is not None else r"{label}")
 
     # --- Grid ---
     if isinstance(resolution, int):
@@ -2161,7 +1866,7 @@ def plot_sdp_2d_densities_flexible(
     ax.spines["right"].set_visible(False)
 
     # Legend handles: Π_ref first
-    legend_handles = [Line2D([0], [0], color=true_contour_color, lw=1, label=r"$\Pi_{\mathrm{ref}}$")]
+    legend_handles = []
 
     # --- SDP curves ---
     for i, (psi, label_val, bf) in enumerate(zip(psi_sdp_list, labels, basis_list)):
@@ -2193,7 +1898,7 @@ def plot_sdp_2d_densities_flexible(
         )
         legend_handles.append(Line2D([0], [0], color=color, lw=1.8, label=entry))
 
-    # Legend on the right
+    legend_handles.append(Line2D([0], [0], color=true_contour_color, lw=1, label=r"$\Pi_{\mathrm{ref}}$"))
     fig.legend(
         handles=legend_handles,
         title=legend_title,
@@ -2223,7 +1928,7 @@ class _TextOnlyHandler(HandlerBase):
 def plot_runtime_parametric_nonparametric(
     times_list_parametric: list[tuple[int, float]],
     times_list_nonparametric: list[tuple[int, int, float]],
-    plot_cfg: Any,  # DictConfig or dict-like
+    plot_cfg: Any,
     output_dir: str,
 ) -> None:
     """
@@ -2470,3 +2175,181 @@ def plot_sdp_densities_by_basis_functions(
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
     print(f"[INFO] Saved SDP densities-by-basis plot: {save_path}")
+
+
+class _TextOnlyHandler:
+    def legend_artist(self, legend, orig_handle, fontsize, handlebox):
+        return None
+
+
+def plot_runtime_parametric_nonparametric_with_ci(
+    times_parametric: dict[int, dict[int, float]],
+    times_nonparametric: dict[int, dict[int, dict[int, float]]],
+    plot_cfg: Any,
+    output_dir: str,
+    ci_level: float = 0.95,
+    filename: str = "runtime_parametric_nonparametric.pdf",
+) -> None:
+    """
+    Single-axis plot:
+      - Parametric KSD runtime (mean ± CI across runs)
+      - Non-parametric KSD runtime (one line per basis size, mean ± CI)
+
+    Parameters
+    ----------
+    times_parametric : dict
+        {samples_num: {run_iter: time, ...}, ...}
+
+    times_nonparametric : dict
+        {samples_num: {basis_funcs_num: {run_iter: time, ...}, ...}, ...}
+
+    ci_level : float
+        Confidence interval level (default=0.95).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Helper
+    def _deep_get(cfg, path, default=None):
+        cur = cfg
+        for key in path.split('.'):
+            if cur is None:
+                return default
+            if isinstance(cur, dict):
+                cur = cur.get(key, None)
+            else:
+                cur = getattr(cur, key, None)
+        return default if cur is None else cur
+
+    # Matplotlib rc from config
+    plt.rcParams.update({
+        "font.size": _deep_get(plot_cfg, "plot.font.size", 12),
+        "font.family": _deep_get(plot_cfg, "plot.font.family", "serif"),
+        "text.usetex": bool(_deep_get(plot_cfg, "plot.font.use_tex", False)),
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    fig_w = float(_deep_get(plot_cfg, "plot.figure.size.width", 6.0))
+    fig_h = float(_deep_get(plot_cfg, "plot.figure.size.height", 4.0))
+    fig_dpi = int(_deep_get(plot_cfg, "plot.figure.dpi", 150))
+    lw = float(_deep_get(plot_cfg, "plot.line.width", 1.0))
+    marker = _deep_get(plot_cfg, "plot.marker.style", "o")
+    ms = float(_deep_get(plot_cfg, "plot.marker.size", 4.0))
+    grid_alpha = float(_deep_get(plot_cfg, "plot.grid.alpha", 0.7))
+    tight = bool(_deep_get(plot_cfg, "plot.figure.tight_layout", True))
+
+    names = _deep_get(plot_cfg, "plot.param_latex_names", {}) or {}
+    x_label = names.get("numPosteriorSamples", r"\# of Posterior Samples")
+    y_label = names.get("runtimeSeconds", "Time (sec.)")
+    legend_subtitle = names.get("legendBasisFunctions", r"Non-parametric: \# of basis functions")
+
+    # Colors
+    palette = list(getattr(_deep_get(plot_cfg, "plot.color_palette", {}), "colors", []))
+    if not palette:
+        palette = [f"C{i}" for i in range(10)]
+
+    # --- Confidence interval helper
+    def mean_ci(data, level=ci_level):
+        arr = np.array(data)
+        mean = arr.mean()
+        if len(arr) > 1:
+            se = sem(arr)
+            h = se * t.ppf((1 + level) / 2., len(arr) - 1)
+        else:
+            h = 0.0
+        return mean, h
+
+    def _to_int(x):
+        return int(x)
+
+    # --- Process parametric
+    sample_sizes_param, means_param, cis_param = [], [], []
+    for s in sorted(times_parametric.keys(), key=_to_int):
+        vals = list(times_parametric[s].values())
+        m, h = mean_ci(vals)
+        sample_sizes_param.append(s)
+        means_param.append(m)
+        cis_param.append(h)
+
+    # --- Process non-parametric
+    by_basis = defaultdict(lambda: ([], [], []))
+    for s in sorted(times_nonparametric.keys(), key=_to_int):
+        for b, runs in times_nonparametric[s].items():
+            vals = list(runs.values())
+            m, h = mean_ci(vals)
+            samples, means, cis = by_basis[b]
+            samples.append(s)
+            means.append(m)
+            cis.append(h)
+
+    # --- Plot
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=fig_dpi)
+    handles_ordered, labels_ordered = [], []
+
+    # Parametric
+    if sample_sizes_param:
+        h_param = ax.plot(
+            sample_sizes_param, means_param,
+            marker=marker, markersize=ms, linewidth=lw,
+            color=palette[0], label="Parametric",
+        )[0]
+        ax.fill_between(
+            sample_sizes_param,
+            np.array(means_param) - np.array(cis_param),
+            np.array(means_param) + np.array(cis_param),
+            color=palette[0], alpha=0.7
+        )
+        handles_ordered.append(h_param)
+        labels_ordered.append("Parametric")
+
+    # Subtitle
+    dummy_title = Line2D([], [], linestyle="none", label=legend_subtitle)
+    handles_ordered.append(dummy_title)
+    labels_ordered.append(legend_subtitle)
+
+    # Non-parametric
+    for i, (b, (samples, means, cis)) in enumerate(sorted(by_basis.items()), start=1):
+        h_np = ax.plot(
+            samples, means,
+            marker=marker, markersize=ms, linewidth=lw,
+            color=palette[i % len(palette)], label=rf"{b}"
+        )[0]
+        ax.fill_between(
+            samples,
+            np.array(means) - np.array(cis),
+            np.array(means) + np.array(cis),
+            color=palette[i % len(palette)], alpha=0.7
+        )
+        handles_ordered.append(h_np)
+        labels_ordered.append(rf"{b}")
+
+    # Axes styling
+    ax.set_xlabel(x_label)
+    # ax.set_xticklabels([])
+    ax.set_ylabel(y_label)
+    ax.grid(True, alpha=grid_alpha)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Legend
+    spacer = Line2D([], [], linestyle="none", label="")
+    handles_ordered.append(spacer)
+    labels_ordered.append("")
+    legend_fs = float(_deep_get(plot_cfg, "plot.legend.fontsize",
+                                plt.rcParams["font.size"] * 0.8))
+    leg = ax.legend(
+        handles_ordered, labels_ordered,
+        loc="lower left",
+        fontsize=legend_fs,
+        bbox_to_anchor=(0.02, 0.5),
+        frameon=True, fancybox=True, framealpha=0.95,
+        borderpad=0.4, handlelength=1.2, handletextpad=0.4, labelspacing=0.24,
+        handler_map={dummy_title: _TextOnlyHandler()},
+    )
+    leg._legend_box.align = "left"
+
+    if tight:
+        fig.tight_layout()
+
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)

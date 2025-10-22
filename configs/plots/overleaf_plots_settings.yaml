@@ -1,31 +1,31 @@
 plot:
   font:
-    size: 11  # 32 match Overleaf 10pt font
+    size: 12  # 32 match Overleaf 10pt font
     family: serif  # for LaTeX compatibility
     use_tex: true  # render text with LaTeX
 
   figure:
     size:
-      width: 2.5  # 4 in inches, 2.5 for 4-col
-      height: 2.1 # 3.2 in inches, 1.67 for 4-col
+      width: 4.0  # 4 in inches, 2.5 for 4-col
+      height: 3.0 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: true
 
   color_palette:
     colors:
-#      - "#450314" # dark cherry
+      - "#450314" # dark cherry
       - "#5A051A"  # cherry
 #      - "#D20A2E"  # red
 #      - "#EE1E52"  # pink
-      - "#6E3D6F" # darker purple
+#      - "#6E3D6F" # darker purple
       - "#7c397d" # purple
 #      - "#FF6B90"  # light-pink
-#      - "#1f77b4"  # blue
-#      - "#D20A2E"   # red (keep)
-      - "#EE1E52"  # pink
-      - "#F2BDCD"  # light-light-pink
+      - "#1f77b4"  # blue
+#      - "#D20A2E"   # red
+#      - "#EE1E52"  # pink
+#      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
-#      - "#5b9bd5"  # lighter blue
+      - "#5b9bd5"  # lighter blue
 #      - "#009E73"   # forest green
 #      - "#E69F00"   # orange
 #      - "#F0E442"   # golden yellow
@@ -46,6 +46,7 @@ plot:
     alpha: "$\\alpha$"
     beta: "$\\beta$"
     prior: "$\\pi(\\mu_0)$"
+    priorsimple: "$\\pi$"
     posterior: "$\\tilde{\\pi}$"
     referenceposterior: "$\\tilde{\\Pi}_{\\mathrm{ref}}$"
     likelihood: "$p_{\\theta}(x)$"
@@ -72,6 +73,8 @@ plot:
     logr: "$\\log r$"
     K: "K"
     r: "r"
+    numPosteriorSamples: "m"
+    estimatedFDposteriorsShort: "$\\mathrm{FD}_{\\mathrm{post}}$"
 
   y_axis:
     log_scale: false

@@ -93,7 +93,7 @@ class RBFBasisFunction(BaseBasisFunction):
         estimation_samples_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
     ):
-        self.rng = np.random.default_rng(None)
+        self.rng = np.random.default_rng(27)
 
         if estimation_samples_source == "prior":
             estimation_samples = prior_samples
