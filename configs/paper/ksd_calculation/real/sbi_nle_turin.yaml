@@ -18,41 +18,42 @@ data:
 #        _target_: src.distributions.uniform.Uniform
 #        low: 1e-10
 #        high: 1e-9
-#      theta_1:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 10.0
-#      theta_2:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 10.0
-#      theta_3:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 500.0
-#      theta_4:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 10.0
       theta_1:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 5.5
-        sigma: 2.598
-
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 10.0
       theta_2:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 5.5
-        sigma: 2.598
-
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 10.0
       theta_3:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 250.5
-        sigma: 144.1
-
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 500.0
       theta_4:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 5.5
-        sigma: 2.598
+        _target_: src.distributions.uniform.Uniform
+        low: 1.0
+        high: 10.0
+#      theta_1:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 5.5
+#        sigma: 2.598
+#
+#      theta_2:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 5.5
+#        sigma: 2.598
+#
+#      theta_3:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 250.5
+#        sigma: 144.1
+#
+#      theta_4:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 5.5
+#        sigma: 2.598
+
   candidate_prior:
     _target_: src.distributions.composite.CompositeProduct
     distributions:
@@ -253,8 +254,8 @@ ksd:
                 sigma_log: 11
 
       nonparametric:
-        basis_funcs_type:  RBFBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim   # RBFBasisFunctionMultidim
-        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "kmeans", "lengthscale": null, "scale_multiplier": 1, "metric": "full" } # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
+        basis_funcs_type:  SigmoidBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim  # RBFBasisFunctionMultidim
+        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "kmeans", "scale":null, "scale_multiplier": 1, "metric": "full" } # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
         radius_lower_bound: null
         scale_samples: False
 

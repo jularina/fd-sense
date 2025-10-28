@@ -164,6 +164,13 @@ ksd:
               nums:
                 alpha: 15
                 theta: 26
+
+      nonparametric:
+        basis_funcs_type: RBFBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim  # RBFBasisFunctionMultidim
+        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "kmeans", "lengthscale": null, "scale_multiplier": 1, "metric": "full" } # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
+        radius_lower_bound: null
+        scale_samples: False
+
     loss:
       GaussianARLogLikelihood:
         parameters_box_range:

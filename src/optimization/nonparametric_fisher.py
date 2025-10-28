@@ -2,11 +2,8 @@ from typing import Dict
 import numpy as np
 import cvxpy as cp
 from omegaconf import OmegaConf
-from scipy.special import logsumexp
 
 from src.utils.basis_functions import BASIS_FUNCTIONS_REGISTRY
-from src.discrepancies.posterior_ksd import PosteriorKSDNonParametric
-from src.discrepancies.prior_ksd import PriorKSDNonParametric
 
 
 class OptimisationNonparametricBase:
@@ -16,6 +13,7 @@ class OptimisationNonparametricBase:
         prior_estimator,
         config: Dict,
         radius_lower_bound: float = 0.0,
+        validate_basis_function: bool = False,
     ):
         """
         Base class to handle nonparametric quadratic form optimization.
@@ -33,7 +31,9 @@ class OptimisationNonparametricBase:
             basis_kwargs["posterior_samples"] = self.posterior_estimator.samples
 
         self.basis_function = basis_cls(**basis_kwargs)
-        self._validate_basis_function(self.posterior_estimator.samples.shape[1])
+
+        if validate_basis_function:
+            self._validate_basis_function(self.posterior_estimator.samples.shape[1])
 
         self.Lambda_m_prior, self.b_m_prior = self.posterior_estimator.compute_quadratic_form_for_nonparametric_prior(
             self.basis_function,
@@ -42,24 +42,23 @@ class OptimisationNonparametricBase:
         eigvals, eigvecs = np.linalg.eigh(self.Lambda_m_prior)
         order = eigvals.argsort()[::-1]
         eigvals = eigvals[order]
-        eigvecs = eigvecs[:, order]
-        print("Eigenvalues:", eigvals)
-        print("Eigenvectors (columns):\n", eigvecs)
-        self.principle_eigenvector = self.Lambda_m_prior[:,0]
+        print("Eigenvalues of Lambda_m_prior:", eigvals)
+        self.principle_eigenvector = self.Lambda_m_prior[:, 0]
         self.Lambda_prior, self.b_prior = self.prior_estimator.compute_quadratic_form_for_nonparametric_prior(
             self.basis_function,
             scale_samples=config["scale_samples"],
         )
+        self.c_m_prior = self.posterior_estimator.compute_c_prior()
         self.Lambda_prior = self._sym(self.Lambda_prior)
         self.Lambda_m_prior = self._sym(self.Lambda_m_prior)
         D = self.Lambda_prior.shape[0]
         avg_prior = np.trace(self.Lambda_prior) / max(D, 1)
         avg_obj = np.trace(self.Lambda_m_prior) / max(D, 1)
 
-        eps_prior = max(1e-8, 1e-2 * avg_prior) # adaptive nuggets
+        eps_prior = max(1e-8, 1e-2 * avg_prior)  # adaptive nuggets
         eps_obj = max(1e-12, 1e-4 * avg_obj)
 
-        self.Lambda_prior_reg   = self._sym(self.Lambda_prior   + eps_prior * np.eye(D))
+        self.Lambda_prior_reg = self._sym(self.Lambda_prior + eps_prior * np.eye(D))
         self.Lambda_m_prior_reg = self._sym(self.Lambda_m_prior + eps_obj * np.eye(D))
 
         if config["radius_lower_bound"]:
@@ -108,7 +107,7 @@ class OptimisationNonparametricBase:
         return (V * w_inv) @ V.T
 
     def _evaluate_prior_qf(self, eta_tilde: np.ndarray) -> float:
-        return eta_tilde @ self.Lambda_m_prior_reg @ eta_tilde + self.b_m_prior @ eta_tilde
+        return eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.c_m_prior
 
     def _validate_basis_function(self, dim: int):
         if not self.basis_function.check_C1(dim):

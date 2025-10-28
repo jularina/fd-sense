@@ -271,28 +271,34 @@ def plot_lr_vs_ksd(
 
 
 def plot_ksd_heatmap(
-    data_dict,
-    plot_cfg,
-    output_dir: str,
-    filename: str = "ksd_heatmap.pdf",
-    title: str = None,  # if None -> no title
+        data_dict,
+        plot_cfg,
+        output_dir: str,
+        filename: str = "ksd_heatmap.pdf",
+        title: str = None,
+        log_scale: bool = False,
 ):
-    # Apply plotting RC params globally up front
     _apply_plot_rc(plot_cfg)
 
     basis_funcs = sorted(data_dict.keys())
     radii = sorted({float(r) for bf in data_dict for r in data_dict[bf].keys()})
-    colorbar_label = plot_cfg.plot.param_latex_names["optimisationProblem"]
 
-    # Build matrix of ksd values
+    if log_scale:
+        colorbar_label = plot_cfg.plot.param_latex_names["logoptimisationProblemWoConstraint"]
+    else:
+        colorbar_label = plot_cfg.plot.param_latex_names["optimisationProblemWoConstraint"]
+
     heatmap = np.full((len(radii), len(basis_funcs)), np.nan, dtype=float)
     for j, bf in enumerate(basis_funcs):
         for i, r in enumerate(radii):
             val = data_dict[bf].get(r, None)
             if val is None:
-                # try key as float->str mismatch guard
                 val = data_dict[bf].get(float(r), np.nan)
             heatmap[i, j] = val
+
+    if log_scale:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            heatmap = np.log10(heatmap)
 
     pc = getattr(plot_cfg, "plot", plot_cfg)
     param_names = getattr(pc, "param_latex_names", {"r": "r", "K": "K"})
@@ -305,7 +311,6 @@ def plot_ksd_heatmap(
     vmax = getattr(pc, "vmax", None)
     cmap = _resolve_cmap_from_cfg(plot_cfg)
 
-    # Mask NaNs so they render as transparent
     Hmask = np.ma.masked_invalid(heatmap)
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
@@ -318,8 +323,24 @@ def plot_ksd_heatmap(
     )
 
     cbar = fig.colorbar(cax, ax=ax)
-    # cbar.set_label(colorbar_label, fontsize=cbar_labelsize)
+    cbar.set_label(colorbar_label, fontsize=cbar_labelsize, labelpad=15)
     cbar.ax.tick_params(labelsize=tick_labelsize)
+    cbar.set_ticks([])
+    cbar.ax.annotate(
+        '',
+        xy=(1.8, 0.7),
+        xytext=(1.8, 0.3),
+        xycoords='axes fraction',
+        textcoords='axes fraction',
+        arrowprops=dict(
+            arrowstyle='->',
+            color='black',
+            lw=1.2,
+            shrinkA=0,
+            shrinkB=0,
+            mutation_scale=8
+        ),
+    )
 
     # Set ticks and labels
     ax.set_xticks(range(len(basis_funcs)))

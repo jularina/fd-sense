@@ -16,11 +16,11 @@ data:
       alpha:
         _target_: src.distributions.cauchy.Cauchy
         x: 0
-        gamma: 10.0
+        gamma: 2.5
       beta:
         _target_: src.distributions.cauchy.Cauchy
         x: 0
-        gamma: 10.0
+        gamma: 2.5
   true_dgp: null
   loss:
     _target_: src.losses.logistic_binomial_log_likelihood.LogisticBinomialLogLikelihood
@@ -51,19 +51,19 @@ ksd:
             parameters_box_range:
               ranges:
                 mu: [ 0, 0 ]
-                b: [ 5, 20 ]
+                b: [ 3, 14 ]
               nums:
                 mu: 1
                 b: 12
-#          - name: beta
-#            family: Laplace
-#            parameters_box_range:
-#              ranges:
-#                mu: [ 0, 0 ]
-#                b: [ 3, 14 ]
-#              nums:
-#                mu: 1
-#                b: 12
+          - name: beta
+            family: Laplace
+            parameters_box_range:
+              ranges:
+                mu: [ 0, 0 ]
+                b: [ 3, 14 ]
+              nums:
+                mu: 1
+                b: 12
 #          - name: alpha
 #            family: Gaussian
 #            parameters_box_range:
@@ -73,15 +73,15 @@ ksd:
 #              nums:
 #                mu: 11
 #                sigma: 6
-          - name: beta
-            family: Gaussian
-            parameters_box_range:
-              ranges:
-                mu: [ -2, 2 ]
-                sigma: [ 5, 20 ]
-              nums:
-                mu: 11
-                sigma: 6
+#          - name: beta
+#            family: Gaussian
+#            parameters_box_range:
+#              ranges:
+#                mu: [ -5, 5 ]
+#                sigma: [ 5, 10 ]
+#              nums:
+#                mu: 11
+#                sigma: 6
     loss:
       LogisticBinomialLogLikelihood:
         parameters_box_range:

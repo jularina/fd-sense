@@ -65,4 +65,4 @@ flags:
       heatmap: True
       line_plot: True
       density_plot: True
-    output_dir: outputs/paper/plots/inverse_wishart
+    output_dir: outputs/paper/plots/fisher/inverse_wishart

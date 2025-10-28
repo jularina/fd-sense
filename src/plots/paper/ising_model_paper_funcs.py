@@ -1,10 +1,7 @@
-import math
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm, Normalize
-import matplotlib.cm as cmx
-from typing import Dict, Tuple, List, Optional, Sequence
+from typing import Dict, Tuple, List
 from scipy.special import logsumexp
 
 from utils.distributions import DISTRIBUTION_MAP as _DIST_MAP_EXTPROJ
@@ -24,6 +21,7 @@ def _deep_get(cfg, path, default=None):
             cur = getattr(cur, key, None)
     return default if cur is None else cur
 
+
 def _apply_plot_rc(plot_cfg):
     plt.rcParams.update({
         "font.size": plot_cfg.plot.font.size,
@@ -32,12 +30,14 @@ def _apply_plot_rc(plot_cfg):
         "text.latex.preamble": r"\usepackage{amsmath}\usepackage{type1cm}",
     })
 
+
 def _new_fig_ax(plot_cfg):
     fig, ax = plt.subplots(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
         dpi=plot_cfg.plot.figure.dpi,
     )
     return fig, ax
+
 
 def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
     os.makedirs(output_dir, exist_ok=True)
@@ -47,6 +47,7 @@ def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
     fig.savefig(path, format=filename.split(".")[-1], bbox_inches="tight")
     plt.close(fig)
 
+
 def _palette(plot_cfg, n: int) -> List[str]:
     base = list(plot_cfg.plot.color_palette.colors)
     if n <= len(base):
@@ -54,11 +55,13 @@ def _palette(plot_cfg, n: int) -> List[str]:
     reps = int(np.ceil(n / len(base)))
     return (base * reps)[:n]
 
+
 def _latex_name(plot_cfg, key: str, default: str) -> str:
     try:
         return getattr(plot_cfg.plot.param_latex_names, key)
     except Exception:
         return default
+
 
 def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[float, float]:
     low = family.strip().lower()
@@ -66,7 +69,7 @@ def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[f
     # Gaussian / Normal
     if low in ("gaussian", "normal"):
         mu = float(ref_params["mu"])
-        s  = float(ref_params["sigma"])
+        s = float(ref_params["sigma"])
         return (mu - 4.0 * s, mu + 4.0 * s)
 
     if low in ("halfcauchy"):
@@ -75,7 +78,7 @@ def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[f
 
     # LogNormal with parameters mu_log, sigma_log (accept "sigma-log" typo too)
     if low == "lognormal":
-        mu_log   = float(ref_params["mu_log"])
+        mu_log = float(ref_params["mu_log"])
         sigma_log = float(ref_params.get("sigma_log", ref_params.get("sigma-log")))
         lo = np.exp(mu_log - 5.0 * sigma_log)
         hi = np.exp(mu_log + 5.0 * sigma_log)
@@ -87,38 +90,45 @@ def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[f
         alpha = float(ref_params["alpha"])
         theta = float(ref_params["theta"])
         mean = alpha * theta
-        sd   = np.sqrt(alpha) * theta
+        sd = np.sqrt(alpha) * theta
         return (0.0, max(1e-8, mean + 6.0 * sd))
 
     # Fallback
     return (-5.0, 5.0)
 
+
 def _linspace_pad(xmin, xmax, n=1200, pad=0.05):
     if not np.isfinite([xmin, xmax]).all():
         xmin, xmax = -5.0, 5.0
     if xmin == xmax:
-        xmin -= 1.0; xmax += 1.0
+        xmin -= 1.0
+        xmax += 1.0
     span = xmax - xmin
     return np.linspace(xmin - pad*span, xmax + pad*span, n)
+
 
 def _make_pdf(family: str, params: Dict[str, float]):
     fam = family.strip()
     Dist = _DIST_MAP_EXTPROJ[fam]
     dist = Dist(**params)
+
     def f(x):
         y = dist.pdf(x)
         return np.asarray(y).squeeze()
     return f
 
+
 def _parse_family_from_target(target: str) -> str:
     return target.split(".")[-1]
 
+
 def _get_base_prior_spec(cfg) -> Tuple[str, Dict[str, float]]:
-    d = _deep_get(cfg, f"data.base_prior", None)
+    d = _deep_get(cfg, "data.base_prior", None)
     target = d.get("_target_", "")
     family = _parse_family_from_target(target)
     params = {k: float(v) for k, v in d.items() if k != "_target_"}
     return family, params
+
 
 def _sample_param_sets(ranges: Dict[str, List[float]], n: int, rng: np.random.Generator):
     keys = list(ranges.keys())
@@ -131,8 +141,8 @@ def _sample_param_sets(ranges: Dict[str, List[float]], n: int, rng: np.random.Ge
         out.append({k: float(v) for k, v in zip(keys, vals)})
     return out
 
+
 def plot_theta_prior(
-    theta: str,
     worst_corner: Dict,
     cfg,
     plot_cfg,
@@ -140,7 +150,6 @@ def plot_theta_prior(
     sample_n: int = 30,
     seed: int = 123,
     filename: str = None,
-    x: tuple = None,
 ):
     _apply_plot_rc(plot_cfg)
     os.makedirs(output_dir, exist_ok=True)
@@ -164,7 +173,7 @@ def plot_theta_prior(
     X = np.linspace(0, 15, 200)
 
     pdf_ref = _make_pdf(fam_ref, ref_params)
-    pdf_ms  = _make_pdf(fam_ms,  ms_params)
+    pdf_ms = _make_pdf(fam_ms,  ms_params)
 
     fig = plt.figure(
         figsize=(plot_cfg.plot.figure.size.width,
@@ -173,16 +182,18 @@ def plot_theta_prior(
     )
     ax = fig.add_subplot(111)
 
-    ax.plot(X, pdf_ref(X), linestyle="--", color=col_ref, linewidth=1.2, label=plot_cfg.plot.param_latex_names["baseprior"])
+    ax.plot(X, pdf_ref(X), linestyle="--", color=col_ref, linewidth=1.2,
+            label=plot_cfg.plot.param_latex_names["baseprior"])
     for (p, c) in zip(_sample_param_sets(ranges, sample_n, rng), _cloud_colors(sample_n, 2)):
         pdf_c = _make_pdf(fam_ms, p)
         ax.plot(X, pdf_c(X), linewidth=0.9, alpha=alpha_cloud, color=c)
-    ax.plot(X, pdf_ms(X), color=col_red, linewidth=1.8, label=r"$\Pi$ (" + plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] +  " )")
+    ax.plot(X, pdf_ms(X), color=col_red, linewidth=1.8, label=r"$\Pi$ (" +
+            plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + " )")
 
     ax.set_ylabel(plot_cfg.plot.param_latex_names.priorsimple)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.legend(frameon=False, loc="lower center", bbox_to_anchor=(0.5, -0.6))
+    ax.legend(frameon=False, loc="lower center", bbox_to_anchor=(0.5, -0.4), ncol=2)
 
     if getattr(plot_cfg.plot.figure, "tight_layout", True):
         plt.tight_layout()
@@ -306,7 +317,7 @@ def plot_sdp_densities_only(
     output_dir: str,
     domain: tuple = (-2, 5),
     resolution: int = 200,
-    filename = "toy_gaussian_model_nonparametric_optimisation_densities.pdf",
+    filename="toy_gaussian_model_nonparametric_optimisation_densities.pdf",
     ylbl: str = "estimatedKSDposteriorsShort",
 ) -> None:
     """
@@ -355,7 +366,7 @@ def plot_sdp_densities_only(
         logZ = logsumexp(f) + np.log(dx)
         p_hat = np.exp(f - logZ)
         color = palette[i % len(palette)]
-        label = rf"r {geq_sym} {r_label:.2f} ({ksd:.1f})"
+        label = rf"r {geq_sym} {r_label:.2f} ({int(ksd)})"
         ax.plot(
             x.flatten(),
             p_hat,

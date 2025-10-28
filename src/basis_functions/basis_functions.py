@@ -352,6 +352,7 @@ class SigmoidBasisFunction(BaseBasisFunction):
 
         return 1 / (1 + sp.exp(-(sum((x[i] - c[i]) for i in range(dim)) / s)))
 
+
 class RBFBasisFunctionMultidim(BaseBasisFunction):
     def __init__(
         self,
@@ -451,7 +452,6 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
             self.lengthscale = None
             w, _ = eigh(self.precision)
             w_str = np.array2string(w, precision=4, separator=", ")
-            print(f"[RBF full] precision: {self.precision}")
             print(f"[RBF full] precision eigvals: {w_str}")
         else:
             raise ValueError("metric must be 'diag' or 'full'.")
@@ -554,7 +554,6 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
         ls = np.maximum(multiplier * ls, floor)
         return ls.astype(float)
 
-    # ---------- full (non-diagonal) precision estimation ----------
     def _estimate_precision_from_samples(
         self,
         samples: np.ndarray,
@@ -595,7 +594,6 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
             jitter=jitter,
         )
 
-    # ---------- basis & gradient ----------
     def evaluate(self, samples: np.ndarray) -> np.ndarray:
         """
         metric="diag":
@@ -606,8 +604,6 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
             return shape: (m, d, B) with the scalar repeated along d to match downstream API
         """
         X = np.asarray(samples, dtype=float)                # (m, d)
-        m = X.shape[0]
-        B = self.num_basis
         d = self.dim
 
         if self.metric == "diag":
@@ -617,14 +613,9 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
             vals = np.exp(-(diffs**2) / denom)                  # (m, B, d)
             return np.transpose(vals, (0, 2, 1))                # (m, d, B)
 
-        # metric == "full"
-        # diffs: (m, B, d)
         diffs = X[:, None, :] - self.centers[None, :, :]
-        # r^2: (m, B) via quadratic form with shared precision P
-        # einsum: (m,B,d) * (d,d) * (m,B,d) -> (m,B)
         r2 = np.einsum("mbi,ij,mbj->mb", diffs, self.precision, diffs, optimize=True)
         phi = np.exp(-0.5 * r2)                              # (m, B)
-        # repeat along d to keep (m,d,B) interface
         phi_rep = np.repeat(phi[:, None, :], d, axis=1)      # (m, d, B)
         return phi_rep
 
@@ -637,9 +628,6 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
         Returns shape (m, d, B)
         """
         X = np.asarray(samples, dtype=float)                # (m, d)
-        m = X.shape[0]
-        B = self.num_basis
-        d = self.dim
 
         if self.metric == "diag":
             diffs = X[:, None, :] - self.centers[None, :, :]                 # (m, B, d)
@@ -680,7 +668,6 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
         expr = sp.exp(-sp.Rational(1, 2) * quad[0])
 
         return sp.Tuple(*[expr for _ in range(dim)])
-
 
 
 class SigmoidBasisFunctionMultidim(BaseBasisFunction):
@@ -1064,7 +1051,3 @@ class PolynomialBasisFunctionMultidim(BaseBasisFunction):
             for k in range(1, self.degree + 1):
                 exprs.append(x[i] ** k)
         return sp.Tuple(*exprs)
-
-
-
-

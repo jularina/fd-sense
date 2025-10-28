@@ -2,9 +2,7 @@ import math
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm, Normalize
-import matplotlib.cm as cmx
-from typing import Dict, Tuple, List, Optional, Sequence
+from typing import Dict, Tuple, List
 from utils.distributions import DISTRIBUTION_MAP as _DIST_MAP_EXTPROJ
 
 
@@ -22,6 +20,7 @@ def _deep_get(cfg, path, default=None):
             cur = getattr(cur, key, None)
     return default if cur is None else cur
 
+
 def _apply_plot_rc(plot_cfg):
     plt.rcParams.update({
         "font.size": plot_cfg.plot.font.size,
@@ -30,12 +29,14 @@ def _apply_plot_rc(plot_cfg):
         "text.latex.preamble": r"\usepackage{amsmath}\usepackage{type1cm}",
     })
 
+
 def _new_fig_ax(plot_cfg):
     fig, ax = plt.subplots(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
         dpi=plot_cfg.plot.figure.dpi,
     )
     return fig, ax
+
 
 def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
     os.makedirs(output_dir, exist_ok=True)
@@ -45,6 +46,7 @@ def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
     fig.savefig(path, format=filename.split(".")[-1], bbox_inches="tight")
     plt.close(fig)
 
+
 def _palette(plot_cfg, n: int) -> List[str]:
     base = list(plot_cfg.plot.color_palette.colors)
     if n <= len(base):
@@ -52,16 +54,19 @@ def _palette(plot_cfg, n: int) -> List[str]:
     reps = int(np.ceil(n / len(base)))
     return (base * reps)[:n]
 
+
 def _latex_name(plot_cfg, key: str, default: str) -> str:
     try:
         return getattr(plot_cfg.plot.param_latex_names, key)
     except Exception:
         return default
 
+
 def _gaussian_pdf(x, mu, sigma):
     x = np.asarray(x, float)
     s2 = sigma * sigma
     return (1.0 / (np.sqrt(2.0 * np.pi) * sigma)) * np.exp(-0.5 * (x - mu) ** 2 / s2)
+
 
 def _lognormal_pdf(x, mu_log, sigma_log):
     x = np.asarray(x, float)
@@ -71,18 +76,22 @@ def _lognormal_pdf(x, mu_log, sigma_log):
     pdf[pos] = (1.0 / (x[pos] * sigma_log * np.sqrt(2.0 * np.pi))) * np.exp(-0.5 * z * z)
     return pdf
 
+
 def _get_base_gaussian(cfg, name: str) -> Tuple[float, float]:
     dist = cfg.data.base_prior.distributions[name]
     return float(dist.mu), float(dist.sigma)
 
+
 def _extract_worst(rows: List[Dict]) -> Dict:
     return max(rows, key=lambda r: float(r["value"]))
+
 
 def _extract_params(d: Dict, key: str) -> Dict:
     """Return dict of params for given key (beta1/beta3) if present."""
     if not isinstance(d, dict):
         return {}
     return d.get(key, {}).get("params", {})
+
 
 def plot_ar_time_series(
     y: np.ndarray,
@@ -109,6 +118,7 @@ def plot_ar_time_series(
 
     _save_fig(fig, output_dir, filename, plot_cfg)
 
+
 def _get_component_cfg(cfg, name: str):
     """Find component config by name from cfg.ksd.optimize.prior.Composite.components."""
     comps = _deep_get(cfg, "ksd.optimize.prior.Composite.components", [])
@@ -117,8 +127,10 @@ def _get_component_cfg(cfg, name: str):
             return c
     raise KeyError(f"Component '{name}' not found in cfg.")
 
+
 def _parse_family_from_target(target: str) -> str:
     return target.split(".")[-1]
+
 
 def _get_base_prior_spec(cfg, name: str) -> Tuple[str, Dict[str, float]]:
     """Read family+params from cfg.data.base_prior.distributions[name]."""
@@ -131,11 +143,13 @@ def _get_base_prior_spec(cfg, name: str) -> Tuple[str, Dict[str, float]]:
     params = {k: float(v) for k, v in d.items() if k != "_target_"}
     return family, params
 
+
 def _make_pdf(family: str, params: Dict[str, float]):
     """Prefer your DISTRIBUTION_MAP, otherwise fallback for Gaussian/Gamma."""
     fam = family.strip()
     Dist = _DIST_MAP_EXTPROJ[fam]
     dist = Dist(**params)
+
     def f(x):
         y = dist.pdf(x)
         return np.asarray(y).squeeze()
@@ -159,7 +173,7 @@ def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[f
     # Gaussian / Normal
     if low in ("gaussian", "normal"):
         mu = float(ref_params["mu"])
-        s  = float(ref_params["sigma"])
+        s = float(ref_params["sigma"])
         return (mu - 4.0 * s, mu + 4.0 * s)
 
     if low in ("halfcauchy"):
@@ -168,7 +182,7 @@ def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[f
 
     # LogNormal with parameters mu_log, sigma_log (accept "sigma-log" typo too)
     if low == "lognormal":
-        mu_log   = float(ref_params["mu_log"])
+        mu_log = float(ref_params["mu_log"])
         sigma_log = float(ref_params.get("sigma_log", ref_params.get("sigma-log")))
         lo = np.exp(mu_log - 5.0 * sigma_log)
         hi = np.exp(mu_log + 5.0 * sigma_log)
@@ -180,19 +194,22 @@ def _auto_x_range_from_ref(family: str, ref_params: Dict[str, float]) -> Tuple[f
         alpha = float(ref_params["alpha"])
         theta = float(ref_params["theta"])
         mean = alpha * theta
-        sd   = np.sqrt(alpha) * theta
+        sd = np.sqrt(alpha) * theta
         return (0.0, max(1e-8, mean + 6.0 * sd))
 
     # Fallback
     return (-5.0, 5.0)
 
+
 def _linspace_pad(xmin, xmax, n=1200, pad=0.05):
     if not np.isfinite([xmin, xmax]).all():
         xmin, xmax = -5.0, 5.0
     if xmin == xmax:
-        xmin -= 1.0; xmax += 1.0
+        xmin -= 1.0
+        xmax += 1.0
     span = xmax - xmin
     return np.linspace(xmin - pad*span, xmax + pad*span, n)
+
 
 def _sample_param_sets(ranges: Dict[str, List[float]], n: int, rng: np.random.Generator):
     keys = list(ranges.keys())
@@ -205,9 +222,11 @@ def _sample_param_sets(ranges: Dict[str, List[float]], n: int, rng: np.random.Ge
         out.append({k: float(v) for k, v in zip(keys, vals)})
     return out
 
+
 def _canonicalize_params(params: Dict[str, float], tol: float = 1e-10) -> Tuple[Tuple[str, float], ...]:
     # Sort keys for stable ordering; round to tolerance to avoid tiny float diffs
     return tuple(sorted((k, round(float(v), 10)) for k, v in params.items()))
+
 
 def _group_beta_most_sensitive(rows_all: Dict, beta_names: List[str]) -> List[Tuple[List[str], str, Dict[str, float]]]:
     """
@@ -223,10 +242,11 @@ def _group_beta_most_sensitive(rows_all: Dict, beta_names: List[str]) -> List[Tu
             bykey[key] = ([], fam, p)
         bykey[key][0].append(b)
     # stable order by first beta index
-    idx = {"beta1":1,"beta2":2,"beta3":3,"beta4":4,"beta5":5}
+    idx = {"beta1": 1, "beta2": 2, "beta3": 3, "beta4": 4, "beta5": 5}
     groups = list(bykey.values())
     groups.sort(key=lambda g: min(idx.get(n, 99) for n in g[0]))
     return groups
+
 
 def plot_three_panel_priors(
     rows_all: Dict,               # {'alpha': {...}, 'beta1': {...}, ..., 'sigma': {...}} with 'family' & 'params'
@@ -295,7 +315,7 @@ def plot_three_panel_priors(
     xA_rng = _auto_x_range_from_ref(famA_ref, refA_params) if x_alpha is None else x_alpha
     xA = _linspace_pad(*xA_rng)
     pdf_ref_a = _make_pdf(famA_ref, refA_params)
-    pdf_ms_a  = _make_pdf(famA_ms,  msA_params)
+    pdf_ms_a = _make_pdf(famA_ms,  msA_params)
 
     ax_alpha.plot(xA, pdf_ref_a(xA), linestyle="--", color=col_ref, linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$")
     cand_colors = _cloud_colors(sample_n_alpha, skip_first=2)
@@ -320,7 +340,7 @@ def plot_three_panel_priors(
     xS_rng = _auto_x_range_from_ref(famS_ref, refS_params) if x_sigma is None else x_sigma
     xS = _linspace_pad(*xS_rng)
     pdf_ref_s = _make_pdf(famS_ref, refS_params)
-    pdf_ms_s  = _make_pdf(famS_ms,  msS_params)
+    pdf_ms_s = _make_pdf(famS_ms,  msS_params)
 
     ax_sigma.plot(xS, pdf_ref_s(xS), linestyle="--", color=col_ref, linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$")
     cand_colors = _cloud_colors(sample_n_sigma, skip_first=2)
@@ -331,7 +351,8 @@ def plot_three_panel_priors(
     ax_sigma.set_title(
         _latex_name(plot_cfg, "sigma", r"$\sigma$")
     )
-    ax_sigma.spines["top"].set_visible(False); ax_sigma.spines["right"].set_visible(False)
+    ax_sigma.spines["top"].set_visible(False)
+    ax_sigma.spines["right"].set_visible(False)
 
     # ---------------- BETAS (grouped most-sensitive) ----------------
     beta_names = ["beta1", "beta2", "beta3", "beta4", "beta5"]
@@ -356,12 +377,13 @@ def plot_three_panel_priors(
 
     ax_betas.set_title(r"$\beta_{1 \cdots 5}$", pad=-9)
     # ax_betas.set_ylabel(_latex_name(plot_cfg, "nonparametric_prior", "prior"))
-    ax_betas.spines["top"].set_visible(False); ax_betas.spines["right"].set_visible(False)
+    ax_betas.spines["top"].set_visible(False)
+    ax_betas.spines["right"].set_visible(False)
 
     # group equal most-sensitive betas and draw each group with distinct red linestyle
     groups = _group_beta_most_sensitive(rows_all, beta_names)
     legend_handles = []
-    legend_labels  = []
+    legend_labels = []
 
     # Π_ref (only once)
     legend_handles.append(plt.Line2D([], [], color=col_ref, linestyle="--", linewidth=1.2))
@@ -369,7 +391,7 @@ def plot_three_panel_priors(
 
     legend_handles.append(plt.Line2D([], [], color=col_red, linestyle="-", linewidth=1.2))
     legend_labels.append(
-        r"$\Pi$ (sup$_{\gamma \in C_\gamma} L_m(\gamma)$)"
+        r"$\Pi$ ( " + plot_cfg["plot"]["param_latex_names"]["argoptimisationProblemParam"] + " )"
     )
 
     for gi, (names, fam_g, params_g) in enumerate(groups):
@@ -432,14 +454,18 @@ def _scatter_matrix(params, labels, cfg):
                 ax.scatter(params[:, j], params[:, i], s=s, alpha=a, c=cols[0])
             else:
                 ax.axis("off")
-            if i == M-1: ax.set_xlabel(labels[j])
-            if j == 0: ax.set_ylabel(labels[i])
-    if _deep_get(cfg, "plot.figure.tight_layout", True): fig.tight_layout()
+            if i == M-1:
+                ax.set_xlabel(labels[j])
+            if j == 0:
+                ax.set_ylabel(labels[i])
+    if _deep_get(cfg, "plot.figure.tight_layout", True):
+        fig.tight_layout()
     return fig
 
 
 def plot_ar_results(y, posterior_samples_init, K=5, plot_cfg=None, save=False, output_dir=None, prefix="ar"):
-    if plot_cfg: _apply_plot_rc(plot_cfg)
+    if plot_cfg:
+        _apply_plot_rc(plot_cfg)
     show_int = _deep_get(plot_cfg, "ar.show_intervals", True)
     interval = _deep_get(plot_cfg, "ar.interval", 0.9)
     legend_loc = _deep_get(plot_cfg, "plot.legend.loc", "best")
@@ -447,53 +473,68 @@ def plot_ar_results(y, posterior_samples_init, K=5, plot_cfg=None, save=False, o
 
     y, posterior_samples_init = _prepare_inputs(y, posterior_samples_init, K)
     N, S = len(y), posterior_samples_init.shape[0]
-    a_s, b_s, s_s = posterior_samples_init[:,0], posterior_samples_init[:,1:1+K], posterior_samples_init[:,-1]
-    a_med, b_med, s_med = np.median(a_s), np.median(b_s,0), np.median(s_s)
+    a_s, b_s, s_s = posterior_samples_init[:, 0], posterior_samples_init[:, 1:1+K], posterior_samples_init[:, -1]
+    a_med, b_med, s_med = np.median(a_s), np.median(b_s, 0), np.median(s_s)
     mu_med = _compute_in_sample_means(y, a_med, b_med)
 
     low = high = None
-    if show_int and S>1:
-        mu_all = np.array([_compute_in_sample_means(y,a,b) for a,b in zip(a_s,b_s)])
+    if show_int and S > 1:
+        mu_all = np.array([_compute_in_sample_means(y, a, b) for a, b in zip(a_s, b_s)])
         q = (1-interval)/2
-        low, high = np.nanquantile(mu_all,[q,1-q],0)
+        low, high = np.nanquantile(mu_all, [q, 1-q], 0)
 
     figs = {}
-    cols = _palette(plot_cfg,3)
-    n_alpha = _latex_name(plot_cfg,"alpha","$\\alpha$")
-    n_sigma = _latex_name(plot_cfg,"sigma","$\\sigma$")
+    cols = _palette(plot_cfg, 3)
+    n_alpha = _latex_name(plot_cfg, "alpha", "$\\alpha$")
+    n_sigma = _latex_name(plot_cfg, "sigma", "$\\sigma$")
 
     # fig1
-    f1,ax1=_new_fig_ax(plot_cfg)
-    t=np.arange(N)
-    ax1.plot(t,y,label=_deep_get(plot_cfg,"ar.fig1.label_y","Observed y"),c=cols[0])
-    ax1.plot(t,mu_med,label=_deep_get(plot_cfg,"ar.fig1.label_mu","Posterior mean"),c=cols[1])
-    if low is not None: ax1.fill_between(t,low,high,alpha=_deep_get(plot_cfg,"ar.fig1.band_alpha",0.25),label=_deep_get(plot_cfg,"ar.fig1.band_label",f"{int(interval*100)}% band"))
-    ax1.set(xlabel=_deep_get(plot_cfg,"ar.fig1.x_label","t"),ylabel=_deep_get(plot_cfg,"ar.fig1.y_label","y"))
+    f1, ax1 = _new_fig_ax(plot_cfg)
+    t = np.arange(N)
+    ax1.plot(t, y, label=_deep_get(plot_cfg, "ar.fig1.label_y", "Observed y"), c=cols[0])
+    ax1.plot(t, mu_med, label=_deep_get(plot_cfg, "ar.fig1.label_mu", "Posterior mean"), c=cols[1])
+    if low is not None:
+        ax1.fill_between(t, low, high, alpha=_deep_get(plot_cfg, "ar.fig1.band_alpha", 0.25),
+                         label=_deep_get(plot_cfg, "ar.fig1.band_label", f"{int(interval*100)}% band"))
+    ax1.set(xlabel=_deep_get(plot_cfg, "ar.fig1.x_label", "t"), ylabel=_deep_get(plot_cfg, "ar.fig1.y_label", "y"))
     ax1.legend(loc=legend_loc)
-    if tight:f1.tight_layout(); figs["fig1"]=f1
+    if tight:
+        f1.tight_layout()
+        figs["fig1"] = f1
 
     # fig2
-    res=y[~np.isnan(mu_med)]-mu_med[~np.isnan(mu_med)]
-    f2,ax2=_new_fig_ax(plot_cfg)
-    ax2.plot(np.arange(len(res)),res,c=cols[2])
-    ax2.axhline(0,ls="--")
-    ax2.set(xlabel=_deep_get(plot_cfg,"ar.fig2.x_label",f"Index t={K}..{N-1}"),ylabel=_deep_get(plot_cfg,"ar.fig2.y_label","Residual"))
-    if tight:f2.tight_layout(); figs["fig2"]=f2
+    res = y[~np.isnan(mu_med)]-mu_med[~np.isnan(mu_med)]
+    f2, ax2 = _new_fig_ax(plot_cfg)
+    ax2.plot(np.arange(len(res)), res, c=cols[2])
+    ax2.axhline(0, ls="--")
+    ax2.set(xlabel=_deep_get(plot_cfg, "ar.fig2.x_label",
+            f"Index t={K}..{N-1}"), ylabel=_deep_get(plot_cfg, "ar.fig2.y_label", "Residual"))
+    if tight:
+        f2.tight_layout()
+        figs["fig2"] = f2
 
     # fig3
-    names=[n_alpha]+[_latex_name(plot_cfg,f"beta_{i}",f"$\\beta_{{{i}}}$") for i in range(1,K+1)]+[n_sigma]
-    samps=[a_s]+[b_s[:,i] for i in range(K)]+[s_s]
-    bins=_deep_get(plot_cfg,"ar.fig3.bins",50); ncols=_deep_get(plot_cfg,"ar.fig3.ncols",4); nrows=math.ceil(len(samps)/ncols)
-    f3,axes=plt.subplots(nrows,ncols,figsize=(4*ncols,2.5*nrows))
-    axes=np.ravel(axes)
-    for ax,n,s in zip(axes,names,samps): ax.hist(s,bins=bins); ax.set_title(f"{n} (med={np.median(s):.3f})")
-    for ax in axes[len(samps):]: ax.axis("off")
-    if tight:f3.tight_layout(); figs["fig3"]=f3
+    names = [n_alpha]+[_latex_name(plot_cfg, f"beta_{i}", f"$\\beta_{{{i}}}$") for i in range(1, K+1)]+[n_sigma]
+    samps = [a_s]+[b_s[:, i] for i in range(K)]+[s_s]
+    bins = _deep_get(plot_cfg, "ar.fig3.bins", 50)
+    ncols = _deep_get(plot_cfg, "ar.fig3.ncols", 4)
+    nrows = math.ceil(len(samps)/ncols)
+    f3, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 2.5*nrows))
+    axes = np.ravel(axes)
+    for ax, n, s in zip(axes, names, samps):
+        ax.hist(s, bins=bins)
+        ax.set_title(f"{n} (med={np.median(s):.3f})")
+    for ax in axes[len(samps):]:
+        ax.axis("off")
+    if tight:
+        f3.tight_layout()
+        figs["fig3"] = f3
 
     # fig4
-    params=np.column_stack([a_s,b_s,s_s])
-    labels=[n_alpha]+[_latex_name(plot_cfg,f"beta_{i}",f"$\\beta_{{{i}}}$") for i in range(1,K+1)]+[n_sigma]
-    f4=_scatter_matrix(params,labels,plot_cfg); figs["fig4"]=f4
+    params = np.column_stack([a_s, b_s, s_s])
+    labels = [n_alpha]+[_latex_name(plot_cfg, f"beta_{i}", f"$\\beta_{{{i}}}$") for i in range(1, K+1)]+[n_sigma]
+    f4 = _scatter_matrix(params, labels, plot_cfg)
+    figs["fig4"] = f4
 
     for f in figs.values():
         for ax in f.get_axes():
@@ -501,11 +542,11 @@ def plot_ar_results(y, posterior_samples_init, K=5, plot_cfg=None, save=False, o
             ax.spines["right"].set_visible(False)
 
     if save:
-        out=output_dir or _deep_get(plot_cfg,"plot.output.dir","plots")
-        _save_fig(f1,out,_deep_get(plot_cfg,"ar.output.filenames.fig1",f"{prefix}_series.pdf"),plot_cfg)
-        _save_fig(f2,out,_deep_get(plot_cfg,"ar.output.filenames.fig2",f"{prefix}_residuals.pdf"),plot_cfg)
-        _save_fig(f3,out,_deep_get(plot_cfg,"ar.output.filenames.fig3",f"{prefix}_marginals.pdf"),plot_cfg)
-        _save_fig(f4,out,_deep_get(plot_cfg,"ar.output.filenames.fig4",f"{prefix}_pairs.pdf"),plot_cfg)
+        out = output_dir or _deep_get(plot_cfg, "plot.output.dir", "plots")
+        _save_fig(f1, out, _deep_get(plot_cfg, "ar.output.filenames.fig1", f"{prefix}_series.pdf"), plot_cfg)
+        _save_fig(f2, out, _deep_get(plot_cfg, "ar.output.filenames.fig2", f"{prefix}_residuals.pdf"), plot_cfg)
+        _save_fig(f3, out, _deep_get(plot_cfg, "ar.output.filenames.fig3", f"{prefix}_marginals.pdf"), plot_cfg)
+        _save_fig(f4, out, _deep_get(plot_cfg, "ar.output.filenames.fig4", f"{prefix}_pairs.pdf"), plot_cfg)
 
     return figs
 
@@ -514,20 +555,13 @@ def plot_complexity_bar(
     cfg: dict,
     plot_cfg,
     output_dir: str,
-    m: int,
-    D: int,
-    P: int,
-    H_total: int | None = None,
+    mcmc_run_time: int,
+    fd_run_param: int,
+    fd_run_nonparam: int,
     prefix: str = "ark_param",
     filename: str | None = None,
-    nuts_exponent: float = 5/4,
     use_log10: bool = True,
-    # --- Nonparametric options ---
     include_nonparametric: bool = True,
-    l: int | None = None,          # constraint sample size
-    K: int | None = None,          # SDP size t=K (e.g., AR order)
-    w: float = 2.37,               # matrix mult exponent
-    eps: float = 1e-3,             # SDP accuracy
     show_nonparam_breakdown: bool = True,  # show eval+SDP separately
 ):
     try:
@@ -539,15 +573,24 @@ def plot_complexity_bar(
     if filename is None:
         filename = f"{prefix}_complexity_bar.pdf"
 
-    # --- Infer H_total and components (cfg is expected at ...prior.Composite)
-    comps = cfg.get("components", [])
-    if H_total is None:
-        H_total = 0
-        for c in comps:
-            ranges = c.get("parameters_box_range", {}).get("ranges", {})
-            H_total += len(ranges)
+    labels = [
+        r"$\mathcal{O}_{\text{MCMC}} + \mathcal{O}(m P^2 D + 2^H P^2)$",
+    ]
+    values = [fd_run_param]
+
+    # --- Nonparametric: add if requested
+    if include_nonparametric:
+        if show_nonparam_breakdown:
+            labels += [
+                r"$\mathcal{O}_{\text{MCMC}} + \mathcal{O}((m+l)K^2D) + \mathcal{O}_{\text{SDP}}$",
+            ]
+        else:
+            labels += ["nonparam: total"]
+
+        values += [fd_run_nonparam]
 
     # --- Grid size ∏ G_h
+    comps = cfg.get("components", [])
     Gprod = 1
     for c in comps:
         nums = c.get("parameters_box_range", {}).get("nums", {})
@@ -556,52 +599,10 @@ def plot_complexity_bar(
             gk *= int(v)
         Gprod *= gk
 
-    # --- Parametric (ours)
-    corners = 2 ** H_total
-    cost_ours_data    = (m ** 2) * D                 # O(m^2 D)
-    cost_ours_corners = corners * (P ** 2)           # O(2^H P^2)
-
-    # labels = [
-    #     r"$\mathcal{O}(m^2 D)$",
-    #     r"$\mathcal{O}(2^H P^2)$",
-    # ]
-    # values = [cost_ours_data, cost_ours_corners]
-    labels = [
-        r"$\mathcal{O}(m^2 D + 2^H P^2)$",
-    ]
-    values = [cost_ours_data]
-
-    # --- Nonparametric: add if requested
-    if include_nonparametric:
-        if l is None:
-            raise ValueError("Nonparametric selected but 'l' (constraint sample size) was not provided.")
-        if K is None:
-            raise ValueError("Nonparametric selected but 'K' (SDP size) was not provided.")
-
-        cost_np_eval = D * ((m ** 2) + (l ** 2))                       # O(D(m^2 + l^2))
-        cost_np_sdp  = (K ** (w + 0.5)) * math.log(1.0 / eps)          # O(K^{w+1/2} log(1/eps))
-        cost_np_total = cost_np_eval + cost_np_sdp
-
-        if show_nonparam_breakdown:
-            labels += [
-                r"$\mathcal{O}(D(m^2{+}l^2) + K^{w+\tfrac12}\log(1/\epsilon))$",
-                # r"$\mathcal{O}(K^{w+\tfrac12}\log(1/\epsilon))$",
-            ]
-            # values += [cost_np_eval, cost_np_sdp]
-            values += [cost_np_eval]
-        else:
-            labels += ["nonparam: total"]
-            values += [cost_np_total]
-
-    # --- Brute-force MCMC grid
-    nuts_factor = D ** nuts_exponent
-    cost_mcmc = Gprod * m * nuts_factor
-
     labels += [
-        # "MCMC-based",
-        r"$\mathcal{O}((\Pi_{h=1}^H G_h)m D^{\frac{5}{4}})$",
+        r"$(\Pi_{h=1}^H G_h)\mathcal{O}_{\text{MCMC}}$",
     ]
-    values += [cost_mcmc]
+    values += [Gprod*mcmc_run_time]
 
     values = np.array(values, dtype=float)
     heights = np.log10(values) if use_log10 else values
@@ -616,7 +617,6 @@ def plot_complexity_bar(
         reps = int(np.ceil(len(labels) / len(palette)))
         palette = (palette * reps)[:len(labels)]
 
-    # --- Plot (lightweight look)
     style = "lollipop"  # "lollipop", "float_rect", or "bar"
     fig = plt.figure(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
@@ -647,6 +647,7 @@ def plot_complexity_bar(
 
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=0, ha='center')
+    ax.tick_params(axis='x', pad=25)
     ax.set_ylabel(ylab)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -658,10 +659,3 @@ def plot_complexity_bar(
     except Exception:
         path = os.path.join(output_dir, filename)
         fig.savefig(path, bbox_inches="tight")
-
-
-
-
-
-
-

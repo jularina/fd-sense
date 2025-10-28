@@ -1,9 +1,19 @@
+from src.optimization.nonparametric import OptimizationNonparametricBase
+from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
+                                            OptimizationCornerPointsInverseWishart,
+                                            OptimizationCornerPointsMultivariateGaussian)
+from src.utils.distributions import DISTRIBUTION_MAP
+from src.utils.files_operations import load_plot_config
+from src.distributions.gaussian import MultivariateGaussian
+from src.kernels.base import BaseKernel
+from src.bayesian_model.base import BayesianModel
+from src.plots.paper.toy_paper_funcs import *
+from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
+from src.discrepancies.prior_ksd import PriorKSDNonParametric
 import json
 import os
-import sys
 import warnings
 from statistics import median
-from omegaconf import OmegaConf
 import numpy as np
 import hydra
 from hydra.utils import instantiate, get_original_cwd
@@ -13,21 +23,6 @@ import copy
 import time
 
 warnings.filterwarnings("ignore", category=UserWarning)
-
-from src.discrepancies.prior_ksd import PriorKSDNonParametric
-from src.discrepancies.posterior_ksd import PosteriorKSDParametric, PosteriorKSDNonParametric
-from src.plots.paper.toy_paper_funcs import *
-from src.bayesian_model.base import BayesianModel
-from src.kernels.base import BaseKernel
-from src.distributions.gaussian import MultivariateGaussian
-from src.distributions.inverse_wishart import InverseWishart
-from src.utils.files_operations import load_plot_config
-from src.utils.distributions import DISTRIBUTION_MAP
-from src.optimization.corner_points import (OptimizationCornerPointsUnivariateGaussian,
-                                            OptimizationCornerPointsInverseWishart,
-                                            OptimizationCornerPointsMultivariateGaussian)
-from src.optimization.nonparametric import OptimizationNonparametricBase
-from src.utils.basis_functions import BASIS_FUNCTIONS_REGISTRY
 
 
 def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float], kernel: BaseKernel):
@@ -56,7 +51,6 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, pos
         ksd = ksd_estimator.estimate_ksd()
         ksd_results[tuple(values)] = ksd
         print(f"Prior: {prior_params}, mu_n: {model.mu_n}, KSD: {ksd:.4f}")
-
 
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
@@ -413,7 +407,8 @@ def run_gaussian_priors(cfg) -> None:
     print(f"Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
 
     # Optimization
-    optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator, cfg.ksd.optimize.prior.Gaussian, cfg.ksd.optimize.loss.GaussianLogLikelihood)
+    optimizer = OptimizationCornerPointsUnivariateGaussian(
+        ksd_estimator, cfg.ksd.optimize.prior.Gaussian, cfg.ksd.optimize.loss.GaussianLogLikelihood)
     prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
     prior_combinations = optimizer.evaluate_all_prior_combinations()
 
@@ -502,6 +497,7 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg) -> None:
         resolution=300
     )
 
+
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
 def run_gaussian_priors_nonparametric_diff_basis_funcs_nums(cfg) -> None:
     """
@@ -558,7 +554,7 @@ def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg) -> None:
         cfg (DictConfig): Configuration loaded by Hydra.
     """
     psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
-    
+
     model = instantiate(cfg.model, data_config=cfg.data)
     posterior_samples = model.sample_posterior(cfg.data.posterior_samples_num)
     kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
@@ -688,7 +684,8 @@ def run_gaussian_priors_diff_samples_num(cfg) -> None:
             start = time.perf_counter()
             kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
             ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
-            optimizer = OptimizationCornerPointsUnivariateGaussian(ksd_estimator, cfg.ksd.optimize.prior.Gaussian, cfg.ksd.optimize.loss.GaussianLogLikelihood)
+            optimizer = OptimizationCornerPointsUnivariateGaussian(
+                ksd_estimator, cfg.ksd.optimize.prior.Gaussian, cfg.ksd.optimize.loss.GaussianLogLikelihood)
             prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
             elapsed = time.perf_counter() - start
             largest_ksd = prior_corners[0][2]
@@ -726,7 +723,8 @@ def run_gaussian_priors_diff_samples_num(cfg) -> None:
                 largest_ksd = result_sdp["ksd_est"]
                 times_list_nonparametric.append((sample_nums, basis_funcs_num, elapsed))
                 times_nonparametric[sample_nums][basis_funcs_num][step] = elapsed
-                print(f"***Non-parametric*** Samples: {sample_nums}, Basis Functions num: {basis_funcs_num}, Initial KSD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
+                print(
+                    f"***Non-parametric*** Samples: {sample_nums}, Basis Functions num: {basis_funcs_num}, Initial KSD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
 
     with open(data_path + "nonparametric_optimisation_times.json", "w") as f:
         json.dump(times_nonparametric, f, indent=4)
@@ -768,7 +766,8 @@ def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
             start = time.perf_counter()
             kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
             ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
-            optimizer = OptimizationCornerPointsMultivariateGaussian(ksd_estimator, cfg.ksd.optimize.prior.MultivariateGaussian, cfg.ksd.optimize.loss.MultivariateGaussianLogLikelihood)
+            optimizer = OptimizationCornerPointsMultivariateGaussian(
+                ksd_estimator, cfg.ksd.optimize.prior.MultivariateGaussian, cfg.ksd.optimize.loss.MultivariateGaussianLogLikelihood)
             prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
             elapsed = time.perf_counter() - start
             largest_ksd = prior_corners[0][2]
@@ -806,7 +805,8 @@ def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
                 largest_ksd = result_sdp["ksd_est"]
                 times_list_nonparametric.append((sample_nums, basis_funcs_num, elapsed))
                 times_nonparametric[sample_nums][basis_funcs_num][step] = elapsed
-                print(f"***Non-parametric*** Samples: {sample_nums}, Basis Functions num: {basis_funcs_num}, Initial KSD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
+                print(
+                    f"***Non-parametric*** Samples: {sample_nums}, Basis Functions num: {basis_funcs_num}, Initial KSD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
 
     with open(data_path + "nonparametric_optimisation_times.json", "w") as f:
         json.dump(times_nonparametric, f, indent=4)
@@ -898,6 +898,7 @@ def run_inverse_wishart_priors(cfg) -> None:
     qf_prior_all_combinations = optimizer.evaluate_all_prior_combinations()
     plot_across_inv_wishart_prior_parameter_sets(cfg, qf_across_priors=qf_prior_all_combinations)
 
+
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
 def run_priors_optimisation_runtimes(cfg, dim: str = "univariate"):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
@@ -925,7 +926,7 @@ def run_priors_optimisation_runtimes(cfg, dim: str = "univariate"):
 
 
 if __name__ == "__main__":
-    run_gaussian_priors()
+    # run_gaussian_priors()
     # run_gaussian_lr()
     # run_gaussian_log_normal_priors()
     # run_multivariate_gaussian_priors()
@@ -934,6 +935,6 @@ if __name__ == "__main__":
     # run_multivariate_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums()
     # run_gaussian_priors_nonparametric_diff_basis_funcs_nums()
-    # run_gaussian_priors_diff_samples_num()
-    # run_multivariate_gaussian_priors_diff_samples_num()
-    # run_priors_optimisation_runtimes()
+    run_gaussian_priors_diff_samples_num()
+    run_multivariate_gaussian_priors_diff_samples_num()
+    run_priors_optimisation_runtimes()

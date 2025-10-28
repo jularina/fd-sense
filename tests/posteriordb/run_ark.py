@@ -3,13 +3,12 @@ import warnings
 import hydra
 from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
-import time
 
 from src.discrepancies.posterior_ksd import PosteriorKSDParametric
 from src.bayesian_model.base import BayesianModel
 from src.kernels.base import BaseKernel
 from src.utils.files_operations import load_plot_config
-from src.utils.files_operations import get_outdir, save_json, save_csv, deepcopy_cfg
+from src.utils.files_operations import save_json, save_csv, deepcopy_cfg
 from src.plots.paper.posterior_db_paper_funcs import *
 from src.utils.choosers import pick_optimizer
 
@@ -37,11 +36,13 @@ def _run_one_optimization(cfg: DictConfig) -> List[Dict]:
         })
     return rows
 
+
 def _filter_components(cfg: DictConfig, keep_names: List[str]) -> DictConfig:
     new_cfg = deepcopy_cfg(cfg)
     comps = new_cfg.ksd.optimize.prior.Composite.components
     new_cfg.ksd.optimize.prior.Composite.components = [c for c in comps if c.get("name") in keep_names]
     return new_cfg
+
 
 def _eval_corners_with_cfg(ksd_est, cfg_like: DictConfig) -> Tuple:
     optimizer = pick_optimizer(cfg_like, ksd_est)
@@ -53,6 +54,7 @@ def _eval_corners_with_cfg(ksd_est, cfg_like: DictConfig) -> Tuple:
             "value": float(corners[2]),
         })
     return rows, worst_corner_dict
+
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
 def main(cfg: DictConfig) -> None:
@@ -220,8 +222,6 @@ def main_for_paper_several_variants(cfg: DictConfig) -> None:
     # A) beta1 + beta3 (as given)
     # cfg_A = _filter_components(cfg, keep_names=["beta1", "beta3", "sigma"])
     # rows_A = _eval_corners_with_cfg(ksd_est, cfg_A)
-
-
 
 
 if __name__ == "__main__":

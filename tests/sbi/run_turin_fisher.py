@@ -4,10 +4,8 @@ from typing import List
 import hydra
 from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
-from collections import defaultdict
 
 from src.bayesian_model.base import BayesianModel
-from src.kernels.base import BaseKernel
 from src.utils.files_operations import load_plot_config
 from src.utils.files_operations import deepcopy_cfg
 from src.utils.choosers import pick_optimizer
@@ -15,9 +13,7 @@ from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior
 )
 from src.plots.paper.sbi_paper_funcs import *
-from src.discrepancies.posterior_fisher import PosteriorFDBase, PosteriorFDNonParametric
-from src.discrepancies.prior_fisher import PriorFDNonParametric
-from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
+from src.discrepancies.posterior_fisher import PosteriorFDBase
 
 
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
@@ -73,52 +69,55 @@ def main(cfg: DictConfig) -> None:
         print("  ", r)
     lr_corners = optimizer.evaluate_all_lr_corners()
     lr_grid = optimizer.evaluate_all_lr_grid()
-    # plot_turin_four_theta_priors(
-    #     largest_sens=corner_largest_sens,
-    #     cfg=cfg,
-    #     plot_cfg=plot_cfg,
-    #     output_dir=output_dir,
-    #     filename="sbi_experiment_turin_prior_four_panel.pdf",
-    # )
+    plot_turin_four_theta_priors(
+        largest_sens=corner_largest_sens,
+        cfg=cfg,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        filename="sbi_experiment_turin_prior_four_panel.pdf",
+    )
     # plot_lr_vs_ksd(
     #     lr_grid=lr_grid,
     #     plot_cfg=plot_cfg,
     #     output_dir=output_dir,
     #     filename="sbi_experiment_turin_lr_vs_ksd.pdf",
-    #     xlabel=r"learning rate",
+    #     xlabel=r"lr",
     #     ylbl = "estimatedKSDposteriorsQuadraticForm",
     # )
 
     # Non-parametric
-    model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
-    posterior_samples = model.posterior_samples_init
-    prior_samples = model.prior_samples_init
-    prior_samples = prior_samples[np.random.choice(10000, size=2000, replace=False)]
-    estimator_prior = PriorFDNonParametric(samples=prior_samples, model=model, candidate_type="prior")
-    estimator_posterior = PosteriorFDNonParametric(samples=posterior_samples, model=model, candidate_type="prior")
-    psi_sdp_list, ksd_estimates_list = [], []
-    basis_funcs_num_list = [3, 5, 10, 15, 25]
-    # basis_funcs_num_list = [3, 5]
-    # radii_list = [0.05, 0.1, 0.5, 5.0]
-    radii_list = [5.0, 10.0, 50.0, 100.0, 500.0]
-    nonparam_metrics = defaultdict(dict)
-
-    for radius in radii_list:
-        for basis_funcs_num in basis_funcs_num_list:
-            cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
-            optimizer = OptimisationNonparametricBase(
-                estimator_posterior,
-                estimator_prior,
-                cfg.ksd.optimize.prior.nonparametric,
-                radius_lower_bound=radius
-            )
-            result_sdp = optimizer.optimize_through_sdp_relaxation()
-            nonparam_metrics[basis_funcs_num][radius] = result_sdp["est"]
-            psi_sdp_list.append(result_sdp["psi_opt"])
-            ksd_estimates_list.append(result_sdp["est"])
-            print(f"Radius: {radius}, basis funcs num: {basis_funcs_num}, objective estimate: {result_sdp["est"]}.")
-
-    plot_ksd_heatmap(data_dict=nonparam_metrics, plot_cfg=plot_cfg, output_dir=output_dir)
+    # model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    # posterior_samples = model.posterior_samples_init
+    # prior_samples = model.prior_samples_init
+    # prior_samples = prior_samples[np.random.choice(10000, size=2000, replace=False)]
+    # estimator_prior = PriorFDNonParametric(samples=prior_samples, model=model, candidate_type="prior")
+    # estimator_posterior = PosteriorFDNonParametric(samples=posterior_samples, model=model, candidate_type="prior")
+    # psi_sdp_list, ksd_estimates_list = [], []
+    # basis_funcs_num_list = [10, 15, 25]
+    # # basis_funcs_num_list = [3, 5]
+    # # radii_list = [0.05, 0.1, 0.5, 5.0]
+    # radii_list = [10, 50, 100]
+    # degrees = [2,3,4]
+    # nonparam_metrics = defaultdict(dict)
+    #
+    # for radius in radii_list:
+    #     for basis_funcs_num in basis_funcs_num_list:
+    #     # for basis_funcs_num in degrees:
+    #         cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
+    #         # cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["degree"] = basis_funcs_num
+    #         optimizer = OptimisationNonparametricBase(
+    #             estimator_posterior,
+    #             estimator_prior,
+    #             cfg.ksd.optimize.prior.nonparametric,
+    #             radius_lower_bound=radius
+    #         )
+    #         result_sdp = optimizer.optimize_through_sdp_relaxation()
+    #         nonparam_metrics[basis_funcs_num][radius] = result_sdp["est"]
+    #         psi_sdp_list.append(result_sdp["psi_opt"])
+    #         ksd_estimates_list.append(result_sdp["est"])
+    #         print(f"Radius: {radius}, basis funcs num: {basis_funcs_num}, objective estimate: {result_sdp["est"]}.")
+    #
+    # plot_ksd_heatmap(data_dict=nonparam_metrics, plot_cfg=plot_cfg, output_dir=output_dir, log_scale=True)
 
 
 if __name__ == "__main__":

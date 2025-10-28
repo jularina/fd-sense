@@ -1,31 +1,31 @@
 plot:
   font:
-    size: 12  # 32 match Overleaf 10pt font
+    size: 14  # 32 match Overleaf 10pt font
     family: serif  # for LaTeX compatibility
     use_tex: true  # render text with LaTeX
 
   figure:
     size:
-      width: 6.0  # 4 in inches, 2.5 for 4-col
-      height: 2.2 # 3.2 in inches, 1.67 for 4-col
+      width: 8.0  # 4 in inches, 2.5 for 4-col
+      height: 2.5 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: true
 
   color_palette:
     colors:
       - "#450314" # dark cherry
-      - "#5A051A"  # cherry
+#      - "#5A051A"  # cherry
 #      - "#D20A2E"  # red
 #      - "#EE1E52"  # pink
 #      - "#6E3D6F" # darker purple
       - "#7c397d" # purple
 #      - "#FF6B90"  # light-pink
-      - "#1f77b4"  # blue
+#      - "#1f77b4"  # blue
 #      - "#D20A2E"   # red
-#      - "#EE1E52"  # pink
+      - "#EE1E52"  # pink
 #      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
-      - "#5b9bd5"  # lighter blue
+#      - "#5b9bd5"  # lighter blue
 #      - "#009E73"   # forest green
 #      - "#E69F00"   # orange
 #      - "#F0E442"   # golden yellow
@@ -64,9 +64,12 @@ plot:
     estimatedKSDposteriorsShort: "$\\mathrm{KSD}_{\\mathrm{post}}$"
     estimatedKSDrelativeShort: "$\\mathrm{KSD}_{\\mathrm{rel}}$"
     estimatedKSDposteriorsQuadraticForm: "$L_m(\\gamma)$"
-    argoptimisationProblemParam: "$\\mathrm{arg}\\sup_{ \\gamma \\in C_\\gamma} L_m(\\gamma)$"
+#    argoptimisationProblemParam: "$\\mathrm{arg}\\sup_{ \\gamma \\in C_\\gamma} L_m(\\gamma)$"
     argoptimisationProblemNonParam: "$\\mathrm{arg}\\sup_{\\widehat{\\mathrm{KSD}}^2(\\Pi^l_{\\mathrm{ref}},\\ \\Pi_K) \\leq r} \\: L_m(\\psi)$"
     optimisationProblem: "$\\sup\\limits_{\\widehat{\\mathrm{KSD}}^2(\\Pi^l_{\\mathrm{ref}},\\ \\Pi_K) \\leq r} \\: L_m(\\psi)$"
+    optimisationProblemWoConstraint: "$L_m(\\psi^\\star)$"
+    logoptimisationProblemWoConstraint: "$\\log L_m(\\psi^\\star)$"
+    argoptimisationProblemParam: "$\\gamma^\\star$"
     logOptimisationProblem: "$\\sup_{ \\widehat{\\mathrm{KSD}}^2(\\Pi^l_{\\mathrm{ref}},\\ \\Pi_K) \\leq r} \\: \\log L_m(\\psi)$"
     lr: "lr"
     logK: "$\\log K$"
@@ -75,6 +78,7 @@ plot:
     r: "r"
     numPosteriorSamples: "m"
     estimatedFDposteriorsShort: "$\\mathrm{FD}_{\\mathrm{post}}$"
+    estimatedFDposteriorsQuadraticForm: "$L_m(\\gamma)$"
 
   y_axis:
     log_scale: false

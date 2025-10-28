@@ -41,7 +41,7 @@ ksd:
 
       nonparametric:
         basis_funcs_type:  RBFBasisFunction # PolynomialBasisFunction # SigmoidBasisFunction  # RBFBasisFunction
-        basis_funcs_kwargs: { "num_basis_functions": 10, "method": "kmeans", "lengthscale": null, "scale_multiplier": 1} # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1}   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1}
+        basis_funcs_kwargs: { "num_basis_functions": 10, "method": "farthest", "lengthscale": null, "scale_multiplier": 1} # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1}   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1}
         radius_lower_bound: null
         scale_samples: False
 

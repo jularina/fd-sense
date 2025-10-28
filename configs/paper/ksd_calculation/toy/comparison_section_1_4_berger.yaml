@@ -3,18 +3,22 @@ data:
 #    _target_: src.distributions.gaussian.Gaussian
 #    mu: 0
 #    sigma: 1.414
+#  base_prior:
+#    _target_: src.distributions.uniform.Uniform
+#    low: -5
+#    high: 5
   base_prior:
-    _target_: src.distributions.uniform.Uniform
-    low: -5
-    high: 5
-  candidate_prior:
-    _target_: src.distributions.gaussian.Gaussian
-    mu: 0
-    sigma: 1.414
+    _target_: src.distributions.cauchy.Cauchy
+    x: 0
+    gamma: 4.0
 #  candidate_prior:
-#    _target_: src.distributions.laplace.Laplace
+#    _target_: src.distributions.gaussian.Gaussian
 #    mu: 0
-#    b: 0.726
+#    sigma: 1.414
+  candidate_prior:
+    _target_: src.distributions.laplace.Laplace
+    mu: 0
+    b: 0.726
 #  candidate_prior:
 #    _target_: src.distributions.cauchy.Cauchy
 #    x: 0
@@ -65,4 +69,4 @@ ksd:
 
 flags:
   plots:
-    output_dir: outputs/paper/plots/comparison/section_1_4_berger/
+    output_dir: outputs/paper/plots/fisher/comparison/section_1_4_berger/

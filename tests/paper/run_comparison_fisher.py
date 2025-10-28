@@ -7,14 +7,11 @@ import glob
 import numpy as np
 import pymc as pm
 
-from src.discrepancies.posterior_ksd import PosteriorKSDParametric
 from src.plots.paper.comparison_paper_funcs import *
 from src.utils.files_operations import load_plot_config
-from src.optimization.corner_points import (
-    OptimizationCornerPointsCompositePrior
-)
+from src.optimization.corner_points_fisher import *
 from src.bayesian_model.base import BayesianModel
-from src.kernels.base import BaseKernel
+from src.discrepancies.posterior_fisher import PosteriorFDBase
 from src.utils.display import print_optimised_corners_values
 
 
@@ -68,11 +65,10 @@ def run_laplace_cauchy_priors_uniform_reference_1_4_berger(cfg: DictConfig, save
         cfg.data.observations_path = obs_path
         cfg.data.posterior_samples_path = post_path
         model = instantiate(cfg.model, data_config=cfg.data)
-        posterior_samples = model.posterior_samples_init
-        kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+        fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init, model=model, candidate_type="prior")
+        fd_value = float(fisher_estimator.estimate_fisher())
         x_val = float(np.load(obs_path).item())
-        print(f"x = {x_val:.1f} | Initial KSD (Uniform ref): {ksd_estimator.estimate_ksd():.4f}")
+        print(f"x = {x_val:.1f} | Initial FD (Uniform ref): {fd_value:.4f}")
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="comparison_section_1_4_berger")
@@ -123,14 +119,13 @@ def run_laplace_cauchy_priors_normal_reference_1_4_berger(cfg, save_samples=Fals
         cfg.data.observations_path = obs_path
         cfg.data.posterior_samples_path = post_path
         model = instantiate(cfg.model, data_config=cfg.data)
-        posterior_samples = model.posterior_samples_init
-        kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+        fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init, model=model, candidate_type="prior")
+        fd_value = float(fisher_estimator.estimate_fisher())
         obs_val = float(np.load(obs_path).item())
-        print(f"x = {obs_val:.1f} | Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+        print(f"x = {obs_val:.1f} | Initial FD: {fd_value:.4f}")
 
 
-def _pymc_posterior_samples_ref(x: float,
+def _pymc_posterior_samples_ref(x_obs: float,
                                 prior_kind: str,
                                 prior_params: dict,
                                 draws: int,
@@ -159,7 +154,7 @@ def _pymc_posterior_samples_ref(x: float,
         else:
             raise ValueError("prior_kind must be one of {'laplace', 'cauchy', 'uniform'}")
 
-        pm.Normal("x_obs", mu=theta, sigma=1.0, observed=float(x))
+        pm.Normal("x_obs", mu=theta, sigma=1.0, observed=float(x_obs))
 
         idata = pm.sample(
             draws=draws,
@@ -208,7 +203,7 @@ def run_nonconjugate_reference_prior_mcmc_1_4_berger(cfg: DictConfig, save_sampl
 
         for x in x_values:
             samples = _pymc_posterior_samples_ref(
-                x=float(x),
+                x_obs=x,
                 prior_kind=prior_kind,
                 prior_params=prior_params,
                 draws=draws,
@@ -226,16 +221,11 @@ def run_nonconjugate_reference_prior_mcmc_1_4_berger(cfg: DictConfig, save_sampl
     for obs_path, post_path in zip(obs_files, post_files):
         cfg.data.observations_path = obs_path
         cfg.data.posterior_samples_path = post_path
-        model = instantiate(cfg.model, data_config=cfg.data)
-        posterior_samples = model.posterior_samples_init
-        kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-        ksd_estimator = PosteriorKSDParametric(
-            samples=posterior_samples,
-            model=model,
-            kernel=kernel
-        )
         x_val = float(np.load(obs_path).item())
-        print(f"[{prior_kind} ref] x = {x_val:.1f} | Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+        model = instantiate(cfg.model, data_config=cfg.data)
+        fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init, model=model, candidate_type="prior")
+        fd_value = float(fisher_estimator.estimate_fisher())
+        print(f"[{prior_kind} ref] x = {x_val:.1f} | Initial FD: {fd_value:.4f}")
 
 
 @hydra.main(version_base="1.1",
@@ -264,7 +254,7 @@ def plot_comparison_plots_1_4_berger(cfg: DictConfig):
             config_path="../../configs/paper/ksd_calculation/toy/",
             config_name="comparison_section_3_3_berger")
 def run_normals_comparison_section_3_3_berger(cfg: DictConfig, save_samples: bool = True):
-    base_dir = os.path.join(get_original_cwd(), "data", "comparison", "section_3_3_berger")
+    base_dir = os.path.join(get_original_cwd(), "data", "comparison", "section_3_3_2_berger")
 
     if save_samples:
         rng_seed = 27
@@ -301,11 +291,10 @@ def run_normals_comparison_section_3_3_berger(cfg: DictConfig, save_samples: boo
         cfg.data.observations_path = obs_path
         cfg.data.posterior_samples_path = post_path
         model = instantiate(cfg.model, data_config=cfg.data)
-        posterior_samples = model.posterior_samples_init
-        kernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-        ksd_estimator = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
+        fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init, model=model, candidate_type="prior")
+        fd_value = float(fisher_estimator.estimate_fisher())
         obs_val = np.load(obs_path)
-        print(f"(x_0, x_1) = {obs_val} | Initial KSD: {ksd_estimator.estimate_ksd():.4f}")
+        print(f"(x_0, x_1) = {obs_val} | Initial FD: {fd_value:.4f}")
 
 
 def sample_bioassay(x, y, n):
@@ -353,23 +342,20 @@ def run_bioassay(cfg: DictConfig, sample=False):
         np.save(data_dir + "samples_ld50.npy", samples_ld50)
         observations = np.column_stack((x, y, n))
         np.save(data_dir + "observations.npy", observations)
-    else:
-        samples = np.load(data_dir + "samples.npy")
-        samples_ld50 = np.load(data_dir + "samples_ld50.npy")
 
-    print("=== KSD for Bioassay model ===")
+    print("=== FD for Bioassay model ===")
     model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
-    posterior_samples = model.posterior_samples_init
-    kernel: BaseKernel = instantiate(cfg.ksd.kernel, reference_data=posterior_samples)
-    ksd_est = PosteriorKSDParametric(samples=posterior_samples, model=model, kernel=kernel)
-    ksd_value = float(ksd_est.estimate_ksd())
-    print(f"[KSD] Posterior KSD (baseline prior): {ksd_value:.5f}")
+    fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init, model=model, candidate_type="prior")
+    fd_value = float(fisher_estimator.estimate_fisher())
+    print(f"[FD] Posterior FD (baseline prior): {fd_value:.5f}")
 
     # Parametric prior optimisation
     optimizer = OptimizationCornerPointsCompositePrior(
-        ksd_est, cfg.ksd.optimize.prior.Composite, cfg.ksd.optimize.loss.LogisticBinomialLogLikelihood)
+        fisher_estimator,
+        cfg.ksd.optimize.prior.Composite,
+        cfg.ksd.optimize.loss.LogisticBinomialLogLikelihood
+    )
     prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
-    prior_combinations = optimizer.evaluate_all_prior_combinations()
     worst_corner_params = {}
     worst_corner_params["family"] = "Laplace"
     worst_corner_params["params"] = worst_corner
@@ -408,6 +394,6 @@ if __name__ == "__main__":
     # run_laplace_cauchy_priors_uniform_reference_1_4_berger()
     # run_nonconjugate_reference_prior_mcmc_1_4_berger()
     # plot_comparison_plots_1_4_berger()
-    # run_normals_comparison_section_3_3_berger()
-    run_bioassay()
-    plot_comparison_plots_wim()
+    run_normals_comparison_section_3_3_berger()
+    # run_bioassay()
+    # plot_comparison_plots_wim()

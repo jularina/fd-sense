@@ -56,12 +56,17 @@ class BioassayModel(BayesianModel):
 
         obs = load_numpy_array(obs_path)
 
-        return obs[:,0].reshape(-1,1), obs[:,1].reshape(-1,1), obs[:,2].reshape(-1,1)
+        return obs[:, 0].reshape(-1, 1), obs[:, 1].reshape(-1, 1), obs[:, 2].reshape(-1, 1)
 
     def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
         """Compute gradient of log likelihood (scaled by learning rate)."""
         grad = self.loss.grad_log_pdf(theta=x, y=self.y, x=self.x, n=self.n)
         return self.loss_lr * grad if multiply_by_lr else grad
+
+    def reference_loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
+        """Compute gradient of reference log loss."""
+        grad = self.loss.grad_log_pdf(theta=x, y=self.y, x=self.x, n=self.n)
+        return self.loss_lr_init * grad if multiply_by_lr else grad
 
     def set_composite_prior_parameters(self, components: Dict[str, Any], combine_rule: str = "product",
                                        reset_from_init: bool = True, ) -> None:

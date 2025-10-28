@@ -1,7 +1,6 @@
 import warnings
 import os
 from collections import defaultdict
-from pathlib import Path
 import time
 import hydra
 from hydra.utils import instantiate, get_original_cwd
@@ -9,13 +8,9 @@ from omegaconf import DictConfig
 
 from src.utils.files_operations import load_plot_config
 from src.bayesian_model.base import BayesianModel
-from src.discrepancies.posterior_fisher import PosteriorFDBase, PosteriorFDNonParametric
+from src.discrepancies.posterior_fisher import PosteriorFDNonParametric
 from src.discrepancies.prior_fisher import PriorFDNonParametric
 from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
-from src.optimization.corner_points_fisher import (
-    OptimizationCornerPointsGamma
-)
-from src.utils.display import print_optimised_corners_values
 from src.plots.paper.ising_model_paper_funcs import *
 
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
@@ -24,34 +19,33 @@ warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ising_model")
 def main(cfg: DictConfig) -> None:
     print("=== FD for Ising model ===")
-    model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
-    posterior_samples = model.posterior_samples_init
-    fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="loss")
-    fisher_value = float(fisher_estimator.estimate_fisher())
-    print(f"[FD] Posterior FD (baseline prior): {fisher_value:.2f}")
+    # model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    # posterior_samples = model.posterior_samples_init
+    # fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="loss")
+    # fisher_value = float(fisher_estimator.estimate_fisher())
+    # print(f"[FD] Posterior FD (baseline prior): {fisher_value:.2f}")
 
-    #Parametric prior optimisation
-    optimizer = OptimizationCornerPointsGamma(fisher_estimator, cfg.ksd.optimize.prior.Gamma, cfg.ksd.optimize.loss.IsingLikelihoodGivenGrads)
-    prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
-    worst_corner_params = {}
-    worst_corner_params["family"] = "Gamma"
-    worst_corner_params["params"] = worst_corner
-    prior_combinations = optimizer.evaluate_all_prior_combinations()
-    print_optimised_corners_values(prior_corners)
+    # Parametric prior optimisation
+    # optimizer = OptimizationCornerPointsGamma(fisher_estimator, cfg.ksd.optimize.prior.Gamma, cfg.ksd.optimize.loss.IsingLikelihoodGivenGrads)
+    # prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
+    # worst_corner_params = {}
+    # worst_corner_params["family"] = "Gamma"
+    # worst_corner_params["params"] = worst_corner
+    # prior_combinations = optimizer.evaluate_all_prior_combinations()
+    # print_optimised_corners_values(prior_corners)
 
-    #Parametric lr optimisation
-    lr_corners = optimizer.evaluate_all_lr_corners()
-    lr_combinations = optimizer.evaluate_full_lr_grid()
-    data_path = os.path.join(get_original_cwd(), "data/ising_model/fisher/")
-    file_id = Path(cfg.data.observations_path).stem
-    np.save(data_path + file_id + "_lr_optimisation.npy", np.array(lr_combinations))
+    # Parametric lr optimisation
+    # lr_corners = optimizer.evaluate_all_lr_corners()
+    # lr_combinations = optimizer.evaluate_full_lr_grid()
+    # data_path = os.path.join(get_original_cwd(), "data/ising_model/fisher/")
+    # file_id = Path(cfg.data.observations_path).stem
+    # np.save(data_path + file_id + "_lr_optimisation.npy", np.array(lr_combinations))
 
     # Plots
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
     # plot_theta_prior(
-    #     theta="theta",
     #     worst_corner=worst_corner_params,
     #     cfg=cfg,
     #     plot_cfg=plot_cfg,
@@ -69,7 +63,7 @@ def main(cfg: DictConfig) -> None:
     estimator_posterior = PosteriorFDNonParametric(samples=posterior_samples, model=model, candidate_type="prior")
 
     psi_sdp_list, ksd_estimates_list = [], []
-    radii_list = [0.01, 0.05, 0.1, 0.5, 10]
+    radii_list = [0.05, 0.1, 0.5, 10]
     times = []
     nonparam_metrics = defaultdict(dict)
 
@@ -85,7 +79,8 @@ def main(cfg: DictConfig) -> None:
         nonparam_metrics[radius] = result_sdp["est"]
         psi_sdp_list.append(result_sdp["psi_opt"])
         ksd_estimates_list.append(result_sdp["est"])
-        print(f"Radius: {radius}, basis funcs num: {cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"]}, obj: {result_sdp["est"]}.")
+        print(
+            f"Radius: {radius}, basis funcs num: {cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"]}, obj: {result_sdp["est"]}.")
         time_end = time.time()
         time_passed = time_end - time_start
         times.append(time_passed)
@@ -100,10 +95,10 @@ def main(cfg: DictConfig) -> None:
         prior_distribution=model.prior_init,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
-        domain=(-3, 12),
+        domain=(-3, 15),
         resolution=300,
-        filename = "ising_model_size6_nonparametric_optimisation_basisnum10_centerskmeans_densities_various_radii.pdf",
-        ylbl = "estimatedFDposteriorsShort"
+        filename="ising_model_size6_nonparametric_optimisation_basisnum10_centersfarthest_densities_various_radii.pdf",
+        ylbl="estimatedFDposteriorsShort"
     )
 
 
@@ -120,12 +115,12 @@ def create_combined_plots(cfg: DictConfig):
 
     plot_lr_vs_ksd_multi(
         lr_grids=[lr_combinations_4, lr_combinations_6, lr_combinations_8],
-        ds=[4,6,8],
+        ds=[4, 6, 8],
         plot_cfg=plot_cfg,
         output_dir=output_dir,
         filename="ising_experiment_theta_sizes4_6_8_lr_vs_ksd.pdf",
-        xlabel=r"learning rate",
-        ylbl = "estimatedFDposteriorsShort",
+        xlabel=r"lr",
+        ylbl="estimatedFDposteriorsShort",
     )
 
 

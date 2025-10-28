@@ -9,7 +9,6 @@ from tqdm import tqdm
 from distributions.inverse_wishart import InverseWishart
 from src.distributions.gaussian import Gaussian, MultivariateGaussian
 from src.distributions.gamma import Gamma
-from src.discrepancies.posterior_ksd import PosteriorKSDParametric
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.utils.files_operations import instantiate_from_target_str
 from src.utils.distributions import is_basedistribution_like
@@ -63,7 +62,7 @@ class OptimizationCornerPointsBase:
         return [dists[i] for i in vertex_idxs]
 
     def _evaluate_prior_qf(self, eta_tilde: np.ndarray) -> float:
-        return eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde
+        return eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde + self.c_prior
 
     def _generate_full_parameter_grid(self) -> Dict:
         pass
@@ -98,7 +97,7 @@ class OptimizationCornerPointsBase:
             param_dict = dict(zip(self.param_names, values))
             self.model.set_prior_parameters(param_dict, distribution_cls=self.distribution_cls)
             eta_tilde = self.model.prior.augmented_natural_parameters()
-            est = eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde
+            est = eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde + self.c_prior
             results.append((param_dict, eta_tilde, est))
             print(f"Corner: {param_dict} => Estimated obj: {est:.6f}")
 
@@ -106,7 +105,6 @@ class OptimizationCornerPointsBase:
         self.model.back_to_prior_candidate()
 
         return results
-
 
     def evaluate_all_lr_corners(self) -> List:
         results = []
@@ -122,7 +120,6 @@ class OptimizationCornerPointsBase:
         self.model.back_to_lr_init()
 
         return results
-
 
     def evaluate_full_lr_grid(self) -> List:
         results = []
@@ -151,7 +148,8 @@ class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
         """
         Grid/corner quadratic form generation and optimization for univariate gaussian.
         """
-        super().__init__(posterior_estimator=posterior_estimator, prior_config=prior_config, loss_config=loss_config, distribution_cls=distribution_cls)
+        super().__init__(posterior_estimator=posterior_estimator, prior_config=prior_config,
+                         loss_config=loss_config, distribution_cls=distribution_cls)
 
     def _generate_mu_grid(self) -> List:
         mu_ranges = self.param_ranges['mu']
@@ -190,6 +188,81 @@ class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
         return parameter_grid
 
 
+class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase):
+    def __init__(
+        self,
+        posterior_estimator,
+        prior_config: Dict,
+        loss_config: Dict,
+        distribution_cls=MultivariateGaussian,
+    ):
+        """
+        Grid/corner quadratic form generation and optimization for multivariate gaussian.
+        """
+        super().__init__(posterior_estimator=posterior_estimator, prior_config=prior_config,
+                         loss_config=loss_config, distribution_cls=distribution_cls)
+
+    def _generate_mu_grid(self) -> List:
+        mu_ranges = self.param_ranges['mu']
+        mu_nums = self.param_nums['mu']
+        mu_axes = [
+            np.linspace(*mu_ranges[dim], mu_nums[dim])
+            for dim in sorted(mu_ranges.keys(), key=int)
+        ]
+        return list(itertools.product(*mu_axes))
+
+    def _generate_cov_grid(self) -> list[np.ndarray]:
+        uniq_keys = ["0_0", "0_1", "1_1"]
+        cov_ranges = self.param_ranges['cov']
+        cov_nums = self.param_nums['cov']
+
+        axes = [np.linspace(*cov_ranges[k], cov_nums[k]) for k in uniq_keys]
+        cov_matrices = []
+        for vals in itertools.product(*axes):
+            a00, a01, a11 = vals
+            cov = np.array([[a00, a01],
+                            [a01, a11]], dtype=float)  # symmetric
+            cov_matrices.append(cov)
+        return cov_matrices
+
+    def _generate_full_parameter_grid(self) -> Dict:
+        mu_grid = self._generate_mu_grid()
+        cov_grid = self._generate_cov_grid()
+        parameter_grid = {}
+
+        for mu, cov in itertools.product(mu_grid, cov_grid):
+            try:
+                dist = self.distribution_cls(mu=np.array(mu), cov=np.array(cov))
+            except Exception as e:
+                print(f"Exception: {e} while initializing the distribution with mu={mu}, cov={cov}.")
+                continue
+
+            augmented_eta = dist.augmented_natural_parameters()
+            eta = dist.natural_parameters()
+            cov_key = tuple(tuple(row) for row in cov)
+            parameter_grid[(mu, cov_key)] = {
+                "augmented_natural_parameters": augmented_eta,
+                "natural_parameters": eta,
+                "distribution": dist
+            }
+
+        return parameter_grid
+
+    def _generate_corner_points(self) -> List[Dict[str, float]]:
+        all_eta = np.stack([v["natural_parameters"] for v in self.parameter_grid.values()])
+        eta_min = all_eta.min(axis=0)
+        eta_max = all_eta.max(axis=0)
+        corners = list(itertools.product(*zip(eta_min, eta_max)))
+        corner_set = {tuple(np.round(corner, 8)) for corner in corners}
+        selected_distributions = [
+            v["distribution"]
+            for v in self.parameter_grid.values()
+            if tuple(np.round(v["natural_parameters"], 8)) in corner_set
+        ]
+
+        return selected_distributions
+
+
 class OptimizationCornerPointsCompositePrior:
     """
     Corner/grid quadratic-form optimization for a Composite prior.
@@ -206,9 +279,10 @@ class OptimizationCornerPointsCompositePrior:
 
         # QFs for loss
         self.loss_config = loss_config
-        self.loss_lr_corners= self._generate_loss_lr_corner_points()
+        self.loss_lr_corners = self._generate_loss_lr_corner_points()
         self.loss_lr_full_grid = self._generate_full_loss_lr_grid()
         self.Lambda_loss, self.b_loss = self.posterior_estimator.compute_fisher_quadratic_form_for_loss()
+        self.c_loss = self.posterior_estimator.compute_c_loss()
 
         # Per-component corner lists and full grids
         self.component_corners_lambda: List[List[Dict[str, float]]] = [
@@ -228,7 +302,7 @@ class OptimizationCornerPointsCompositePrior:
 
         # QFs for prior
         self.Lambda_prior, self.b_prior = self.posterior_estimator.compute_fisher_quadratic_form_for_prior()
-
+        self.c_prior = self.posterior_estimator.compute_c_prior()
 
     def _component_corners_from_predefined(self, comp_cfg):
         """
@@ -327,7 +401,7 @@ class OptimizationCornerPointsCompositePrior:
         self.posterior_estimator.model.set_composite_prior_parameters(full_map, combine_rule=self.combine_rule)
 
     def _evaluate_prior_qf(self, eta_tilde: np.ndarray) -> float:
-        return float(eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde)
+        return float(eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde + self.c_prior)
 
     def evaluate_all_prior_corners(self) -> Tuple:
         results = []
@@ -373,11 +447,10 @@ class OptimizationCornerPointsCompositePrior:
         all_combinations = list(product(*endpoints))
         return [dict(zip(keys, values)) for values in all_combinations]
 
-
     def _generate_full_loss_lr_grid(self) -> dict:
         param_ranges = self.loss_config["parameters_box_range"]["ranges"]
         param_nums = self.loss_config["parameters_box_range"]["nums"]
-        lr_grid = {"lr":np.linspace(param_ranges["lr"][0], param_ranges["lr"][1], param_nums["lr"])}
+        lr_grid = {"lr": np.linspace(param_ranges["lr"][0], param_ranges["lr"][1], param_nums["lr"])}
 
         return lr_grid
 
@@ -387,7 +460,7 @@ class OptimizationCornerPointsCompositePrior:
         for corner in self.loss_lr_corners:
             self.posterior_estimator.model.set_lr_parameter(corner["lr"])
             lr = self.posterior_estimator.model.loss_lr
-            est = lr**2 * self.Lambda_loss + self.b_loss * lr
+            est = lr**2 * self.Lambda_loss + self.b_loss * lr + self.c_loss
             results.append((corner, est))
             print(f"Corner: {corner} => Estimated FD: {est:.6f}")
 
@@ -402,7 +475,7 @@ class OptimizationCornerPointsCompositePrior:
         for lr in self.loss_lr_full_grid["lr"]:
             self.posterior_estimator.model.set_lr_parameter(lr)
             lr = self.posterior_estimator.model.loss_lr
-            est = lr**2 * self.Lambda_loss + self.b_loss * lr
+            est = lr**2 * self.Lambda_loss + self.b_loss * lr + self.c_loss
             results.append((lr, est))
             print(f"Lr: {lr} => Estimated FD: {est:.6f}")
 
@@ -423,7 +496,8 @@ class OptimizationCornerPointsGamma(OptimizationCornerPointsBase):
         """
         Grid/corner quadratic form generation and optimization for gamma.
         """
-        super().__init__(posterior_estimator=posterior_estimator, prior_config=prior_config, loss_config=loss_config, distribution_cls=distribution_cls)
+        super().__init__(posterior_estimator=posterior_estimator, prior_config=prior_config,
+                         loss_config=loss_config, distribution_cls=distribution_cls)
 
     def _generate_alpha_grid(self) -> List:
         alpha_ranges = self.param_ranges['alpha']
@@ -459,3 +533,74 @@ class OptimizationCornerPointsGamma(OptimizationCornerPointsBase):
                 "distribution": dist
             }
         return parameter_grid
+
+
+class OptimizationCornerPointsInverseWishart(OptimizationCornerPointsBase):
+    def __init__(
+        self,
+        posterior_estimator,
+        prior_config: Dict,
+        loss_config: Dict,
+        distribution_cls=InverseWishart,
+    ):
+        """
+        Grid/corner quadratic form generation and optimization for Inverse Wishart.
+        """
+        super().__init__(posterior_estimator=posterior_estimator, prior_config=prior_config,
+                         loss_config=loss_config, distribution_cls=distribution_cls)
+
+    def _generate_df_grid(self) -> np.ndarray:
+        return np.linspace(self.param_ranges["df"][0], self.param_ranges["df"][1], self.param_nums["df"])
+
+    def _generate_scale_grid(self) -> List[np.ndarray]:
+        scale_ranges = self.param_ranges['scale']
+        scale_nums = self.param_nums['scale']
+        keys = sorted(scale_ranges.keys())
+        axes = [
+            np.linspace(*scale_ranges[k], scale_nums[k]) for k in keys
+        ]
+        scale_matrices = []
+        for values in itertools.product(*axes):
+            scale = np.zeros((2, 2))  # assumes 2D, generalize if needed
+            for idx, k in enumerate(keys):
+                i, j = map(int, k.split('_'))
+                scale[i, j] = values[idx]
+            scale_matrices.append(scale)
+        return scale_matrices
+
+    def _generate_full_parameter_grid(self) -> Dict:
+        df_grid = self._generate_df_grid()
+        scale_grid = self._generate_scale_grid()
+        parameter_grid = {}
+
+        for df, scale in itertools.product(df_grid, scale_grid):
+            try:
+                dist = self.distribution_cls(df=df, scale=np.array(scale))
+            except Exception as e:
+                print(f"Exception: {e} while initializing the distribution with df={df}, scale={scale}.")
+                continue
+
+            augmented_eta = dist.augmented_natural_parameters()
+            eta = dist.natural_parameters()
+            scale_key = tuple(tuple(row) for row in scale)
+            parameter_grid[(df, scale_key)] = {
+                "augmented_natural_parameters": augmented_eta,
+                "natural_parameters": eta,
+                "distribution": dist
+            }
+
+        return parameter_grid
+
+    def _generate_corner_points(self) -> List[Dict[str, float]]:
+        all_eta = np.stack([v["natural_parameters"] for v in self.parameter_grid.values()])
+        eta_min = all_eta.min(axis=0)
+        eta_max = all_eta.max(axis=0)
+        corners = list(itertools.product(*zip(eta_min, eta_max)))
+        corner_set = {tuple(np.round(corner, 8)) for corner in corners}
+        selected_distributions = [
+            v["distribution"]
+            for v in self.parameter_grid.values()
+            if tuple(np.round(v["natural_parameters"], 8)) in corner_set
+        ]
+
+        return selected_distributions
