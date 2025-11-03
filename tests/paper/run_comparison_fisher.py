@@ -390,10 +390,10 @@ def plot_comparison_plots_wim(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    # run_laplace_cauchy_priors_normal_reference_1_4_berger()
+    run_laplace_cauchy_priors_normal_reference_1_4_berger()
     # run_laplace_cauchy_priors_uniform_reference_1_4_berger()
     # run_nonconjugate_reference_prior_mcmc_1_4_berger()
     # plot_comparison_plots_1_4_berger()
-    run_normals_comparison_section_3_3_berger()
+    # run_normals_comparison_section_3_3_berger()
     # run_bioassay()
     # plot_comparison_plots_wim()

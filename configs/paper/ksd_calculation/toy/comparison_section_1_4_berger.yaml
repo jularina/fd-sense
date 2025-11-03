@@ -1,28 +1,28 @@
 data:
-#  base_prior:
-#    _target_: src.distributions.gaussian.Gaussian
-#    mu: 0
-#    sigma: 1.414
+  base_prior:
+    _target_: src.distributions.gaussian.Gaussian
+    mu: 0
+    sigma: 1.414
 #  base_prior:
 #    _target_: src.distributions.uniform.Uniform
 #    low: -5
 #    high: 5
-  base_prior:
-    _target_: src.distributions.cauchy.Cauchy
-    x: 0
-    gamma: 4.0
+#  base_prior:
+#    _target_: src.distributions.cauchy.Cauchy
+#    x: 0
+#    gamma: 4.0
 #  candidate_prior:
 #    _target_: src.distributions.gaussian.Gaussian
 #    mu: 0
 #    sigma: 1.414
-  candidate_prior:
-    _target_: src.distributions.laplace.Laplace
-    mu: 0
-    b: 0.726
 #  candidate_prior:
-#    _target_: src.distributions.cauchy.Cauchy
-#    x: 0
-#    gamma: 0.954
+#    _target_: src.distributions.laplace.Laplace
+#    mu: 0
+#    b: 0.726
+  candidate_prior:
+    _target_: src.distributions.cauchy.Cauchy
+    x: 0
+    gamma: 0.954
   true_dgp:
     _target_: src.distributions.gaussian.Gaussian
     mu: 0

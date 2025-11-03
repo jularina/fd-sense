@@ -391,7 +391,7 @@ def plot_three_panel_priors(
 
     legend_handles.append(plt.Line2D([], [], color=col_red, linestyle="-", linewidth=1.2))
     legend_labels.append(
-        r"$\Pi$ ( " + plot_cfg["plot"]["param_latex_names"]["argoptimisationProblemParam"] + " )"
+        r"$\Pi$ at " + plot_cfg["plot"]["param_latex_names"]["argoptimisationProblemParam"]
     )
 
     for gi, (names, fam_g, params_g) in enumerate(groups):

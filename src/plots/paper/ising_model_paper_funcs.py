@@ -187,8 +187,8 @@ def plot_theta_prior(
     for (p, c) in zip(_sample_param_sets(ranges, sample_n, rng), _cloud_colors(sample_n, 2)):
         pdf_c = _make_pdf(fam_ms, p)
         ax.plot(X, pdf_c(X), linewidth=0.9, alpha=alpha_cloud, color=c)
-    ax.plot(X, pdf_ms(X), color=col_red, linewidth=1.8, label=r"$\Pi$ (" +
-            plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + " )")
+    ax.plot(X, pdf_ms(X), color=col_red, linewidth=1.8, label=r"$\Pi$ at " +
+            plot_cfg.plot.param_latex_names["argoptimisationProblemParam"])
 
     ax.set_ylabel(plot_cfg.plot.param_latex_names.priorsimple)
     ax.spines["top"].set_visible(False)

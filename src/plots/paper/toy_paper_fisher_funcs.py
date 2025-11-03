@@ -572,8 +572,8 @@ def plot_eta_surface(
     ax = fig.add_subplot(111, projection="3d")
     ax.plot_trisurf(x, y, z, cmap=cmap, edgecolor="none", linewidth=0.2, antialiased=True)
 
-    ax.set_xlabel(r"$\gamma_0=\frac{\mu_0}{\sigma_0^2}$")
-    ax.set_ylabel(r"$\gamma_1=\frac{-0.5}{\sigma_0^2}$", fontsize=y_label_fs)  # <-- larger y-label
+    ax.set_xlabel(r"$\eta_0=\frac{\mu_0}{\sigma_0^2}$")
+    ax.set_ylabel(r"$\eta_1=\frac{-0.5}{\sigma_0^2}$", fontsize=y_label_fs)  # <-- larger y-label
 
     if plot_cfg.plot.figure.tight_layout:
         plt.tight_layout()

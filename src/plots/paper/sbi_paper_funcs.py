@@ -167,8 +167,8 @@ def plot_turin_four_theta_priors(
 
         # plot
         ax.plot(x, y_base, linestyle="--", color=col_ref, linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$")
-        ax.plot(x, y_cand, color=col_cand, linewidth=1.8, label=r"$\Pi$ (" +
-                plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + ")")
+        ax.plot(x, y_cand, color=col_cand, linewidth=1.8, label=r"$\Pi$ at " +
+                plot_cfg.plot.param_latex_names["argoptimisationProblemParam"])
 
         # aesthetics
         ax.spines["top"].set_visible(False)
@@ -185,8 +185,8 @@ def plot_turin_four_theta_priors(
     # one shared legend
     handles = [
         plt.Line2D([], [], color=col_ref, linestyle="--", linewidth=1.2, label=r"$\Pi_{\mathrm{ref}}$"),
-        plt.Line2D([], [], color=col_cand, linestyle="-", linewidth=1.8, label=r"$\Pi$ (" +
-                   plot_cfg.plot.param_latex_names["argoptimisationProblemParam"] + ")"),
+        plt.Line2D([], [], color=col_cand, linestyle="-", linewidth=1.8, label=r"$\Pi$ at " +
+                   plot_cfg.plot.param_latex_names["argoptimisationProblemParam"]),
     ]
     fig.legend(handles=handles, labels=[h.get_label() for h in handles],
                loc="lower center", frameon=False, ncol=2, bbox_to_anchor=(0.5, -0.09))

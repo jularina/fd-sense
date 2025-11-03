@@ -219,12 +219,12 @@ def run_gaussian_priors(cfg, save_samples: bool = False) -> None:
     prior_combinations = optimizer.evaluate_all_prior_combinations()
 
     # plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples)
-    # plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, prior_combinations, prior_corners)
-    density_plot_across_univariate_prior_parameter_sets(cfg, model, posterior_samples)
+    plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, prior_combinations, prior_corners)
+    # density_plot_across_univariate_prior_parameter_sets(cfg, model, posterior_samples)
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
-def run_multivariate_gaussian_priors(cfg, save_samples: bool = True) -> None:
+def run_multivariate_gaussian_priors(cfg, save_samples: bool = False) -> None:
     """
     Main function to compute Fisher and perform prior parameter grid search using Hydra for configuration.
 
@@ -697,9 +697,9 @@ def run_priors_optimisation_runtimes(cfg):
 
 
 if __name__ == "__main__":
-    run_gaussian_priors()
+    # run_gaussian_priors()
     # run_gaussian_lr()
-    # run_multivariate_gaussian_priors()
+    run_multivariate_gaussian_priors()
     # run_inverse_wishart_priors()
     # run_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_diff_radii()
