@@ -20,71 +20,80 @@ warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ising_model")
 def main(cfg: DictConfig) -> None:
-    print("=== FD for Ising model ===")
-    model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
-    posterior_samples = model.posterior_samples_init
-    fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="loss")
-    fisher_value = float(fisher_estimator.estimate_fisher())
-    print(f"[FD] Posterior FD (baseline prior): {fisher_value:.2f}")
+    # print("=== FD for Ising model ===")
+    # model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    # posterior_samples = model.posterior_samples_init
+    # fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="loss")
+    # fisher_value = float(fisher_estimator.estimate_fisher())
+    # print(f"[FD] Posterior FD (baseline prior): {fisher_value:.2f}")
 
     # Parametric prior optimisation
-    optimizer = OptimizationCornerPointsGamma(fisher_estimator, cfg.ksd.optimize.prior.Gamma, cfg.ksd.optimize.loss.IsingLikelihoodGivenGrads)
-    prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
-    worst_corner_params = {}
-    worst_corner_params["family"] = "Gamma"
-    worst_corner_params["params"] = worst_corner
-    prior_combinations = optimizer.evaluate_all_prior_combinations()
+    # optimizer = OptimizationCornerPointsGamma(fisher_estimator, cfg.ksd.optimize.prior.Gamma, cfg.ksd.optimize.loss.IsingLikelihoodGivenGrads)
+    # prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
+    # worst_corner_params = {}
+    # worst_corner_params["family"] = "Gamma"
+    # worst_corner_params["params"] = worst_corner
+    # prior_combinations = optimizer.evaluate_all_prior_combinations()
 
     # Parametric lr optimisation
-    lr_corners = optimizer.evaluate_all_lr_corners()
-    lr_combinations = optimizer.evaluate_full_lr_grid()
-    data_path = os.path.join(get_original_cwd(), "data/ising_model/fisher/")
-    file_id = Path(cfg.data.observations_path).stem
+    # lr_corners = optimizer.evaluate_all_lr_corners()
+    # lr_combinations = optimizer.evaluate_full_lr_grid()
+    # data_path = os.path.join(get_original_cwd(), "data/ising_model/fisher/")
+    # file_id = Path(cfg.data.observations_path).stem
     # np.save(data_path + file_id + "_lr_optimisation.npy", np.array(lr_combinations))
 
     # Plots
-    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
-    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
-    plot_cfg = load_plot_config(plot_config_path)
-    plot_theta_prior(
-        worst_corner=worst_corner_params,
-        cfg=cfg,
-        plot_cfg=plot_cfg,
-        output_dir=output_dir,
-        sample_n=20,
-        seed=27,
-        filename="ising_experiment_theta_size6_param_ref_cand_priors.pdf"
-    )
+    # plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    # output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    # plot_cfg = load_plot_config(plot_config_path)
+    # plot_theta_prior(
+    #     worst_corner=worst_corner_params,
+    #     cfg=cfg,
+    #     plot_cfg=plot_cfg,
+    #     output_dir=output_dir,
+    #     sample_n=20,
+    #     seed=27,
+    #     filename="ising_experiment_theta_size6_param_ref_cand_priors.pdf"
+    # )
 
     # Non-parametric
-    # model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
-    # posterior_samples = model.posterior_samples_init
-    # prior_samples = model.prior_samples_init
-    # estimator_prior = PriorFDNonParametric(samples=prior_samples, model=model, candidate_type="prior")
-    # estimator_posterior = PosteriorFDNonParametric(samples=posterior_samples, model=model, candidate_type="prior")
-    #
-    # psi_sdp_list, ksd_estimates_list = [], []
-    # radii_list = [0.05, 0.1, 0.5, 10]
-    # times = []
-    # nonparam_metrics = defaultdict(dict)
-    #
-    # for radius in radii_list:
-    #     time_start = time.time()
-    #     optimizer = OptimisationNonparametricBase(
-    #         estimator_posterior,
-    #         estimator_prior,
-    #         cfg.ksd.optimize.prior.nonparametric,
-    #         radius_lower_bound=radius
-    #     )
-    #     result_sdp = optimizer.optimize_through_sdp_relaxation(nuggets_to_obj=False)
-    #     nonparam_metrics[radius] = result_sdp["est"]
-    #     psi_sdp_list.append(result_sdp["psi_opt"])
-    #     ksd_estimates_list.append(result_sdp["est"])
-    #     print(
-    #         f"Radius: {radius}, basis funcs num: {cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"]}, obj: {result_sdp["est"]}.")
-    #     time_end = time.time()
-    #     time_passed = time_end - time_start
-    #     times.append(time_passed)
+    model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    posterior_samples = model.posterior_samples_init
+    prior_samples = model.prior_samples_init
+    estimator_prior = PriorFDNonParametric(samples=prior_samples, model=model, candidate_type="prior")
+    estimator_posterior = PosteriorFDNonParametric(samples=posterior_samples, model=model, candidate_type="prior")
+
+    psi_sdp_list, ksd_estimates_list = [], []
+    radii_list = [0.05, 0.1, 0.5, 10]
+    times = []
+    nonparam_metrics = defaultdict(dict)
+
+    for radius in radii_list:
+        time_start = time.time()
+        optimizer = OptimisationNonparametricBase(
+            estimator_posterior,
+            estimator_prior,
+            cfg.ksd.optimize.prior.nonparametric,
+            radius_lower_bound=radius
+        )
+        start = time.perf_counter()
+        result_sdp = optimizer.optimize_through_sdp_relaxation()
+        elapsed = time.perf_counter() - start
+        print(f"SDP time: {elapsed}")
+
+        start = time.perf_counter()
+        result_tr = optimizer.optimize_through_qcqp_trust_region()
+        elapsed = time.perf_counter() - start
+        print(f"TR time: {elapsed}")
+
+        nonparam_metrics[radius] = result_sdp["est"]
+        psi_sdp_list.append(result_sdp["psi_opt"])
+        ksd_estimates_list.append(result_sdp["est"])
+        print(
+            f"Radius: {radius}, basis funcs num: {cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"]}, obj: {result_sdp["est"]}.")
+        time_end = time.time()
+        time_passed = time_end - time_start
+        times.append(time_passed)
     #
     # print(f"Average time of non-parametric optimisation: {sum(times) / len(times)}.")
     #

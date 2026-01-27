@@ -293,7 +293,6 @@ def plot_multi_line_plots(
     output_dir: str,
 ) -> None:
     os.makedirs(output_dir, exist_ok=True)
-
     latex_param_names = plot_cfg.plot.param_latex_names
     colors = plot_cfg.plot.color_palette.colors
 
@@ -416,7 +415,7 @@ def plot_single_param(
     os.makedirs(output_dir, exist_ok=True)
 
     latex_param_names = plot_cfg.plot.param_latex_names
-    latex_param_name = plot_cfg.plot.param_latex_names.get(param_name, param_name)
+    latex_param_name = plot_cfg.plot.param_latex_names.get(param_name)
 
     # Sort the keys for consistent plotting
     x_vals = np.array(sorted(ksd_results.keys()))
@@ -436,10 +435,10 @@ def plot_single_param(
         dpi=plot_cfg.plot.figure.dpi,
     )
 
-    ax.plot(x_vals, y_vals, marker='.', color=plot_cfg.plot.color_palette.colors[0])
+    ax.plot(x_vals, y_vals, marker='.', color=plot_cfg.plot.color_palette.colors[0], linewidth=2.5)
 
     ax.set_xlabel(latex_param_name)
-    ksd_latex = latex_param_names.get("estimatedFDposteriorsShort")
+    ksd_latex = latex_param_names.get("estimatedFDposteriorsQuadraticForm")
     ylabel = f"log {ksd_latex}" if plot_cfg.plot.y_axis.log_scale else ksd_latex
     ax.set_ylabel(ylabel)
     ax.spines['top'].set_visible(False)
@@ -475,7 +474,7 @@ def plot_single_param(
             s=50,
         )
 
-    filename = f"ksd_line_{param_name}.pdf"
+    filename = f"line_{param_name}.pdf"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches='tight')
     plt.close(fig)
@@ -628,16 +627,16 @@ def plot_eta_surface(
             ax.scatter(cx, cy, cz, color="black", s=corner_dot_size, zorder=11)
 
     # ---------- middle-right legend ----------
-    N = max(1, len(legend_lines))
-    height = min(0.60, 0.05 * N + 0.10)
-    bottom = 0.50 - height / 2.0
-    legend_ax = fig.add_axes([0.77, bottom, 0.21, height])
-    legend_ax.axis("off")
-    legend_ax.text(0.0, 1.02, "Corners", fontsize=legend_title_fs, fontweight="bold",
-                   ha="left", va="bottom")
-    ys = [0.5] if N == 1 else np.linspace(0.85, 0.10, N)
-    for yv, line in zip(ys, legend_lines):
-        legend_ax.text(0.0, float(yv), line, fontsize=legend_line_fs, ha="left", va="center")
+    # N = max(1, len(legend_lines))
+    # height = min(0.60, 0.05 * N + 0.10)
+    # bottom = 0.50 - height / 2.0
+    # legend_ax = fig.add_axes([0.77, bottom, 0.21, height])
+    # legend_ax.axis("off")
+    # legend_ax.text(0.0, 1.02, "Corners", fontsize=legend_title_fs, fontweight="bold",
+    #                ha="left", va="bottom")
+    # ys = [0.5] if N == 1 else np.linspace(0.85, 0.10, N)
+    # for yv, line in zip(ys, legend_lines):
+    #     legend_ax.text(0.0, float(yv), line, fontsize=legend_line_fs, ha="left", va="center")
 
     # ---------- ticks: exactly 3 on x, y, z ----------
     ax.xaxis.set_major_locator(LinearLocator(4))

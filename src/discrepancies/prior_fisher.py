@@ -1,81 +1,143 @@
-import numpy as np
-from typing import Tuple
-
-from src.kernels.base import BaseKernel
-from src.discrepancies.ksd import KernelizedSteinDiscrepancy
 from src.bayesian_model.base import BayesianModel
-from src.utils.typing import ArrayLike
 from src.basis_functions.basis_functions import BaseBasisFunction
-from src.discrepancies.fisher import FisherDivergence
+
+from typing import Tuple
+import numpy as np
+
+class PriorFDBase:
+    def __init__(self, model: "BayesianModel"):
+        """
+        Computes Fisher components between prior samples
+        and candidate prior distribution
+        """
+        self.model = model
+        self.samples: np.ndarray = self.model.prior_samples_init
+        self.m = self.samples.shape[0]
+
+        # Prior-related quantities evaluated at posterior samples
+        # Shapes assumed:
+        #   grad_T*:       (m, paramdim, natparamdim)
+        #   grad_log_g*:   (m, paramdim)
+        self.grad_T_ref = self.model.prior_init.grad_sufficient_statistics(self.samples)
+        self.grad_log_g_ref = self.model.prior_init.grad_log_base_measure(self.samples)
+        self.eta_ref = self.model.prior_init.natural_parameters()
+
+        self.grad_T = self.model.prior_candidate.grad_sufficient_statistics(self.samples)
+        self.grad_log_g = self.model.prior_candidate.grad_log_base_measure(self.samples)
+        self.eta = self.model.prior_candidate.natural_parameters()
+
+    def update_candidate(self):
+        self.grad_T = self.model.prior_candidate.grad_sufficient_statistics(self.samples)
+        self.grad_log_g = self.model.prior_candidate.grad_log_base_measure(self.samples)
+        self.eta = self.model.prior_candidate.natural_parameters()
+
+    def estimate_fisher_prior_only(self) -> float:
+        """
+        Estimates (1/m) sum_i || s_ref(θ_i) - s_candidate(θ_i) ||^2
+        in the prior-only perturbation regime (beta fixed to beta_ref).
+        Here, loss term cancels because beta is the same in ref and candidate.
+        """
+        self.update_candidate()
+        diff = self._delta_score_prior_only(self.eta)  # (m, paramdim)
+        return float(np.mean(np.sum(diff * diff, axis=1)))
+
+    def compute_fisher_quadratic_form_prior_only(
+        self,
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        """
+        Prior-only perturbation quadratic form:
+            (1/m) sum_i || v_i - grad_T(θ_i) @ eta ||^2
+          = eta^T A eta + b^T eta + c
+
+        Returns:
+            A: (natparamdim, natparamdim)
+            b: (natparamdim,)
+            c: float
+        """
+        self.update_candidate()
+        A = self._compute_A_prior_only()
+        b = self._compute_b_prior_only()
+        c = self._compute_c_prior_only()
+        return A, b, c
+
+    def _v_prior_only(self) -> np.ndarray:
+        """
+        v_i = grad_T_ref(θ_i) @ eta_ref + grad_log_g_ref(θ_i) - grad_log_g(θ_i)
+        Shape: (m, paramdim)
+        """
+        gradTref_eta = np.einsum("idp,p->id", self.grad_T_ref, self.eta_ref)
+        return gradTref_eta + self.grad_log_g_ref - self.grad_log_g
+
+    def _delta_score_prior_only(self, eta: np.ndarray) -> np.ndarray:
+        """
+        delta_i = s_ref(θ_i) - s_candidate(θ_i) for prior-only case (beta fixed)
+               = v_i - grad_T(θ_i) @ eta
+        Shape: (m, paramdim)
+        """
+        v = self._v_prior_only()
+        gradT_eta = np.einsum("idp,p->id", self.grad_T, eta)
+        return v - gradT_eta
+
+    def _compute_A_prior_only(self) -> np.ndarray:
+        """
+        A = (1/m) sum_i grad_T(θ_i)^T grad_T(θ_i)
+        grad_T: (m, paramdim, natparamdim) -> A: (natparamdim, natparamdim)
+        """
+        return np.einsum("idp,idq->pq", self.grad_T, self.grad_T) / self.m
+
+    def _compute_b_prior_only(self) -> np.ndarray:
+        """
+        b = -(2/m) sum_i grad_T(θ_i)^T v_i
+        """
+        v = self._v_prior_only()  # (m, paramdim)
+        term = np.einsum("idp,id->p", self.grad_T, v)  # (natparamdim,)
+        return (-2.0 / self.m) * term
+
+    def _compute_c_prior_only(self) -> float:
+        """
+        c = (1/m) sum_i ||v_i||^2
+        """
+        v = self._v_prior_only()
+        return float(np.sum(v * v) / self.m)
 
 
-class PriorFDNonParametric:
+class PriorFDNonParametric(PriorFDBase):
     def __init__(
         self,
-        samples: ArrayLike,
         model: BayesianModel,
-        candidate_type: str = "prior",
     ):
         """
-        Computes FD components for prior samples
-        and a candidate prior distribution.
+        Computes FD components between prior samples
+        and a candidate prior distribution for nonparametric case.
         """
-        self.samples: np.ndarray = samples
-        self.model: BayesianModel = model
-        self.prior_scores_ref = self.model.reference_prior_score(self.samples)
-        self.loss_scores_ref = self.model.reference_loss_score(self.samples)
+        super().__init__(model=model)
 
-        if candidate_type == "prior":
-            self.fisher: FisherDivergence = FisherDivergence(self.prior_scores_ref, model.prior_score)
-        elif candidate_type == "loss":
-            self.fisher: FisherDivergence = FisherDivergence(self.loss_scores_ref, model.loss_score)
-
-    def compute_quadratic_form_for_nonparametric_prior(
+    def compute_non_parametric_fisher_quadratic_form_prior_only(
         self,
         basis_func: BaseBasisFunction,
-        scale_samples: bool = False,
     ) -> Tuple:
         """
         Compute components of the KSD quadratic form specific to the nonparametric prior term.
         """
-        grad_phi_T = self._compute_grad_basis_function_for_prior(basis_func, scale_samples)
-        Lambda_prior = self._compute_Lambda_for_prior(grad_phi_T)
-        b_prior = self._compute_b_prior(grad_phi_T)
+        self.grad_T = self._compute_grad_basis_function_for_prior(basis_func)
+        A = self._compute_A_prior_only()
+        b = self._compute_b_prior_only()
+        c = self._compute_c_prior_only()
 
-        return Lambda_prior, b_prior
+        return A, b, c
 
-    def _compute_grad_basis_function_for_prior(self, basis_func: BaseBasisFunction, scale_samples: bool = False) -> np.ndarray:
+    def _compute_grad_basis_function_for_prior(self, basis_func: BaseBasisFunction) -> np.ndarray:
         """
         Compute basis functions gradient.
         """
-        if scale_samples:
-            mean = np.mean(self.samples, axis=0)
-            std = np.std(self.samples, axis=0)
-            samples = (self.samples - mean) / (std + 1e-8)
-        else:
-            samples = self.samples
-        grad_phi = basis_func.gradient(samples)  # (m, d, K)
-        grad_phi_T = np.transpose(grad_phi, (0, 2, 1))  # (m, K, d)
+        grad_phi = basis_func.gradient(self.samples)
 
-        return grad_phi_T
+        return grad_phi
 
-    def _compute_Lambda_for_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
+    def _v_prior_only(self) -> np.ndarray:
         """
-        Compute the Lambda matrix for the prior KSD quadratic form.
-
-        Returns:
-            np.ndarray: Shape (p+1, p+1)
+        v_i = grad_T_ref(θ_i) @ eta_ref + grad_log_g_ref(θ_i) - grad_log_g(θ_i)
+        Shape: (m, paramdim)
         """
-        m, p, d = JT_aug_T.shape
-        return np.einsum('ipd,jqd->pq', JT_aug_T, JT_aug_T) / (2*m)
-
-    def _compute_b_prior(self, JT_aug_T: np.ndarray) -> np.ndarray:
-        """
-        Compute b vector (linear term) for the prior KSD.
-
-        Returns:
-            np.ndarray: Shape (p+1,)
-        """
-        term = np.einsum("jpd,jd->p", JT_aug_T, self.prior_scores_ref)
-
-        return (-1*term) / (self.model.m)
+        gradTref_eta = np.einsum("idp,p->id", self.grad_T_ref, self.eta_ref)
+        return gradTref_eta + self.grad_log_g_ref

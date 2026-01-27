@@ -2,6 +2,7 @@ from typing import Dict
 import numpy as np
 import cvxpy as cp
 from omegaconf import OmegaConf
+from scipy.linalg import eigh
 
 from src.utils.basis_functions import BASIS_FUNCTIONS_REGISTRY
 
@@ -12,8 +13,8 @@ class OptimisationNonparametricBase:
         posterior_estimator,
         prior_estimator,
         config: Dict,
-        radius_lower_bound: float = 0.0,
-        validate_basis_function: bool = False,
+        radius: float = 0.0,
+        add_nuggets: bool = False,
     ):
         """
         Base class to handle nonparametric quadratic form optimization.
@@ -24,48 +25,31 @@ class OptimisationNonparametricBase:
         basis_cls_name = config["basis_funcs_type"]
         basis_cls = BASIS_FUNCTIONS_REGISTRY[basis_cls_name]
         basis_kwargs = config.get("basis_funcs_kwargs", {})
-
-        if "RBFBasisFunction" in basis_cls_name or "SigmoidBasisFunction" in basis_cls_name:
-            basis_kwargs = OmegaConf.to_container(basis_kwargs, resolve=True)
-            basis_kwargs["prior_samples"] = self.prior_estimator.samples
-            basis_kwargs["posterior_samples"] = self.posterior_estimator.samples
-
+        basis_kwargs = OmegaConf.to_container(basis_kwargs, resolve=True)
+        basis_kwargs["prior_samples"] = self.prior_estimator.samples
+        basis_kwargs["posterior_samples"] = self.posterior_estimator.samples
         self.basis_function = basis_cls(**basis_kwargs)
 
-        if validate_basis_function:
-            self._validate_basis_function(self.posterior_estimator.samples.shape[1])
-
-        self.Lambda_m_prior, self.b_m_prior = self.posterior_estimator.compute_quadratic_form_for_nonparametric_prior(
+        self.A, self.b, self.c = self.posterior_estimator.compute_non_parametric_fisher_quadratic_form_prior_only(
             self.basis_function,
-            scale_samples=config["scale_samples"],
         )
-        eigvals, eigvecs = np.linalg.eigh(self.Lambda_m_prior)
-        order = eigvals.argsort()[::-1]
-        eigvals = eigvals[order]
-        print("Eigenvalues of Lambda_m_prior:", eigvals)
-        self.principle_eigenvector = self.Lambda_m_prior[:, 0]
-        self.Lambda_prior, self.b_prior = self.prior_estimator.compute_quadratic_form_for_nonparametric_prior(
+        self.A_c, self.b_c, self.c_c = self.prior_estimator.compute_non_parametric_fisher_quadratic_form_prior_only(
             self.basis_function,
-            scale_samples=config["scale_samples"],
         )
-        self.c_m_prior = self.posterior_estimator.compute_c_prior()
-        self.Lambda_prior = self._sym(self.Lambda_prior)
-        self.Lambda_m_prior = self._sym(self.Lambda_m_prior)
-        D = self.Lambda_prior.shape[0]
-        avg_prior = np.trace(self.Lambda_prior) / max(D, 1)
-        avg_obj = np.trace(self.Lambda_m_prior) / max(D, 1)
+        self.A = self._sym(self.A)
+        self.A_c = self._sym(self.A_c)
+        self.d = self.A_c.shape[0]
 
-        eps_prior = max(1e-8, 1e-2 * avg_prior)  # adaptive nuggets
-        eps_obj = max(1e-12, 1e-4 * avg_obj)
+        if add_nuggets:
+            avg_prior = np.trace(self.A_c) / max(self.d, 1)
+            avg_obj = np.trace(self.A) / max(self.d, 1)
+            eps_prior = max(1e-8, 1e-2 * avg_prior)
+            eps_obj = max(1e-12, 1e-4 * avg_obj)
+            self.A_c = self._sym(self.A_c + eps_prior * np.eye(self.d))
+            self.A = self._sym(self.A + eps_obj * np.eye(self.d))
 
-        self.Lambda_prior_reg = self._sym(self.Lambda_prior + eps_prior * np.eye(D))
-        self.Lambda_m_prior_reg = self._sym(self.Lambda_m_prior + eps_obj * np.eye(D))
-
-        if config["radius_lower_bound"]:
-            radius_lower_bound = config["radius_lower_bound"]
-
-        self.r = self._compute_min_radius() + radius_lower_bound
-        print(f"Radius after lower bound additions {self.r}.")
+        self.r = self._compute_min_radius() + radius
+        print(f"Radius {self.r}.")
 
     def _sym(self, A: np.ndarray) -> np.ndarray:
         return 0.5 * (A + A.T)
@@ -80,12 +64,10 @@ class OptimisationNonparametricBase:
         """
         try:
             L = np.linalg.cholesky(A)
-            # Solve L y = b, then L^T x = y
             y = np.linalg.solve(L, b)
             x = np.linalg.solve(L.T, y)
             return x, True
         except np.linalg.LinAlgError:
-            # Not PD; fall back to least-squares (implicitly uses SVD)
             x, *_ = np.linalg.lstsq(A, b, rcond=None)
             return x, False
 
@@ -95,25 +77,20 @@ class OptimisationNonparametricBase:
         Moore–Penrose pseudoinverse specialized for symmetric PSD/Hermitian:
         eigen-decompose, invert eigenvalues above tolerance.
         """
-        # Force symmetry just in case
-        A = 0.5 * (A + A.T)
         w, V = np.linalg.eigh(A)
+
         if rcond is None:
-            # adaptive cutoff ~ machine eps * size * max_eig
             rcond = np.finfo(A.dtype).eps * max(A.shape) * max(w.max(), 1.0)
         w_inv = np.zeros_like(w)
         mask = w > rcond
         w_inv[mask] = 1.0 / w[mask]
         return (V * w_inv) @ V.T
 
-    def _evaluate_prior_qf(self, eta_tilde: np.ndarray) -> float:
-        return eta_tilde @ self.Lambda_m_prior @ eta_tilde + self.b_m_prior @ eta_tilde + self.c_m_prior
+    def _evaluate_qf(self, eta_tilde: np.ndarray) -> float:
+        return eta_tilde @ self.A @ eta_tilde + self.b @ eta_tilde + self.c
 
-    def _validate_basis_function(self, dim: int):
-        if not self.basis_function.check_C1(dim):
-            raise ValueError("Basis function is not C^1 differentiable.")
-        if not self.basis_function.check_L2(dim):
-            raise ValueError("Basis function is not L2-integrable over ℝ^d.")
+    def _evaluate_constraint_qf(self, eta_tilde: np.ndarray) -> float:
+        return eta_tilde @ self.A_c @ eta_tilde + self.b_c @ eta_tilde + self.c_c
 
     def _compute_min_radius(self) -> float:
         """
@@ -121,51 +98,40 @@ class OptimisationNonparametricBase:
         = -1/4 b^T Λ^{-1} b + C   (PD case)
         = -1/4 b^T Λ^{+} b + C    (PSD/pinv case; valid when projecting onto range(Λ))
         """
-        # Prefer solve (fast if PD); fallback to pinv
-        x, used_pd = self._solve_psd(self.Lambda_prior_reg, self.b_prior)
+        x, used_pd = self._solve_psd(self.A_c, self.b_c)
         if used_pd:
-            quad_term = -0.25 * float(self.b_prior.T @ x)
+            quad_term = -0.25 * float(self.b_c.T @ x)
         else:
-            # PSD case: use pinv explicitly
-            Lp = self._pinv_psd(self.Lambda_prior_reg)
-            quad_term = -0.25 * float(self.b_prior.T @ (Lp @ self.b_prior))
+            Lp = self._pinv_psd(self.A_c)
+            quad_term = -0.25 * float(self.b_c.T @ (Lp @ self.b_c))
 
-        print(f"Computed min radius: {quad_term}.")
+        print(f"Computed min radius threshold: {quad_term}.")
         if quad_term < 0:
             quad_term = 0
 
-        print(f"Updated min radius: {quad_term}.")
         return float(quad_term)
 
-    def optimize_through_sdp_relaxation(self, nuggets_to_obj: bool = True,):
-        D = self.b_m_prior.shape[0]
-        psi = cp.Variable(D)
-        Psi = cp.Variable((D, D), symmetric=True)
+    def optimize_through_sdp_relaxation(self):
+        psi = cp.Variable(self.d)
+        Psi = cp.Variable((self.d, self.d), symmetric=True)
 
-        lam = 1e-2
-        if nuggets_to_obj:
-            objective = cp.Minimize(
-                cp.trace(-self.Lambda_m_prior_reg @ Psi) - self.b_m_prior @ psi + lam * cp.trace(Psi)
-            )
-        else:
-            objective = cp.Minimize(
-                cp.trace(-self.Lambda_m_prior_reg @ Psi) - self.b_m_prior @ psi
-            )
+        objective = cp.Minimize(
+            cp.trace(-self.A @ Psi) - self.b @ psi
+        )
         constraint1 = (
-            cp.trace(self.Lambda_prior_reg @ Psi)
-            + self.b_prior @ psi
+            cp.trace(self.A_c @ Psi)
+            + self.b_c @ psi
             <= self.r
         )
         schur_matrix = cp.bmat([
-            [Psi, cp.reshape(psi, (D, 1), order='C')],
-            [cp.reshape(psi, (1, D), order='C'), cp.Constant([[1]])]
+            [Psi, cp.reshape(psi, (self.d, 1), order='C')],
+            [cp.reshape(psi, (1, self.d), order='C'), cp.Constant([[1]])]
         ])
         constraint2 = schur_matrix >> 0
 
         # Diagnostics
-        print("cond(Λ_m):", np.linalg.cond(self.Lambda_m_prior_reg))
-        print("cond(Λ_p):", np.linalg.cond(self.Lambda_prior_reg))
-        print("||b_prior||:", np.linalg.norm(self.b_prior))
+        print("cond(A):", np.linalg.cond(self.A))
+        print("cond(A_c):", np.linalg.cond(self.A_c))
         print("r:", self.r)
 
         problem = cp.Problem(objective, [constraint1, constraint2])
@@ -174,14 +140,17 @@ class OptimisationNonparametricBase:
         if problem.status not in ["optimal", "optimal_inaccurate"]:
             raise ValueError(f"SDP optimization failed: {problem.status}")
 
-        est = self._evaluate_prior_qf(psi.value)
-        gap = np.linalg.norm(Psi.value - np.outer(psi.value, psi.value), ord='fro')
-        print("||Ψ - ψψ^T||_F:", gap)
-        print("eig(Psi) min/max:", np.min(np.linalg.eigvalsh(Psi.value)), np.max(np.linalg.eigvalsh(Psi.value)))
+        primal_value = self._evaluate_qf(psi.value)
+        constraint_value = self._evaluate_qf(psi.value)
 
         return {
-            "objective_val": problem.value,
             "psi_opt": psi.value,
             "Psi_opt": Psi.value,
-            "est": est,
+            "primal_value": primal_value,
+            "constraint_value":constraint_value,
+            "dual_val": problem.value,
         }
+
+
+
+

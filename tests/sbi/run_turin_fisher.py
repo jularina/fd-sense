@@ -5,6 +5,7 @@ import hydra
 from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
 from collections import defaultdict
+import time
 
 from src.bayesian_model.base import BayesianModel
 from src.utils.files_operations import load_plot_config
@@ -101,11 +102,20 @@ def main(cfg: DictConfig) -> None:
                 cfg.ksd.optimize.prior.nonparametric,
                 radius_lower_bound=radius
             )
+            start = time.perf_counter()
             result_sdp = optimizer.optimize_through_sdp_relaxation()
-            nonparam_metrics[basis_funcs_num][radius] = result_sdp["est"]
-            psi_sdp_list.append(result_sdp["psi_opt"])
-            ksd_estimates_list.append(result_sdp["est"])
-            print(f"Radius: {radius}, basis funcs num: {basis_funcs_num}, objective estimate: {result_sdp["est"]}.")
+            elapsed = time.perf_counter() - start
+            print(f"SDP time: {elapsed}")
+
+            start = time.perf_counter()
+            result_tr = optimizer.optimize_through_qcqp_trust_region()
+            elapsed = time.perf_counter() - start
+            print(f"TR time: {elapsed}")
+
+            nonparam_metrics[basis_funcs_num][radius] = result_tr["est"]
+            psi_sdp_list.append(result_tr["psi_opt"])
+            ksd_estimates_list.append(result_tr["est"])
+            print(f"Radius: {radius}, basis funcs num: {basis_funcs_num}, objective estimate: {result_tr["est"]}.")
 
     plot_ksd_heatmap(data_dict=nonparam_metrics, plot_cfg=plot_cfg, output_dir=output_dir, log_scale=False)
 

@@ -1,17 +1,20 @@
 from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
+from src.optimization.qcqp import ParametricQCQPBase
 from src.optimization.corner_points_fisher import *
 from src.distributions.gaussian import MultivariateGaussian
 from src.utils.files_operations import load_plot_config
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.bayesian_model.base import BayesianModel
 from src.plots.paper.toy_paper_fisher_funcs import *
-from src.discrepancies.prior_fisher import PriorFDNonParametric
+from src.discrepancies.prior_fisher import PriorFDBase, PriorFDNonParametric
 from src.discrepancies.posterior_fisher import PosteriorFDBase, PosteriorFDNonParametric
+
 import warnings
 import hydra
 from hydra.utils import instantiate, get_original_cwd
 import time
 import json
+from typing import Optional, Dict, Any
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -19,45 +22,43 @@ warnings.filterwarnings("ignore", category=UserWarning)
 def density_plot_across_multivariate_prior_parameter_sets(
     cfg,
     model,
-    posterior_samples,
     qf_priors_all_combinations,
 ):
-    param_values_dict = {
-        "MultivariateGaussian": [
-            {"mu": np.array([0.0, 0.0]), "cov": np.eye(2)},
-            {"mu": np.array([2.0, 3.0]), "cov": 0.5 * np.eye(2)},
-            {"mu": np.array([-2.0, 1.0]), "cov": np.array([[1.0, 0.5], [0.5, 1.5]])},
-        ]
-    }
-
-    all_ksd_results = {}
-    dist_name = "MultivariateGaussian"
-    distribution_cls = MultivariateGaussian
-    param_values = param_values_dict[dist_name]
-    dist_results = {}
-    all_dists = {}
-
-    for param_dict in param_values:
-        model.set_prior_parameters(param_dict, distribution_cls=distribution_cls)
-        fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-        fisher = fisher_estimator.estimate_fisher()
-        key = (tuple(param_dict["mu"].flatten()), tuple(param_dict["cov"].flatten()))
-        dist_results[key] = fisher
-        all_dists[key] = param_dict
-
-        print(f"[INFO] Prior: {param_dict}, Fisher Divergence: {fisher:.4f}")
-
+    # param_values_dict = {
+    #     "MultivariateGaussian": [
+    #         {"mu": np.array([0.0, 0.0]), "cov": np.eye(2)},
+    #         {"mu": np.array([2.0, 3.0]), "cov": 0.5 * np.eye(2)},
+    #         {"mu": np.array([-2.0, 1.0]), "cov": np.array([[1.0, 0.5], [0.5, 1.5]])},
+    #     ]
+    # }
+    #
+    # dist_name = "MultivariateGaussian"
+    # distribution_cls = MultivariateGaussian
+    # param_values = param_values_dict[dist_name]
+    # dist_results = {}
+    # all_dists = {}
+    #
+    # for param_dict in param_values:
+    #     model.set_prior_parameters(param_dict, distribution_cls=distribution_cls)
+    #     fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
+    #     fisher = fisher_estimator.estimate_fisher()
+    #     key = (tuple(param_dict["mu"].flatten()), tuple(param_dict["cov"].flatten()))
+    #     dist_results[key] = fisher
+    #     all_dists[key] = param_dict
+    #
+    #     print(f"[INFO] Prior: {param_dict}, Fisher Divergence: {fisher:.4f}")
+    #
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
-    plot_multivariate_priors_densities(
-        all_params=all_dists,
-        all_ksds=dist_results,
-        output_dir=output_dir,
-        plot_cfg=plot_cfg,
-        true_theta=cfg.data.base_prior.mu,
-        true_cov=cfg.data.base_prior.cov
-    )
+    # plot_multivariate_priors_densities(
+    #     all_params=all_dists,
+    #     all_ksds=dist_results,
+    #     output_dir=output_dir,
+    #     plot_cfg=plot_cfg,
+    #     true_theta=cfg.data.base_prior.mu,
+    #     true_cov=cfg.data.base_prior.cov
+    # )
     plot_multivariate_joint_prior_densities_by_fd(
         results=qf_priors_all_combinations,
         output_dir=output_dir,
@@ -67,15 +68,9 @@ def density_plot_across_multivariate_prior_parameter_sets(
     )
 
 
-def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float]):
+def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel):
     """
     Recalculates Fisher along all the possible hyperparameters combination across the ranges
-
-    Args:
-        cfg (DictConfig): Configuration loaded by Hydra.
-        model (BayesianModel): Model loaded by Hydra.
-        posterior_samples (np.ndarray[float]): Posterior samples
-        kernel (BaseKernel): Kernel
     """
     results = {}
     box_cfg = cfg.ksd.optimize.prior.Gaussian.parameters_box_range
@@ -87,11 +82,10 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, pos
     ]
     for values in np.array(np.meshgrid(*param_ranges)).T.reshape(-1, len(param_names)):
         prior_params = dict(zip(param_names, values))
-        model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
-        fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-        fisher = fisher_estimator.estimate_fisher()
+        model.set_candidate_prior_parameters(prior_params, distribution_cls=distribution_cls)
+        fisher = PosteriorFDBase(model=model).estimate_fisher_prior_only()
         results[tuple(values)] = fisher
-        print(f"Prior: {prior_params}, mu_n: {model.mu_n}, Fisher Divergence: {fisher:.4f}")
+        print(f"Prior: {prior_params}. Fisher Divergence: {fisher:.4f}")
 
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
@@ -99,8 +93,7 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, pos
     param_names = [name+"_0" for name in param_names]
     plot_multi_line_plots(results, param_names, plot_cfg, output_dir)
 
-
-def plots_across_gaussian_loss_lr_parameters_ranges(cfg, model: BayesianModel, posterior_samples: np.ndarray[float]):
+def plots_across_gaussian_loss_lr_parameters_ranges(cfg, model: BayesianModel):
     """
     Recalculates FD along all the possible hyperparameters combination across the ranges
 
@@ -119,8 +112,8 @@ def plots_across_gaussian_loss_lr_parameters_ranges(cfg, model: BayesianModel, p
     for values in np.array(np.meshgrid(*param_ranges)).T.reshape(-1, len(param_names)):
         params = dict(zip(param_names, values))
         model.set_lr_parameter(params["lr"])
-        fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="loss")
-        fisher = fisher_estimator.estimate_fisher()
+        fisher_estimator = PosteriorFDBase(model=model)
+        fisher = fisher_estimator.estimate_fisher_lr_only()
         results[values[0]] = fisher
         print(f"Lr: {params}, FD: {fisher:.4f}")
 
@@ -193,7 +186,7 @@ def density_plot_across_univariate_prior_parameter_sets(cfg, model: BayesianMode
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
             config_name="univariate_gaussian")
-def run_gaussian_priors(cfg, save_samples: bool = False) -> None:
+def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
     """
     Main function to compute Fisher divergence and perform prior parameter grid search using Hydra for configuration.
 
@@ -208,23 +201,99 @@ def run_gaussian_priors(cfg, save_samples: bool = False) -> None:
         np.save(output_dir + "/posterior_samples.npy", model.posterior_samples_init)
         np.save(output_dir + "/observations.npy", model.observations)
 
-    posterior_samples = np.load(output_dir + "/posterior_samples.npy")
-    fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-    print(f"Initial Fisher: {fisher_estimator.estimate_fisher():.4f}")
+    fisher_estimator = PosteriorFDBase(model=model)
+    print(f"Initial Fisher: {fisher_estimator.estimate_fisher_prior_only():.4f}")
 
-    # Optimisation
     optimizer = OptimizationCornerPointsUnivariateGaussian(
-        fisher_estimator, cfg.ksd.optimize.prior.Gaussian, cfg.ksd.optimize.loss.GaussianLogLikelihood)
+        fisher_estimator,
+        cfg.ksd.optimize.prior.Gaussian,
+        cfg.ksd.optimize.loss.GaussianLogLikelihood
+    )
     prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
     prior_combinations = optimizer.evaluate_all_prior_combinations()
 
-    # plots_across_gaussian_prior_parameters_ranges(cfg, model, posterior_samples)
+    plots_across_gaussian_prior_parameters_ranges(cfg, model)
     plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, prior_combinations, prior_corners)
-    # density_plot_across_univariate_prior_parameter_sets(cfg, model, posterior_samples)
+    # density_plot_across_univariate_prior_parameter_sets(cfg, model)
+
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+            config_name="univariate_gaussian")
+def run_gaussian_priors_qcqp(cfg) -> None:
+    """
+    Compute Fisher divergence and optimize parametrically with QCQP.
+
+    Args:
+        cfg (DictConfig): Configuration loaded by Hydra.
+    """
+    model = instantiate(cfg.model, data_config=cfg.data)
+
+    # Prior
+    prior_fd = PriorFDBase(model=model)
+    print(f"FD from score differences: {prior_fd.estimate_fisher():.4f}")
+    A_c, b_c, c_c = prior_fd.compute_fisher_quadratic_form()
+    eta = model.prior_candidate.natural_parameters()
+    print(f"FD from quadratic form: {eta @ A_c @ eta + b_c @ eta + c_c:.4f}")
+
+    # Posterior
+    posterior_fd = PosteriorFDBase(model)
+    # Prior-only
+    A, b, c = posterior_fd.compute_fisher_quadratic_form_prior_only()
+    eta = model.prior_candidate.natural_parameters()
+    # print("Prior-only: score diff:", posterior_fd.estimate_fisher_prior_only())
+    # print("Prior-only: quadratic :", eta @ A @ eta + b @ eta + c)
+    # LR-only
+    A_lr, b_lr, c_lr = posterior_fd.compute_fisher_quadratic_form_lr_only()
+    beta = model.loss_lr
+    # print("LR-only: score diff:", posterior_fd.estimate_fisher_lr_only())
+    # print("LR-only: quadratic :", A_lr * beta ** 2 + b_lr * beta + c_lr)
+
+    # Radius choice
+    eta_ref = model.prior_init.natural_parameters()
+    min_r = eta_ref @ A_c @ eta_ref + eta_ref @ b_c + c_c
+
+    # QCQP Optimisation
+    solver = ParametricQCQPBase(posterior_fd, prior_fd)
+    solution = solver.solve_generalized_eigenvalue(r=1, check_kernel_condition=True)
+    print("lambda_star:", solution.lambda_star)
+    print("eta_star:", solution.eta_star)
+    print("constraint x^T A_c x:", solution.achieved_constraint)
+    print("objective  x^T A x  :", solution.achieved_objective)
+
+    print("SDP lambda t dual")
+    sdp_lambda_t_dual_solution = solver.solve_dual_sdp_lambda_t(radius=1)
+    print("lambda_star:", sdp_lambda_t_dual_solution.lambda_star)
+    print("eta_star:", sdp_lambda_t_dual_solution.eta_star)
+    print("dual_value:", sdp_lambda_t_dual_solution.dual_value)
+    print("objective at eta_star:", sdp_lambda_t_dual_solution.primal_value)
+    print("constraint at eta_star:", sdp_lambda_t_dual_solution.constraint_value, "(should be <= r)")
+
+    print("Lagrange dual")
+    lagrange_dual_solution = solver.solve_dual_1d_lambda(radius=1.0)
+    print("lambda_star:", lagrange_dual_solution.lambda_star)
+    print("eta_star:", lagrange_dual_solution.eta_star)
+    print("dual_value:", lagrange_dual_solution.dual_value)
+    print("objective at eta_star:", lagrange_dual_solution.primal_value)
+    print("constraint at eta_star:", lagrange_dual_solution.constraint_value, "(should be <= r)")
+
+    lagrange_dual_solution = solver.solve_dual_1d_lambda(radius=0.05)
+    print("lambda_star:", lagrange_dual_solution.lambda_star)
+    print("eta_star:", lagrange_dual_solution.eta_star)
+    print("dual_value:", lagrange_dual_solution.dual_value)
+    print("objective at eta_star:", lagrange_dual_solution.primal_value)
+    print("constraint at eta_star:", lagrange_dual_solution.constraint_value, "(should be <= r)")
+
+    print("SDP relaxation")
+    sdp_dual_solution = solver.solve_primal_sdp_relaxation(radius=1)
+    print("lambda_star:", sdp_dual_solution.lambda_star)
+    print("eta_star:", sdp_dual_solution.eta_star)
+    print("dual_value:", sdp_dual_solution.dual_value)
+    print("objective at eta_star:", sdp_dual_solution.primal_value)
+    print("constraint at eta_star:", sdp_dual_solution.constraint_value, "(should be <= r)")
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
-def run_multivariate_gaussian_priors(cfg, save_samples: bool = False) -> None:
+def run_multivariate_gaussian_priors(cfg, save_samples: bool = True) -> None:
     """
     Main function to compute Fisher and perform prior parameter grid search using Hydra for configuration.
 
@@ -239,21 +308,19 @@ def run_multivariate_gaussian_priors(cfg, save_samples: bool = False) -> None:
         np.save(output_dir + "/posterior_samples.npy", model.posterior_samples_init)
         np.save(output_dir + "/observations.npy", model.observations)
 
-    posterior_samples = np.load(output_dir + "/posterior_samples.npy")
-    fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-    print(f"Initial Fisher: {fisher_estimator.estimate_fisher():.4f}")
+    fisher_estimator = PosteriorFDBase(model=model)
+    print(f"Initial Fisher: {fisher_estimator.estimate_fisher_prior_only():.4f}")
 
     optimizer = OptimizationCornerPointsMultivariateGaussian(
         fisher_estimator, cfg.ksd.optimize.prior.MultivariateGaussian,
         cfg.ksd.optimize.loss.MultivariateGaussianLogLikelihood)
     qf_priors_all_combinations = optimizer.evaluate_all_prior_combinations()
 
-    density_plot_across_multivariate_prior_parameter_sets(
-        cfg, model, posterior_samples, qf_priors_all_combinations=qf_priors_all_combinations)
+    density_plot_across_multivariate_prior_parameter_sets(cfg, model, qf_priors_all_combinations=qf_priors_all_combinations)
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
-def run_gaussian_lr(cfg, save_samples: bool = False) -> None:
+def run_gaussian_lr(cfg, save_samples: bool = True) -> None:
     """
     Main function to compute FD and perform prior parameter grid search using Hydra for configuration.
 
@@ -268,11 +335,9 @@ def run_gaussian_lr(cfg, save_samples: bool = False) -> None:
         np.save(output_dir + "/posterior_samples.npy", model.posterior_samples_init)
         np.save(output_dir + "/observations.npy", model.observations)
 
-    posterior_samples = np.load(output_dir + "/posterior_samples.npy")
-    fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="loss")
-    print(f"Initial Fisher: {fisher_estimator.estimate_fisher():.4f}")
-
-    plots_across_gaussian_loss_lr_parameters_ranges(cfg, model, posterior_samples)
+    fisher_estimator = PosteriorFDBase(model=model)
+    print(f"Initial Fisher: {fisher_estimator.estimate_fisher_lr_only():.4f}")
+    plots_across_gaussian_loss_lr_parameters_ranges(cfg, model)
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
@@ -292,28 +357,27 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
         np.save(output_dir + "/observations.npy", model.observations)
         np.save(output_dir + "/prior_samples.npy", model.prior_samples_init)
 
-    posterior_samples = np.load(output_dir + "/posterior_samples.npy")
-    prior_samples = np.load(output_dir + "/prior_samples.npy")
-
-    fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-    print(f"Initial Fisher: {fisher_estimator.estimate_fisher():.4f}")
-
     # Nonparametric optimisation
-    estimator_prior = PriorFDNonParametric(samples=prior_samples, model=model, candidate_type="prior")
-    estimator_posterior = PosteriorFDNonParametric(samples=posterior_samples, model=model, candidate_type="prior")
-    psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
+    estimator_prior = PriorFDNonParametric(model=model)
+    estimator_posterior = PosteriorFDNonParametric(model=model)
+    psi_sdp_list, fd_estimates_list, radius_labels = [], [], []
+    psi_tr_list, fd_estimates_list_tr = [], []
 
-    for radius_lower_bound in [0.5, 2.0, 4.0, 6.0]:
+    for radius in [2.0, 4.0, 6.0]:
         optimizer = OptimisationNonparametricBase(
             estimator_posterior,
             estimator_prior,
             cfg.ksd.optimize.prior.nonparametric,
-            radius_lower_bound=radius_lower_bound
+            radius=radius
         )
+        start = time.perf_counter()
         result_sdp = optimizer.optimize_through_sdp_relaxation()
+        elapsed = time.perf_counter() - start
+        print(f"SDP time: {elapsed}")
+
         psi_sdp_list.append(result_sdp["psi_opt"])
-        ksd_estimates_list.append(result_sdp["est"])
-        radius_labels.append(radius_lower_bound)
+        fd_estimates_list.append(result_sdp["primal_value"])
+        radius_labels.append(radius)
 
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
@@ -323,7 +387,7 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
         basis_function=optimizer.basis_function,
         psi_sdp_list=psi_sdp_list,
         radius_labels=radius_labels,
-        ksd_estimates=ksd_estimates_list,
+        ksd_estimates=fd_estimates_list,
         prior_distribution=model.prior_init,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
@@ -334,7 +398,7 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
             config_name="multivariate_gaussian")
-def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = True) -> None:
+def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False) -> None:
     """
     Main function to compute FD and perform prior parameter grid search using Hydra for configuration.
 
@@ -368,7 +432,17 @@ def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples:
             cfg.ksd.optimize.prior.nonparametric,
             radius_lower_bound=radius_lower_bound
         )
+
+        start = time.perf_counter()
         result_sdp = optimizer.optimize_through_sdp_relaxation()
+        elapsed = time.perf_counter() - start
+        print(f"SDP time: {elapsed}")
+
+        start = time.perf_counter()
+        result_tr = optimizer.optimize_through_qcqp_trust_region()
+        elapsed = time.perf_counter() - start
+        print(f"TR time: {elapsed}")
+
         psi_sdp_list.append(result_sdp["psi_opt"])
         ksd_estimates_list.append(result_sdp["est"])
         radius_labels.append(radius_lower_bound)
@@ -430,7 +504,16 @@ def run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums(cfg, save_sa
             cfg.ksd.optimize.prior.nonparametric,
             radius_lower_bound=5.0
         )
+        start = time.perf_counter()
         result_sdp = optimizer.optimize_through_sdp_relaxation()
+        elapsed = time.perf_counter() - start
+        print(f"SDP time: {elapsed}")
+
+        start = time.perf_counter()
+        result_tr = optimizer.optimize_through_qcqp_trust_region()
+        elapsed = time.perf_counter() - start
+        print(f"TR time: {elapsed}")
+
         psi_sdp_list.append(result_sdp["psi_opt"])
         ksd_estimates_list.append(result_sdp["est"])
         basis_list.append(optimizer.basis_function)
@@ -699,9 +782,10 @@ def run_priors_optimisation_runtimes(cfg):
 if __name__ == "__main__":
     # run_gaussian_priors()
     # run_gaussian_lr()
-    run_multivariate_gaussian_priors()
+    # run_multivariate_gaussian_priors()
+    # run_gaussian_priors_qcqp()
     # run_inverse_wishart_priors()
-    # run_gaussian_priors_nonparametric_diff_radii()
+    run_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums()
     # run_gaussian_priors_diff_samples_num()

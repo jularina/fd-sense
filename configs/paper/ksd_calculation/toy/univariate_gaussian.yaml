@@ -15,13 +15,13 @@ data:
     _target_: src.losses.gaussian_log_likelihood.GaussianLogLikelihood
     mu: 3
     sigma: 2
-  loss_lr: 1
-  observations_num: 500
+  loss_lr: 1.0
+  observations_num: 100
   observations_path: null # data/observations.npy
   posterior_samples_path: null # data/posterior_samples.npy
   prior_samples_path: null # data/prior_samples.npy
-  posterior_samples_num: 5000
-  prior_samples_num: 5000
+  posterior_samples_num: 1000
+  prior_samples_num: 1000
 
 model:
   _target_: src.bayesian_model.gaussian.SimpleGaussianModel
@@ -43,9 +43,8 @@ ksd:
               mu: 21
               sigma: 4
       nonparametric:
-        basis_funcs_type: SigmoidBasisFunction # PolynomialBasisFunction RBFBasisFunction SigmoidBasisFunction
-        basis_funcs_kwargs: {"num_basis_functions": 15, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0} # {"degree": 3} for polynomial, {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 3.0,  "scale_multiplier": 1} for rbf, {"num_basis_functions": 5, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0} for sigmoid
-        radius_lower_bound: null
+        basis_funcs_type: MaternBasisFunction # PolynomialBasisFunction RBFBasisFunction SigmoidBasisFunction
+        basis_funcs_kwargs: {"num_basis_functions": 10, "method": "kmeans", "lengthscale": 3,  "scale_multiplier": 1} # {"degree": 3} for polynomial, {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 3.0,  "scale_multiplier": 1} for rbf, {"num_basis_functions": 5, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0} for sigmoid
         scale_samples: False
 
       LogNormal:
@@ -61,9 +60,9 @@ ksd:
       GaussianLogLikelihood:
         parameters_box_range:
           ranges:
-            lr: [0.25, 2.5]
+            lr: [0.5, 2.5]
           nums:
-            lr: 10
+            lr: 9
 
 flags:
   plots:

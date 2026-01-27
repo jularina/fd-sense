@@ -7,6 +7,7 @@ from typing import Optional, Literal
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 from numpy.linalg import eigh
+from scipy.special import gamma, kv
 
 
 class BaseBasisFunction(ABC):
@@ -81,6 +82,266 @@ class PolynomialBasisFunction(BaseBasisFunction):
         x = sp.symbols(f"x0:{dim}")
         return sum([x[i] ** self.degree for i in range(dim)])
 
+class MaternBasisFunction(BaseBasisFunction):
+    r"""
+    Matérn basis functions: φ_k(θ) = φ( ||θ - c_k|| ), with smoothness ν > 1.
+
+    Shapes (to match your RBFBasisFunction interface):
+      - evaluate(samples) -> (m, d, K)   (scalar φ replicated across d)
+      - gradient(samples) -> (m, d, K)   (true ∇θ φ_k)
+
+    Kernel (variance σ^2, lengthscale ℓ):
+        φ(r) = σ^2 * 2^{1-ν} / Γ(ν) * (a r)^ν K_ν(a r),
+        where a = sqrt(2ν) / ℓ, and K_ν is modified Bessel K.
+
+    Radial derivative identity used:
+        d/dr [ x^ν K_ν(x) ] = - x^ν K_{ν-1}(x).
+    """
+
+    def __init__(
+        self,
+        posterior_samples: np.ndarray,
+        num_basis_functions: int,
+        prior_samples: Optional[np.ndarray] = None,
+        lengthscale: Optional[float] = None,
+        nu: float = 1.5,
+        variance: float = 1.0,
+        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        estimation_samples_source: Optional[str] = "prior",
+        scale_multiplier: float = 1.0,
+        # Optional: enforce centres in ball Θ_B (Assumption A2 uses Θ_B)
+        B: Optional[float] = None,
+        eps: float = 1e-12,
+    ):
+        if nu <= 1.0:
+            raise ValueError(f"Need nu > 1 for C^1; got nu={nu}.")
+        if variance <= 0:
+            raise ValueError(f"variance must be > 0; got {variance}.")
+        self.nu = float(nu)
+        self.variance = float(variance)
+        self.eps = float(eps)
+
+        self.rng = np.random.default_rng(27)
+
+        if estimation_samples_source == "prior":
+            estimation_samples = prior_samples
+        else:
+            estimation_samples = posterior_samples
+
+        self.centers = self._select_centers(
+            posterior_samples=posterior_samples,
+            prior_samples=prior_samples,
+            num_centers=num_basis_functions,
+            method=method,
+        )
+
+        # Optional check: centres in Θ_B
+        self.B = None if B is None else float(B)
+        if self.B is not None:
+            norms = np.linalg.norm(self.centers, axis=1)
+            if np.any(norms > self.B + 1e-10):
+                raise ValueError(
+                    "Some centres lie outside Θ_B. "
+                    f"max ||c_k||={norms.max():.4g} > B={self.B:.4g}."
+                )
+
+        if lengthscale is None:
+            if estimation_samples is None:
+                raise ValueError(
+                    "lengthscale=None but estimation_samples_source requires samples; "
+                    "provide prior_samples or posterior_samples accordingly."
+                )
+            self.lengthscale = self._estimate_lengthscale(
+                centers=self.centers,
+                samples=estimation_samples,
+                multiplier=scale_multiplier,
+            )
+        else:
+            self.lengthscale = float(lengthscale)
+
+        self._a = np.sqrt(2.0 * self.nu) / self.lengthscale
+        self._prefactor = (2.0 ** (1.0 - self.nu)) / gamma(self.nu)  # scalar
+
+    def _select_centers(
+        self,
+        posterior_samples: np.ndarray,
+        prior_samples: Optional[np.ndarray],
+        num_centers: int,
+        method: str,
+    ) -> np.ndarray:
+        if prior_samples is not None:
+            X = np.asarray(prior_samples, dtype=float)
+        else:
+            X = np.asarray(posterior_samples, dtype=float)
+
+        m, d = X.shape
+
+        if method == "kmeans":
+            n = min(num_centers, m)
+            return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
+
+        if method == "random":
+            n = min(num_centers, m)
+            idx = self.rng.choice(m, n, replace=False)
+            return X[idx]
+
+        if method == "farthest":
+            return self._farthest_point_sampling(X, min(num_centers, m))
+
+        if method == "kmeans_mix":
+            if prior_samples is None:
+                raise ValueError("kmeans_mix requires prior_samples.")
+            Xp = np.asarray(prior_samples, dtype=float)
+            Xpost = np.asarray(posterior_samples, dtype=float)
+            m_post = min(len(Xpost), max(1, num_centers * 50))
+            m_prior = min(len(Xp), max(1, num_centers * 50))
+            Xmix = np.vstack(
+                [
+                    Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
+                    Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
+                ]
+            )
+            return KMeans(
+                n_clusters=min(num_centers, len(Xmix)), random_state=0
+            ).fit(Xmix).cluster_centers_
+
+        raise ValueError(f"Unknown center selection method: {method}")
+
+    def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
+        n = X.shape[0]
+        if k <= 0:
+            return np.empty((0, X.shape[1]))
+        if k == 1:
+            return X[[self.rng.integers(0, n)]]
+        idx0 = int(self.rng.integers(0, n))
+        centers_idx = [idx0]
+        dist = cdist(X[[idx0]], X).reshape(-1)
+        for _ in range(1, k):
+            i = int(np.argmax(dist))
+            centers_idx.append(i)
+            dist = np.minimum(dist, cdist(X[[i]], X).reshape(-1))
+        return X[np.array(centers_idx)]
+
+    def _estimate_lengthscale(
+        self,
+        centers: np.ndarray,
+        samples: np.ndarray,
+        source: str = "samples",
+        multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+    ) -> float:
+        if centers.shape[0] < 2:
+            return 1.0
+        if source == "samples":
+            m = np.median(pdist(samples.reshape(-1, samples.shape[-1])))
+        else:
+            m = np.median(pdist(centers))
+        ell = multiplier * m
+        floor = floor_frac * np.std(samples, axis=0).mean()
+        ls = float(max(ell, floor))
+        print(f"Selected lengthscale for Matérn basis function: {ls}.")
+        return ls
+
+    def _matern(self, r: np.ndarray) -> np.ndarray:
+        """
+        r: (...,) nonnegative distances
+        returns φ(r) with φ(0)=variance
+        """
+        r = np.asarray(r, dtype=float)
+        x = self._a * r
+
+        out = np.empty_like(x, dtype=float)
+
+        # For r=0, define φ(0)=σ^2.
+        mask0 = x <= self.eps
+        out[mask0] = self.variance
+
+        # For r>0, use Matérn formula.
+        xm = x[~mask0]
+        # σ^2 * c * x^ν K_ν(x)
+        out[~mask0] = (
+            self.variance
+            * self._prefactor
+            * (xm ** self.nu)
+            * kv(self.nu, xm)
+        )
+        return out
+
+    def _matern_dr(self, r: np.ndarray) -> np.ndarray:
+        """
+        Radial derivative dφ/dr.
+
+        For r>0:
+          dφ/dr = -σ^2 * c * a * x^ν K_{ν-1}(x),   x=a r
+        and define dφ/dr(0)=0.
+        """
+        r = np.asarray(r, dtype=float)
+        x = self._a * r
+
+        out = np.zeros_like(x, dtype=float)
+        mask0 = x <= self.eps
+        if np.any(~mask0):
+            xm = x[~mask0]
+            out[~mask0] = (
+                -self.variance
+                * self._prefactor
+                * self._a
+                * (xm ** self.nu)
+                * kv(self.nu - 1.0, xm)
+            )
+        return out
+
+    def evaluate(self, samples: np.ndarray) -> np.ndarray:
+        """
+        Returns shape (m, d, K): φ(||θ-c_k||) replicated across d.
+        """
+        X = np.asarray(samples, dtype=float)  # (m,d)
+        diffs = X[:, None, :] - self.centers[None, :, :]  # (m,K,d)
+        r = np.linalg.norm(diffs, axis=-1)  # (m,K)
+        vals = self._matern(r)  # (m,K)
+
+        m, d = X.shape
+        return np.broadcast_to(vals[:, None, :], (m, d, vals.shape[1])).copy()
+
+    def gradient(self, samples: np.ndarray) -> np.ndarray:
+        """
+        ∇θ φ_k(θ) = (dφ/dr)(r) * (θ - c_k) / r, with 0 at r=0.
+        Returns shape (m, d, K).
+        """
+        X = np.asarray(samples, dtype=float)  # (m,d)
+        diffs = X[:, None, :] - self.centers[None, :, :]  # (m,K,d)
+        r = np.linalg.norm(diffs, axis=-1)  # (m,K)
+
+        dphi = self._matern_dr(r)  # (m,K)
+
+        # safe division by r
+        inv_r = np.zeros_like(r)
+        mask = r > self.eps
+        inv_r[mask] = 1.0 / r[mask]
+
+        # (m,K,d) = (m,K,1) * (m,K,1) * (m,K,d)
+        grad = (dphi[:, :, None] * inv_r[:, :, None]) * diffs  # (m,K,d)
+        return np.transpose(grad, (0, 2, 1))  # (m,d,K)
+
+    def symbolic_expression(self, dim: int) -> sp.Expr:
+        """
+        Symbolic expression for φ(||x-c||) using the first centre c_1.
+        Note: Sympy uses besselk for K_ν.
+        """
+        x = sp.symbols(f"x0:{dim}")
+        c = np.asarray(self.centers[0], dtype=float)
+        nu = sp.Float(self.nu)
+        sig2 = sp.Float(self.variance)
+        ell = sp.Float(self.lengthscale)
+
+        r = sp.sqrt(sum((x[i] - sp.Float(c[i])) ** 2 for i in range(dim)))
+        a = sp.sqrt(2 * nu) / ell
+        z = a * r
+        pref = 2 ** (1 - nu) / sp.gamma(nu)
+
+        # Define φ(0)=σ^2; symbolic expression won’t special-case r=0, but differentiability checks
+        # in sympy typically still work for ν>1.
+        return sig2 * pref * (z ** nu) * sp.besselk(nu, z)
 
 class RBFBasisFunction(BaseBasisFunction):
     def __init__(

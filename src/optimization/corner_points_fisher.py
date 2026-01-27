@@ -38,16 +38,14 @@ class OptimizationCornerPointsBase:
         self.lr_ranges: Dict[str, Tuple[float, float]] = loss_config["parameters_box_range"]["ranges"]["lr"]
         self.lr_nums: Dict[str, int] = loss_config["parameters_box_range"]["nums"]["lr"]
 
-        self.Lambda_prior, self.b_prior = self.posterior_estimator.compute_fisher_quadratic_form_for_prior()
-        self.c_prior = self.posterior_estimator.compute_c_prior()
+        self.Lambda_prior, self.b_prior, self.c_prior = self.posterior_estimator.compute_fisher_quadratic_form_prior_only()
 
         self.parameter_grid = self._generate_full_parameter_grid()
         self.distribution_corner_points: List[Dict[str, float]] = self._generate_corner_points()
         self.lr_grid = self._generate_full_lr_grid()
         self.lr_corners = self._generate_lr_corners()
 
-        self.Lambda_loss, self.b_loss = self.posterior_estimator.compute_fisher_quadratic_form_for_loss()
-        self.c_loss = self.posterior_estimator.compute_c_loss()
+        self.Lambda_loss, self.b_loss, self.c_loss = self.posterior_estimator.compute_fisher_quadratic_form_lr_only()
 
     def _generate_corner_points(self):
         eta_list = []
@@ -81,24 +79,24 @@ class OptimizationCornerPointsBase:
         for corner_distribution in self.distribution_corner_points:
             params = corner_distribution.parameters_dict
             self.model.set_prior_parameters(params, distribution_cls=self.distribution_cls)
-            eta_tilde = self.model.prior.augmented_natural_parameters()
-            est = self._evaluate_prior_qf(eta_tilde)
-            results.append((params, eta_tilde, est))
+            eta = self.model.prior.natural_parameters()
+            est = self._evaluate_prior_qf(eta)
+            results.append((params, eta, est))
 
         results.sort(key=lambda x: x[2], reverse=True)
         self.model.back_to_prior_candidate()
 
         return results, results[0][0]
 
-    def evaluate_all_prior_combinations(self) -> Tuple:
+    def evaluate_all_prior_combinations(self) -> List:
         results = []
 
         for values in self.parameter_grid:
             param_dict = dict(zip(self.param_names, values))
             self.model.set_prior_parameters(param_dict, distribution_cls=self.distribution_cls)
-            eta_tilde = self.model.prior.augmented_natural_parameters()
-            est = eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde + self.c_prior
-            results.append((param_dict, eta_tilde, est))
+            eta = self.model.prior.natural_parameters()
+            est = self._evaluate_prior_qf(eta)
+            results.append((param_dict, eta, est))
             print(f"Corner: {param_dict} => Estimated obj: {est:.6f}")
 
         results.sort(key=lambda x: x[2], reverse=True)

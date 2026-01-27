@@ -22,7 +22,7 @@ class BayesianModel(ABC):
         self.prior: Any = data_config.candidate_prior
         self.prior_init: Any = data_config.base_prior
         self.prior_candidate: Any = data_config.candidate_prior
-        self.loss_lr_init: float = data_config.loss_lr
+        self.loss_lr_init: float = 1.0
         self.m: int = data_config.posterior_samples_num
         self.m_prior: int = data_config.prior_samples_num
 
@@ -86,6 +86,16 @@ class BayesianModel(ABC):
             distribution_cls: Distribution class to instantiate the prior.
         """
         self.prior = distribution_cls(**params)
+
+    def set_candidate_prior_parameters(self, params: Dict[str, Any], distribution_cls: Type) -> None:
+        """
+        Set or update candidate prior distribution.
+
+        Args:
+            params: Dictionary of prior parameters.
+            distribution_cls: Distribution class to instantiate the prior.
+        """
+        self.prior_candidate = distribution_cls(**params)
 
     def set_lr_parameter(self, lr: float) -> None:
         """

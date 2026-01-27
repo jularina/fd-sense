@@ -29,7 +29,7 @@ class FisherDivergence:
         Parameters
         ----------
         samples : np.ndarray
-            Posterior samples of shape (m, d).
+            Samples of shape (m, d).
 
         Returns
         -------
@@ -48,6 +48,37 @@ class FisherDivergence:
             raise ValueError("The Fisher Divergence estimation is negative and failed.")
         else:
             return val
+
+    @staticmethod
+    def _compute_squared_term(scores: np.ndarray) -> np.ndarray:
+        """Compute ∑ s(x_i)^T s(x_j)"""
+        return np.einsum('ik,jk->ij', scores, scores)
+
+    @staticmethod
+    def _compute_cross_term(scores1: np.ndarray, scores2: np.ndarray) -> np.ndarray:
+        """Compute ∑ s(x_i)^T s(x_j)"""
+        return np.einsum('ik,jk->ij', scores1, scores2)
+
+
+class FisherDivergenceBase:
+    """
+    Computes the Fisher Divergence using a V-statistic formulation.
+    """
+
+    def __init__(
+        self,
+        scores: np.ndarray,
+        scores_ref: np.ndarray,
+    ) -> None:
+        self.scores = scores
+        self.scores_ref = scores_ref
+
+    def compute(self) -> float:
+        diff = self.scores_ref - self.scores
+        val = float(np.mean(np.sum(diff * diff, axis=1)))
+        if val < 0.0:
+            raise ValueError("The Fisher Divergence estimation is negative and failed.")
+        return val
 
     @staticmethod
     def _compute_squared_term(scores: np.ndarray) -> np.ndarray:

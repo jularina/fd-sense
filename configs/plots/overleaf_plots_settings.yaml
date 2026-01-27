@@ -6,7 +6,7 @@ plot:
 
   figure:
     size:
-      width: 4.0  # 4 in inches, 2.5 for 4-col
+      width: 3.0  # 4 in inches, 2.5 for 4-col
       height: 2.5 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: true
@@ -23,9 +23,9 @@ plot:
 #      - "#1f77b4"  # blue
 #      - "#D20A2E"   # red
 #      - "#EE1E52"  # pink
-#      - "#F2BDCD"  # light-light-pink
+      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
-      - "#5b9bd5"  # lighter blue
+#      - "#5b9bd5"  # lighter blue
 #      - "#009E73"   # forest green
 #      - "#E69F00"   # orange
 #      - "#F0E442"   # golden yellow
@@ -71,14 +71,14 @@ plot:
     logoptimisationProblemWoConstraint: "$\\log L_m(\\eta^\\star)$"
     argoptimisationProblemParam: "$\\eta^\\star$"
     logOptimisationProblem: "$\\sup_{ \\widehat{\\mathrm{KSD}}^2(\\Pi^l_{\\mathrm{ref}},\\ \\Pi_K) \\leq r} \\: \\log L_m(\\eta)$"
-    lr: "lr"
+    lr: "$\\beta$"
     logK: "$\\log K$"
     logr: "$\\log r$"
     K: "K"
     r: "r"
     numPosteriorSamples: "m"
     estimatedFDposteriorsShort: "$\\mathrm{FD}_{\\mathrm{post}}$"
-    estimatedFDposteriorsQuadraticForm: "$L_m(\\eta)$"
+    estimatedFDposteriorsQuadraticForm: "$\\hat{\\rho}_{FD}(\\tilde{\\Pi})$"
 
   y_axis:
     log_scale: false
