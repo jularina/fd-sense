@@ -59,10 +59,8 @@ ksd:
               "1_0": 2
 
       nonparametric:
-        basis_funcs_type: RBFBasisFunctionMultidim
-        basis_funcs_kwargs: { "num_basis_functions": 10, "method": "farthest", "lengthscale": null, "scale_multiplier": 3, "metric":"full"}
-        radius_lower_bound: null
-        scale_samples: False
+        basis_funcs_type: MaternBasisFunctionMultidim
+        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "scale_multiplier": 3}
 
     loss:
       MultivariateGaussianLogLikelihood:

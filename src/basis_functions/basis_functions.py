@@ -82,6 +82,7 @@ class PolynomialBasisFunction(BaseBasisFunction):
         x = sp.symbols(f"x0:{dim}")
         return sum([x[i] ** self.degree for i in range(dim)])
 
+
 class MaternBasisFunction(BaseBasisFunction):
     r"""
     Matérn basis functions: φ_k(θ) = φ( ||θ - c_k|| ), with smoothness ν > 1.
@@ -120,7 +121,6 @@ class MaternBasisFunction(BaseBasisFunction):
         self.nu = float(nu)
         self.variance = float(variance)
         self.eps = float(eps)
-
         self.rng = np.random.default_rng(27)
 
         if estimation_samples_source == "prior":
@@ -342,6 +342,433 @@ class MaternBasisFunction(BaseBasisFunction):
         # Define φ(0)=σ^2; symbolic expression won’t special-case r=0, but differentiability checks
         # in sympy typically still work for ν>1.
         return sig2 * pref * (z ** nu) * sp.besselk(nu, z)
+
+
+class MaternBasisFunctionMultidim(BaseBasisFunction):
+    r"""
+    Multidim Matérn basis with either per-dimension (diag) or full (non-diagonal) metric.
+
+    Two modes (mirrors your RBFBasisFunctionMultidim API):
+
+    metric="diag":
+      Per-dimension (1D) Matérn features:
+        phi_{i,b}(x) = Matérn_nu( |x_i - c_{b,i}| / l_i )
+      evaluate(samples) -> (m, d, B)
+      gradient(samples) -> (m, d, B) with 1D derivative wrt x_i
+
+    metric="full":
+      Scalar Matérn feature using Mahalanobis distance:
+        r_b(x) = sqrt( (x - c_b)^T P (x - c_b) )
+        phi_b(x) = Matérn_nu( r_b(x) )
+      evaluate(samples) -> (m, d, B) by repeating scalar across d
+      gradient(samples) -> (m, d, B): ∇_x phi_b = (dphi/dr) * P(x-c_b)/r_b
+
+    Matérn (scaled-distance form):
+      k(r) = σ^2 * 2^{1-ν}/Γ(ν) * (x^ν K_ν(x)),  x = sqrt(2ν) r
+
+    Radial derivative identity:
+      d/dr [ x^ν K_ν(x) ] = - sqrt(2ν) * x^ν K_{ν-1}(x)   (chain rule via x = sqrt(2ν) r)
+
+    Notes:
+      - You need ν > 1 if you want C^1 basis functions (your Assumption A1).
+      - In metric="full", P plays the role of a precision / inverse lengthscale matrix.
+    """
+
+    def __init__(
+        self,
+        posterior_samples: np.ndarray,
+        num_basis_functions: int,
+        prior_samples: Optional[np.ndarray] = None,
+        lengthscale: Optional[np.ndarray] = None,      # (d,) for diag
+        precision: Optional[np.ndarray] = None,        # (d,d) for full
+        metric: Literal["diag", "full"] = "diag",
+        nu: float = 1.5,
+        variance: float = 1.0,
+        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        estimation_samples_source: Optional[str] = "prior",  # "prior" or "posterior"
+        scale_multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+        jitter: float = 1e-8,
+        eps: float = 1e-12,
+    ):
+        if nu <= 1.0:
+            raise ValueError(f"Need nu > 1 for C^1; got nu={nu}.")
+        if variance <= 0.0:
+            raise ValueError(f"variance must be > 0; got {variance}.")
+
+        self.rng = np.random.default_rng(27)
+        self.metric = metric
+        self.nu = float(nu)
+        self.variance = float(variance)
+        self.eps = float(eps)
+
+        # Matérn constants for scaled-distance form (x = sqrt(2ν) r)
+        self._sqrt_2nu = float(np.sqrt(2.0 * self.nu))
+        self._prefactor = float((2.0 ** (1.0 - self.nu)) / gamma(self.nu))
+
+        if estimation_samples_source == "prior":
+            estimation_samples = prior_samples
+        else:
+            estimation_samples = posterior_samples
+
+        # Choose centers (B, d)
+        self.centers = self._select_centers(
+            posterior_samples=posterior_samples,
+            prior_samples=prior_samples,
+            num_centers=num_basis_functions,
+            method=method,
+        )
+        _, self.dim = self.centers.shape
+        self.num_basis = int(self.centers.shape[0])
+
+        if self.metric == "diag":
+            if lengthscale is None:
+                if estimation_samples is None:
+                    ls = self._estimate_lengthscale_vector_from_centers(
+                        centers=self.centers,
+                        multiplier=scale_multiplier,
+                        floor_frac=floor_frac,
+                        jitter=jitter,
+                    )
+                else:
+                    ls = self._estimate_lengthscale_vector_from_samples(
+                        samples=np.asarray(estimation_samples, dtype=float),
+                        multiplier=scale_multiplier,
+                        floor_frac=floor_frac,
+                        jitter=jitter,
+                    )
+            else:
+                ls = np.asarray(lengthscale, dtype=float)
+                if ls.ndim != 1 or ls.shape[0] != self.dim:
+                    raise ValueError(f"lengthscale must be shape (d,), got {ls.shape}.")
+                ls = np.maximum(ls, jitter)
+
+            self.lengthscale = ls.astype(float)
+            self.precision = None
+
+        elif self.metric == "full":
+            if precision is None:
+                if estimation_samples is None:
+                    P = self._estimate_precision_from_centers(
+                        centers=self.centers,
+                        multiplier=scale_multiplier,
+                        floor_frac=floor_frac,
+                        jitter=jitter,
+                    )
+                else:
+                    P = self._estimate_precision_from_samples(
+                        samples=np.asarray(estimation_samples, dtype=float),
+                        multiplier=scale_multiplier,
+                        floor_frac=floor_frac,
+                        jitter=jitter,
+                    )
+            else:
+                P = np.asarray(precision, dtype=float)
+                if P.shape != (self.dim, self.dim):
+                    raise ValueError(f"precision must be (d,d), got {P.shape}.")
+                P = 0.5 * (P + P.T)
+                w, V = eigh(P)
+                w = np.maximum(w, jitter)
+                P = (V * w) @ V.T
+
+            self.precision = 0.5 * (P + P.T)
+            self.lengthscale = None
+
+        else:
+            raise ValueError("metric must be 'diag' or 'full'.")
+
+    # ---------------- center selection ----------------
+    def _select_centers(
+        self,
+        posterior_samples: np.ndarray,
+        prior_samples: Optional[np.ndarray],
+        num_centers: int,
+        method: str,
+    ) -> np.ndarray:
+        if prior_samples is not None:
+            X = np.asarray(prior_samples, dtype=float)
+        else:
+            X = np.asarray(posterior_samples, dtype=float)
+
+        m, _ = X.shape
+
+        if method == "kmeans":
+            n = min(num_centers, m)
+            return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
+
+        if method == "random":
+            n = min(num_centers, m)
+            idx = self.rng.choice(m, n, replace=False)
+            return X[idx]
+
+        if method == "farthest":
+            return self._farthest_point_sampling(X, min(num_centers, m))
+
+        if method == "kmeans_mix":
+            if prior_samples is None:
+                raise ValueError("kmeans_mix requires prior_samples.")
+            Xp = np.asarray(prior_samples, dtype=float)
+            Xpost = np.asarray(posterior_samples, dtype=float)
+            m_post = min(len(Xpost), max(1, num_centers * 50))
+            m_prior = min(len(Xp), max(1, num_centers * 50))
+            Xmix = np.vstack(
+                [
+                    Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
+                    Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
+                ]
+            )
+            return KMeans(
+                n_clusters=min(num_centers, len(Xmix)), random_state=0
+            ).fit(Xmix).cluster_centers_
+
+        raise ValueError(f"Unknown center selection method: {method}")
+
+    def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
+        n = X.shape[0]
+        if k <= 0:
+            return np.empty((0, X.shape[1]))
+        if k == 1:
+            return X[[self.rng.integers(0, n)]]
+        idx0 = int(self.rng.integers(0, n))
+        centers_idx = [idx0]
+        dist = cdist(X[[idx0]], X).reshape(-1)
+        for _ in range(1, k):
+            i = int(np.argmax(dist))
+            centers_idx.append(i)
+            dist = np.minimum(dist, cdist(X[[i]], X).reshape(-1))
+        return X[np.array(centers_idx)]
+
+    # ---------------- estimation helpers ----------------
+    def _median_heuristic_per_dim(self, x: np.ndarray, jitter: float = 1e-12) -> np.ndarray:
+        """
+        Per-dimension median heuristic:
+          l_i = sqrt(median_{p<q} (x_{p,i} - x_{q,i})^2 + jitter)
+        x: (n, d)
+        """
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 2:
+            raise ValueError("x must be (n,d).")
+        n, d = x.shape
+        if n < 2:
+            return np.sqrt(np.var(x, axis=0) + jitter)
+
+        diffs = x[:, None, :] - x[None, :, :]  # (n, n, d)
+        iu = np.triu_indices(n, k=1)
+        diffs = diffs[iu]                      # (n*(n-1)/2, d)
+        med_sq = np.median(diffs**2, axis=0)    # (d,)
+        return np.sqrt(med_sq + jitter)
+
+    def _estimate_lengthscale_vector_from_samples(
+        self,
+        samples: np.ndarray,
+        multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+        jitter: float = 1e-12,
+    ) -> np.ndarray:
+        ls = self._median_heuristic_per_dim(samples, jitter=jitter)
+        floor = floor_frac * np.std(samples, axis=0)
+        ls = np.maximum(multiplier * ls, floor)
+        return np.maximum(ls, jitter).astype(float)
+
+    def _estimate_lengthscale_vector_from_centers(
+        self,
+        centers: np.ndarray,
+        multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+        jitter: float = 1e-12,
+    ) -> np.ndarray:
+        ls = self._median_heuristic_per_dim(centers, jitter=jitter)
+        floor = floor_frac * np.std(centers, axis=0)
+        ls = np.maximum(multiplier * ls, floor)
+        return np.maximum(ls, jitter).astype(float)
+
+    def _estimate_precision_from_samples(
+        self,
+        samples: np.ndarray,
+        multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+        jitter: float = 1e-8,
+    ) -> np.ndarray:
+        """
+        Estimate shared precision P ≻ 0:
+          - compute covariance Σ
+          - floor eigenvalues
+          - invert, then scale by 1/multiplier^2
+        """
+        X = np.asarray(samples, dtype=float)
+        Σ = np.cov(X, rowvar=False)
+        Σ = 0.5 * (Σ + Σ.T)
+
+        w, V = eigh(Σ)
+        mean_eig = float(np.mean(np.maximum(w, 0.0)))
+        w_reg = np.maximum(w, floor_frac * mean_eig + jitter)
+        w_inv = 1.0 / w_reg
+        Σ_inv = (V * w_inv) @ V.T
+
+        P = Σ_inv / (multiplier**2)
+        return 0.5 * (P + P.T)
+
+    def _estimate_precision_from_centers(
+        self,
+        centers: np.ndarray,
+        multiplier: float = 1.0,
+        floor_frac: float = 0.1,
+        jitter: float = 1e-8,
+    ) -> np.ndarray:
+        return self._estimate_precision_from_samples(
+            samples=centers,
+            multiplier=multiplier,
+            floor_frac=floor_frac,
+            jitter=jitter,
+        )
+
+    # ---------------- Matérn core in scaled-distance form ----------------
+    def _matern_scaled(self, r: np.ndarray) -> np.ndarray:
+        """
+        r: (...,) scaled distance (dimensionless). Uses x = sqrt(2ν) r.
+        Returns k(r) with k(0)=variance.
+        """
+        r = np.asarray(r, dtype=float)
+        x = self._sqrt_2nu * r
+
+        out = np.empty_like(x, dtype=float)
+        mask0 = x <= self.eps
+        out[mask0] = self.variance
+
+        xm = x[~mask0]
+        out[~mask0] = (
+            self.variance
+            * self._prefactor
+            * (xm ** self.nu)
+            * kv(self.nu, xm)
+        )
+        return out
+
+    def _matern_scaled_dr(self, r: np.ndarray) -> np.ndarray:
+        """
+        d/dr k(r) in scaled-distance form.
+        For r>0:
+          dk/dr = -σ^2 * c * sqrt(2ν) * x^ν K_{ν-1}(x),  x = sqrt(2ν) r
+        with dk/dr(0)=0.
+        """
+        r = np.asarray(r, dtype=float)
+        x = self._sqrt_2nu * r
+
+        out = np.zeros_like(x, dtype=float)
+        mask0 = x <= self.eps
+        if np.any(~mask0):
+            xm = x[~mask0]
+            out[~mask0] = (
+                -self.variance
+                * self._prefactor
+                * self._sqrt_2nu
+                * (xm ** self.nu)
+                * kv(self.nu - 1.0, xm)
+            )
+        return out
+
+    # ---------------- API: evaluate / gradient ----------------
+    def evaluate(self, samples: np.ndarray) -> np.ndarray:
+        """
+        metric="diag": returns (m, d, B) with per-dim Matérn.
+        metric="full": returns (m, d, B) by repeating scalar across d.
+        """
+        X = np.asarray(samples, dtype=float)  # (m,d)
+        m, d = X.shape
+        if d != self.dim:
+            raise ValueError(f"Sample dim {d} != center dim {self.dim}.")
+
+        if self.metric == "diag":
+            # diffs: (m,B,d)
+            diffs = X[:, None, :] - self.centers[None, :, :]
+            r = np.abs(diffs) / self.lengthscale[None, None, :]  # (m,B,d)
+            vals = self._matern_scaled(r)                         # (m,B,d)
+            return np.transpose(vals, (0, 2, 1))                  # (m,d,B)
+
+        # full
+        diffs = X[:, None, :] - self.centers[None, :, :]          # (m,B,d)
+        r2 = np.einsum("mbi,ij,mbj->mb", diffs, self.precision, diffs, optimize=True)
+        r = np.sqrt(np.maximum(r2, 0.0))                          # (m,B)
+        phi = self._matern_scaled(r)                              # (m,B)
+        return np.repeat(phi[:, None, :], d, axis=1)              # (m,d,B)
+
+    def gradient(self, samples: np.ndarray) -> np.ndarray:
+        """
+        metric="diag":
+          phi_{i,b}(x) = k( |x_i - c_{b,i}| / l_i )
+          d/dx_i phi_{i,b}(x) = k'(r) * sign(x_i - c_{b,i}) / l_i   (with 0 at diff=0)
+
+        metric="full":
+          r_b(x)=sqrt((x-c)^T P (x-c))
+          ∇ phi_b = k'(r) * P(x-c)/r, with 0 at r=0
+
+        Returns: (m, d, B)
+        """
+        X = np.asarray(samples, dtype=float)
+        m, d = X.shape
+        if d != self.dim:
+            raise ValueError(f"Sample dim {d} != center dim {self.dim}.")
+
+        if self.metric == "diag":
+            diffs = X[:, None, :] - self.centers[None, :, :]           # (m,B,d)
+            absdiff = np.abs(diffs)
+            r = absdiff / self.lengthscale[None, None, :]              # (m,B,d)
+            dkdr = self._matern_scaled_dr(r)                            # (m,B,d)
+
+            # sign(diff) safely (0 at diff=0)
+            sign = diffs / np.maximum(absdiff, self.eps)               # (m,B,d)
+            drdx = sign / self.lengthscale[None, None, :]              # (m,B,d)
+
+            grad = dkdr * drdx                                         # (m,B,d)
+            return np.transpose(grad, (0, 2, 1))                       # (m,d,B)
+
+        # full
+        diffs = X[:, None, :] - self.centers[None, :, :]               # (m,B,d)
+        Px = np.einsum("ij,mbj->mbi", self.precision, diffs, optimize=True)  # (m,B,d)
+        r2 = np.einsum("mbi,ij,mbj->mb", diffs, self.precision, diffs, optimize=True)  # (m,B)
+        r = np.sqrt(np.maximum(r2, 0.0))                               # (m,B)
+
+        dkdr = self._matern_scaled_dr(r)                               # (m,B)
+
+        inv_r = np.zeros_like(r)
+        mask = r > self.eps
+        inv_r[mask] = 1.0 / r[mask]
+
+        grad = (dkdr[:, :, None] * inv_r[:, :, None]) * Px             # (m,B,d)
+        return np.transpose(grad, (0, 2, 1))                           # (m,d,B)
+
+    def symbolic_expression(self, dim: int) -> sp.Expr:
+        """
+        Symbolic form for the first centre (b=0).
+        - diag: Tuple of per-dim Matérn expressions
+        - full: scalar Matérn(r) repeated in a Tuple length d (shape-compat)
+        """
+        x = sp.symbols(f"x0:{dim}")
+        c = np.asarray(self.centers[0], dtype=float)
+
+        nu = sp.Float(self.nu)
+        sig2 = sp.Float(self.variance)
+        pref = sp.Float(self._prefactor)
+        s2nu = sp.sqrt(2 * nu)
+
+        if self.metric == "diag":
+            ls = np.asarray(self.lengthscale, dtype=float)
+            exprs = []
+            for i in range(dim):
+                r_i = sp.Abs(x[i] - sp.Float(c[i])) / sp.Float(ls[i])
+                z = s2nu * r_i
+                exprs.append(sig2 * pref * (z**nu) * sp.besselk(nu, z))
+            return sp.Tuple(*exprs)
+
+        # full
+        P = sp.Matrix(np.asarray(self.precision, dtype=float))
+        xm = sp.Matrix(x)
+        cm = sp.Matrix([sp.Float(ci) for ci in c.tolist()])
+        r = sp.sqrt(((xm - cm).T * P * (xm - cm))[0])
+        z = s2nu * r
+        expr = sig2 * pref * (z**nu) * sp.besselk(nu, z)
+        return sp.Tuple(*[expr for _ in range(dim)])
+
 
 class RBFBasisFunction(BaseBasisFunction):
     def __init__(

@@ -271,38 +271,29 @@ class OptimizationCornerPointsCompositePrior:
 
     def __init__(self, posterior_estimator, config: Dict, loss_config: Dict):
         self.posterior_estimator = posterior_estimator
-        self.combine_rule: str = config.get("combine_rule", "product")
         self.components_cfg: List[Dict[str, Any]] = list(config["components"])
-        self._validate_components()
+        self.eta_components_cfg: List[Dict[str, Any]] = list(config["eta_components"])
 
-        # QFs for loss
-        self.loss_config = loss_config
-        self.loss_lr_corners = self._generate_loss_lr_corner_points()
-        self.loss_lr_full_grid = self._generate_full_loss_lr_grid()
-        self.Lambda_loss, self.b_loss = self.posterior_estimator.compute_fisher_quadratic_form_for_loss()
-        self.c_loss = self.posterior_estimator.compute_c_loss()
+        # Loss lr
+        self.loss_lr_corners = loss_config["parameters_box_range"]["ranges"]["lr"]
+        self.A_loss, self.b_loss, self.c_loss = self.posterior_estimator.compute_fisher_quadratic_form_lr_only()
 
-        # Per-component corner lists and full grids
-        self.component_corners_lambda: List[List[Dict[str, float]]] = [
-            self._generate_component_corners(comp_cfg) for comp_cfg in self.components_cfg
-        ]
-        self.component_grids_lambda: List[List[Dict[str, float]]] = [
-            self._generate_component_full_grid(comp_cfg) for comp_cfg in self.components_cfg
-        ]
-        self.component_corner_records = [
-            self._component_corners_from_predefined(comp_cfg)
+        # Prior
+        self.A_prior, self.b_prior, self.c_prior = self.posterior_estimator.compute_fisher_quadratic_form_prior_only()
+
+        # Eta grid through prior distributions
+        self.eta_corners_through_prior = [
+            self._create_eta_corners_through_prior(comp_cfg)
             for comp_cfg in self.components_cfg
         ]
-        self.component_corners = [
-            [rec["params"] for rec in recs] for recs in self.component_corner_records
-        ]
-        self._reset_prior_baseline_for_qf()
 
-        # QFs for prior
-        self.Lambda_prior, self.b_prior = self.posterior_estimator.compute_fisher_quadratic_form_for_prior()
-        self.c_prior = self.posterior_estimator.compute_c_prior()
+        # Eta grid
+        self.eta_corners = self._create_eta_corners()
 
-    def _component_corners_from_predefined(self, comp_cfg):
+    def _evaluate_prior_qf(self, eta_tilde: np.ndarray) -> float:
+        return float(eta_tilde @ self.A_prior @ eta_tilde + self.b_prior @ eta_tilde + self.c_prior)
+
+    def _create_eta_corners_through_prior(self, comp_cfg):
         """
         Prefer analytic corners when available, else fall back to grid + hull.
         Returns: [{"params": lambda_dict, "eta": eta_vec}, ...]
@@ -315,170 +306,111 @@ class OptimizationCornerPointsCompositePrior:
 
         return recs
 
-    def _reset_prior_baseline_for_qf(self) -> None:
+    def _create_eta_corners(self):
         """
-        Reset the model prior once at initialization so that the subsequent
-        QF precomputations use a consistent composite prior distribution.
-        Strategy:
-            - "center": center of each component's grid/box
-            - "first_corner": use the first corner of each component
-        Note: any choice here is fine for your QF since only distribution form matters.
+        Create eta corners
         """
-        per_component_params = [corners[0] for corners in self.component_corners_lambda]
-        composite_payload = self._build_payload(per_component_params)
-        self._set_composite_on_model(composite_payload)
+        per_param_corners = []
+        for cfg in self.eta_components_cfg:
+            e1_lo, e1_hi = cfg["eta_range"]["eta_1"]
+            e2_lo, e2_hi = cfg["eta_range"]["eta_2"]
 
-    def _build_payload(self, per_component_params: List[Dict[str, float]]) -> Dict[str, Dict[str, Any]]:
-        return {
-            comp_cfg["name"]: {"family": comp_cfg["family"], "params": params}
-            for comp_cfg, params in zip(self.components_cfg, per_component_params)
-        }
+            # 4 combinations per parameter
+            per_param_corners.append([
+                (e1_lo, e2_lo),
+                (e1_lo, e2_hi),
+                (e1_hi, e2_lo),
+                (e1_hi, e2_hi),
+            ])
 
-    def _validate_components(self):
-        names = [c["name"] for c in self.components_cfg]
-        if len(set(names)) != len(names):
-            raise ValueError("Component names in Composite prior must be unique.")
-        for comp in self.components_cfg:
-            fam = comp.get("family")
-            if fam not in DISTRIBUTION_MAP or DISTRIBUTION_MAP[fam] is None:
-                raise ValueError(f"Unknown or unavailable distribution family: {fam}")
+        # Cartesian product over parameters
+        corners = []
+        for combo in itertools.product(*per_param_corners):
+            flat = [x for pair in combo for x in pair]
+            corners.append(np.array(flat))
 
-            pbr = comp.get("parameters_box_range", {})
-            if "ranges" not in pbr or "nums" not in pbr:
-                raise ValueError(f"parameters_box_range must contain 'ranges' and 'nums' for component {comp['name']}.")
+        return corners
 
-    def _generate_component_corners(self, comp_cfg: Dict) -> List[Dict[str, float]]:
-        ranges: Dict[str, Tuple[float, float]] = comp_cfg["parameters_box_range"]["ranges"]
-        keys = list(ranges.keys())
-        endpoints = [[ranges[k][0], ranges[k][1]] for k in keys]
-        return [dict(zip(keys, vals)) for vals in product(*endpoints)]
+    # def _reset_prior_baseline_for_qf(self) -> None:
+    #     """
+    #     Reset the model prior once at initialization so that the subsequent
+    #     QF precomputations use a consistent composite prior distribution.
+    #     Strategy:
+    #         - "center": center of each component's grid/box
+    #         - "first_corner": use the first corner of each component
+    #     Note: any choice here is fine for your QF since only distribution form matters.
+    #     """
+    #     per_component_params = [corners[0] for corners in self.component_corners_lambda]
+    #     composite_payload = self._build_payload(per_component_params)
+    #     self._set_composite_on_model(composite_payload)
 
-    def _generate_component_full_grid(self, comp_cfg: Dict) -> List[Dict[str, float]]:
-        ranges: Dict[str, Tuple[float, float]] = comp_cfg["parameters_box_range"]["ranges"]
-        nums: Dict[str, int] = comp_cfg["parameters_box_range"]["nums"]
-        axes = [np.linspace(ranges[k][0], ranges[k][1], nums[k]) for k in ranges.keys()]
-        return [dict(zip(ranges.keys(), vals)) for vals in product(*axes)]
-
-    def _materialize_component(self, spec: Any) -> Any:
-        if is_basedistribution_like(spec):
-            return spec
-        if isinstance(spec, dict) and "family" in spec:
-            fam = spec["family"]
-            params = spec.get("params", {k: v for k, v in spec.items() if k != "family"})
-            cls = DISTRIBUTION_MAP.get(fam)
-            if cls is None:
-                raise ValueError(f"Unknown family '{fam}'. Available: {list(DISTRIBUTION_MAP.keys())}")
-            return cls(**params)
-        if isinstance(spec, dict) and "_target_" in spec:
-            kwargs = {k: v for k, v in spec.items() if k != "_target_"}
-            return instantiate_from_target_str(spec["_target_"], kwargs)
-
-        return spec
-
-    def _set_composite_on_model(self, updated_components: Dict[str, Dict[str, Any]]):
-        """
-        updated_components: mapping name -> {"family": ..., "params": ...} or instance/_target_ spec.
-        This merges with the existing composite prior on the model so unspecified components are preserved.
-        """
-        self.posterior_estimator.model.back_to_prior_candidate()
-        full_map = OrderedDict()
-        try:
-            prior = getattr(self.posterior_estimator.model, "prior", None)
-            if isinstance(prior, CompositeProduct):
-                for name, comp in zip(prior.names, prior.components):
-                    full_map[name] = comp
-        except Exception:
-            pass
-
-        for name, spec in updated_components.items():
-            full_map[name] = self._materialize_component(spec)
-
-        if not full_map:
-            full_map = OrderedDict((name, self._materialize_component(spec)))
-
-        self.posterior_estimator.model.set_composite_prior_parameters(full_map, combine_rule=self.combine_rule)
-
-    def _evaluate_prior_qf(self, eta_tilde: np.ndarray) -> float:
-        return float(eta_tilde @ self.Lambda_prior @ eta_tilde + self.b_prior @ eta_tilde + self.c_prior)
+    # def _build_payload(self, per_component_params: List[Dict[str, float]]) -> Dict[str, Dict[str, Any]]:
+    #     return {
+    #         comp_cfg["name"]: {"family": comp_cfg["family"], "params": params}
+    #         for comp_cfg, params in zip(self.components_cfg, per_component_params)
+    #     }
+    #
+    #
+    # def _materialize_component(self, spec: Any) -> Any:
+    #     if is_basedistribution_like(spec):
+    #         return spec
+    #     if isinstance(spec, dict) and "family" in spec:
+    #         fam = spec["family"]
+    #         params = spec.get("params", {k: v for k, v in spec.items() if k != "family"})
+    #         cls = DISTRIBUTION_MAP.get(fam)
+    #         if cls is None:
+    #             raise ValueError(f"Unknown family '{fam}'. Available: {list(DISTRIBUTION_MAP.keys())}")
+    #         return cls(**params)
+    #     if isinstance(spec, dict) and "_target_" in spec:
+    #         kwargs = {k: v for k, v in spec.items() if k != "_target_"}
+    #         return instantiate_from_target_str(spec["_target_"], kwargs)
+    #
+    #     return spec
+    #
+    # def _set_composite_on_model(self, updated_components: Dict[str, Dict[str, Any]]):
+    #     """
+    #     updated_components: mapping name -> {"family": ..., "params": ...} or instance/_target_ spec.
+    #     This merges with the existing composite prior on the model so unspecified components are preserved.
+    #     """
+    #     self.posterior_estimator.model.back_to_prior_candidate()
+    #     full_map = OrderedDict()
+    #     try:
+    #         prior = getattr(self.posterior_estimator.model, "prior", None)
+    #         if isinstance(prior, CompositeProduct):
+    #             for name, comp in zip(prior.names, prior.components):
+    #                 full_map[name] = comp
+    #     except Exception:
+    #         pass
+    #
+    #     for name, spec in updated_components.items():
+    #         full_map[name] = self._materialize_component(spec)
+    #
+    #     if not full_map:
+    #         full_map = OrderedDict((name, self._materialize_component(spec)))
+    #
+    #     self.posterior_estimator.model.set_composite_prior_parameters(full_map, combine_rule=self.combine_rule)
 
     def evaluate_all_prior_corners(self) -> Tuple:
         results = []
-        total = int(np.prod([len(c) for c in self.component_corners]))
 
-        for combo in tqdm(product(*self.component_corners), total=total, desc="Evaluating corners"):
-            composite_payload = {
-                comp_cfg["name"]: {"family": comp_cfg["family"], "params": params}
-                for comp_cfg, params in zip(self.components_cfg, combo)
-            }
-            self._set_composite_on_model(composite_payload)
-            eta_tilde = self.posterior_estimator.model.prior.augmented_natural_parameters()
-            est = self._evaluate_prior_qf(eta_tilde)
-            results.append((composite_payload, eta_tilde, est))
+        for eta in tqdm(self.eta_corners, total=len(self.eta_corners), desc="Evaluating corners"):
+            est = self._evaluate_prior_qf(eta)
+            results.append((eta, est))
 
-        results.sort(key=lambda x: x[2], reverse=True)
-        print(f"Corner with the largest sensitivity {results[0][2]}: {results[0][0]}.")
+        results.sort(key=lambda x: x[1], reverse=True)
+        print(f"Largest sensitivity {results[0][1]}.")
 
         return results, results[0][0]
 
-    def evaluate_all_prior_combinations(self) -> Tuple[List, List]:
-        results = []
-        for combo in product(*self.component_grids_lambda):
-            composite_payload = {
-                comp_cfg["name"]: {"family": comp_cfg["family"], "params": params}
-                for comp_cfg, params in zip(self.components_cfg, combo)
-            }
-            self._set_composite_on_model(composite_payload)
-            eta_tilde = self.posterior_estimator.model.prior.augmented_natural_parameters()
-            est = self._evaluate_prior_qf(eta_tilde)
-            results.append((composite_payload, eta_tilde, est))
-            print(f"Composite grid: {composite_payload} => Estimated FD: {est:.2f}")
-        corner_summaries = [
-            {"component": comp_cfg["name"], "corners": corners}
-            for comp_cfg, corners in zip(self.components_cfg, self.component_corners_lambda)
-        ]
-        return results, corner_summaries
-
-    def _generate_loss_lr_corner_points(self) -> List[Dict[str, float]]:
-        param_ranges = self.loss_config["parameters_box_range"]["ranges"]
-        keys = list(param_ranges.keys())
-        endpoints = [[bounds[0], bounds[1]] for bounds in param_ranges.values()]
-        all_combinations = list(product(*endpoints))
-        return [dict(zip(keys, values)) for values in all_combinations]
-
-    def _generate_full_loss_lr_grid(self) -> dict:
-        param_ranges = self.loss_config["parameters_box_range"]["ranges"]
-        param_nums = self.loss_config["parameters_box_range"]["nums"]
-        lr_grid = {"lr": np.linspace(param_ranges["lr"][0], param_ranges["lr"][1], param_nums["lr"])}
-
-        return lr_grid
-
     def evaluate_all_lr_corners(self) -> List:
-        self.posterior_estimator.model.back_to_prior_candidate()
         results = []
-        for corner in self.loss_lr_corners:
-            self.posterior_estimator.model.set_lr_parameter(corner["lr"])
-            lr = self.posterior_estimator.model.loss_lr
-            est = lr**2 * self.Lambda_loss + self.b_loss * lr + self.c_loss
-            results.append((corner, est))
-            print(f"Corner: {corner} => Estimated FD: {est:.6f}")
-
-        results.sort(key=lambda x: x[1], reverse=True)
-        print(f"Corner with the largest sensitivity {results[0][1]}: {results[0][0]}.")
-
-        return results
-
-    def evaluate_all_lr_grid(self) -> List:
-        self.posterior_estimator.model.back_to_prior_candidate()
-        results = []
-        for lr in self.loss_lr_full_grid["lr"]:
-            self.posterior_estimator.model.set_lr_parameter(lr)
-            lr = self.posterior_estimator.model.loss_lr
-            est = lr**2 * self.Lambda_loss + self.b_loss * lr + self.c_loss
+        for lr in self.loss_lr_corners:
+            est = lr**2 * self.A_loss + self.b_loss * lr + self.c_loss
             results.append((lr, est))
             print(f"Lr: {lr} => Estimated FD: {est:.6f}")
 
         results.sort(key=lambda x: x[1], reverse=True)
-        print(f"Lr with the largest sensitivity {results[0][1]}: {results[0][0]}.")
+        print(f"Lr corner with the largest sensitivity {results[0][1]}: {results[0][0]}.")
 
         return results
 

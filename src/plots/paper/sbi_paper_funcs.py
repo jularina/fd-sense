@@ -274,19 +274,22 @@ def plot_ksd_heatmap(
         data_dict,
         plot_cfg,
         output_dir: str,
-        filename: str = "ksd_heatmap.pdf",
+        filename: str = "sbi_k_r_heatmap.pdf",
         title: str = None,
         log_scale: bool = False,
+        show_cell_values: bool = True,
+        cell_value_fmt: str = ".1f",
+        cell_value_color: str = "black",      # or None for auto
+        cell_value_fontsize: int = None,      # defaults to tick_labelsize
+        cell_value_use_raw: bool = True,      # if log_scale=True: print raw FD, not log10
 ):
     _apply_plot_rc(plot_cfg)
 
     basis_funcs = sorted(data_dict.keys())
     radii = sorted({float(r) for bf in data_dict for r in data_dict[bf].keys()})
 
-    if log_scale:
-        colorbar_label = plot_cfg.plot.param_latex_names["logoptimisationProblemWoConstraint"]
-    else:
-        colorbar_label = plot_cfg.plot.param_latex_names["optimisationProblemWoConstraint"]
+    # label
+    colorbar_label = plot_cfg.plot.param_latex_names["estimatedSensitivityMeasureWithK"]
 
     heatmap = np.full((len(radii), len(basis_funcs)), np.nan, dtype=float)
     for j, bf in enumerate(basis_funcs):
@@ -295,6 +298,9 @@ def plot_ksd_heatmap(
             if val is None:
                 val = data_dict[bf].get(float(r), np.nan)
             heatmap[i, j] = val
+
+    # keep a copy for annotations if you want raw values
+    heatmap_raw = heatmap.copy()
 
     if log_scale:
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -322,6 +328,48 @@ def plot_ksd_heatmap(
         vmin=vmin, vmax=vmax,
     )
 
+    # ---- ADD THIS BLOCK: annotate cells with values ----
+    if show_cell_values:
+        vals_for_text = heatmap_raw if (log_scale and cell_value_use_raw) else heatmap
+        fs = tick_labelsize if cell_value_fontsize is None else cell_value_fontsize
+
+        # If you want "auto" text color (black/white) depending on background,
+        # set cell_value_color=None.
+        # We'll compute contrast based on the colormap normalization.
+        norm = cax.norm
+        cmap_obj = cax.cmap
+
+        for i in range(vals_for_text.shape[0]):
+            for j in range(vals_for_text.shape[1]):
+                v = vals_for_text[i, j]
+                if not np.isfinite(v):
+                    continue
+
+                # Format text
+                txt = format(v, cell_value_fmt)
+
+                # Pick text color
+                if cell_value_color is None:
+                    # Use the displayed heatmap value for color decision (so it matches the background)
+                    v_disp = heatmap[i, j]
+                    if not np.isfinite(v_disp):
+                        color = "black"
+                    else:
+                        rgba = cmap_obj(norm(v_disp))
+                        # perceived luminance
+                        lum = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]
+                        color = "white" if lum < 0.5 else "black"
+                else:
+                    color = cell_value_color
+
+                ax.text(
+                    j, i, txt,
+                    ha="center", va="center",
+                    fontsize=fs,
+                    color=color,
+                )
+    # ---- END BLOCK ----
+
     cbar = fig.colorbar(cax, ax=ax)
     cbar.set_label(colorbar_label, fontsize=cbar_labelsize, labelpad=15)
     cbar.ax.tick_params(labelsize=tick_labelsize)
@@ -342,7 +390,6 @@ def plot_ksd_heatmap(
         ),
     )
 
-    # Set ticks and labels
     ax.set_xticks(range(len(basis_funcs)))
     ax.set_xticklabels(basis_funcs)
     ax.set_yticks(range(len(radii)))
@@ -392,8 +439,8 @@ def _resolve_cmap_from_cfg(plot_cfg):
     base_color = colors[0]
 
     # Stronger contrast than before (less pale): lower low_light, add darken
-    low_light = float(getattr(pc, "cmap_low_light", 0.95))   # 0.60–0.85 is good; 0.92 was too pale
-    darken = float(getattr(pc, "cmap_darken", 0.40))      # 0–0.6; higher = deeper high end
+    low_light = float(getattr(pc, "cmap_low_light", 0.85))   # 0.60–0.85 is good; 0.92 was too pale
+    darken = float(getattr(pc, "cmap_darken", 0.15))      # 0–0.6; higher = deeper high end
     reverse = bool(getattr(pc, "cmap_reverse", False))
     N = int(getattr(pc, "cmap_N", 256))
     return _single_hue_cmap(base_color, low_light=low_light, darken=darken, reverse=reverse, N=N)

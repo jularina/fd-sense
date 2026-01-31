@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional, Tuple
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import numpy as np
 
 
@@ -26,6 +26,7 @@ class DualQCQPSolution:
     dual_feasible: bool
     status: str
 
+
 def _pick_cvxpy_solver() -> str:
     # Prefer commercial/fast solvers if available, fallback to SCS
     try:
@@ -45,7 +46,7 @@ class ParametricQCQPBase:
     """
 
     def __init__(self, posterior_fd, prior_fd, symmetrize: bool = True, alpha: float = 1e-6):
-        A_c, b_c, c_c = prior_fd.compute_fisher_quadratic_form()
+        A_c, b_c, c_c = prior_fd.compute_fisher_quadratic_form_prior_only()
         A, b, c = posterior_fd.compute_fisher_quadratic_form_prior_only()
 
         n = A_c.shape[0]
@@ -198,7 +199,7 @@ class ParametricQCQPBase:
         top_right = 0.5 * (self.b - lam * self.b_c)
         LMI = cp.bmat([
             [top_left,              cp.reshape(top_right, (n, 1))],
-            [cp.reshape(top_right, (1, n)), cp.reshape(t, (1, 1))   ]
+            [cp.reshape(top_right, (1, n)), cp.reshape(t, (1, 1))]
         ])
 
         objective = cp.Minimize(t + self.c - lam * (self.c_c - r))
@@ -269,10 +270,10 @@ class ParametricQCQPBase:
             status=status,
         )
 
-
     # ----------------------------
     # Helpers for 1D dual in lambda
     # ----------------------------
+
     def _M_s(self, lam: float) -> Tuple[np.ndarray, np.ndarray]:
         M = self.A - lam * self.A_c
         s = self.b - lam * self.b_c
@@ -691,10 +692,16 @@ class ParametricQCQPBase:
             resid = np.linalg.norm(Xv - np.outer(eta_star, eta_star), ord="fro")
             status = f"{status}; lift_resid={resid:.2e}"
 
+        def objective_val(eta: np.ndarray) -> float:
+            eta = eta.reshape(-1)
+            return float(eta @ (self.A @ eta) + self.b @ eta + self.c)
+
+        primal_value = objective_val(eta_star)
+
         return DualQCQPSolution(
             eta_star=eta_star,
             lambda_star=float("nan"),
-            primal_value=float("nan"),
+            primal_value=primal_value,
             dual_value=dual_value,
             constraint_value=float("nan"),
             feasible=feasible,

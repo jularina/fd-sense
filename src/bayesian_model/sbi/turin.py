@@ -3,6 +3,7 @@ from abc import ABC
 from typing import Any, Dict, Tuple
 import numpy as np
 import torch
+from scipy.stats import norm
 
 from src.distributions.composite import CompositeProduct
 from src.utils.distributions import DISTRIBUTION_MAP
@@ -60,10 +61,40 @@ class TurinBayesianModel(ABC):
         self.prior = copy.deepcopy(self.prior_candidate) if deep else self.prior_candidate
         return self
 
+    @staticmethod
+    def _theta_to_z_probit(
+        theta: np.ndarray,
+        lower: np.ndarray,
+        upper: np.ndarray,
+        eps: float = 1e-9,
+    ) -> np.ndarray:
+        """
+        Componentwise probit transform from theta in (lower, upper) to z in R^d.
+        """
+        theta = np.asarray(theta, dtype=np.float64)
+        lower = np.asarray(lower, dtype=np.float64)
+        upper = np.asarray(upper, dtype=np.float64)
+
+        denom = upper - lower
+        if np.any(denom <= 0):
+            raise ValueError("All entries of (upper - lower) must be positive.")
+
+        u = (theta - lower) / denom
+        u = np.clip(u, eps, 1.0 - eps)
+        z = norm.ppf(u)
+        return z
+
     def _prepare_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         ckpt = torch.load(self.archive_path, map_location="cpu")
-        posterior_samples = ckpt["posterior_samples_nle"].cpu().numpy()
+
+        # Transform both prior and posterior samples to z-space
+        lower = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64)
+        upper = np.array([10.0, 10.0, 500.0, 10.0], dtype=np.float64)
         prior_samples = ckpt["theta_nle"].cpu().numpy()
+        posterior_samples = ckpt["posterior_samples_nle"].cpu().numpy()
+        prior_samples = self._theta_to_z_probit(prior_samples, lower, upper)
+        posterior_samples = self._theta_to_z_probit(posterior_samples, lower, upper)
+
         observations = ckpt["obs_x"].cpu().numpy()
         likelihood_grads = ckpt["likelihod_grads"].cpu().numpy()
 

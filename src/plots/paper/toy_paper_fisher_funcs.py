@@ -16,7 +16,6 @@ from matplotlib.lines import Line2D
 from scipy.stats import sem, t
 
 
-
 def plot_prior_densities_by_fd(
     all_ksd_data: Dict[str, Dict],
     cfg: DictConfig,
@@ -385,7 +384,7 @@ def plot_multi_line_plots(
                 )
 
         ax.set_xlabel(varying_param_latex)
-        ksd_latex = latex_param_names.get("estimatedFDposteriorsShort")
+        ksd_latex = latex_param_names.get("estimatedFDposteriorsQuadraticForm")
         ylabel = f"log {ksd_latex}" if plot_cfg.plot.y_axis.log_scale else ksd_latex
         ax.set_ylabel(ylabel)
         ax.spines['top'].set_visible(False)
@@ -687,7 +686,7 @@ def plot_sdp_densities_and_logprior(
     basis_function,
     psi_sdp_list: list[np.ndarray],
     radius_labels: list[float],
-    ksd_estimates: list[float],
+    estimates: list[float],
     prior_distribution,
     plot_cfg,
     output_dir: str,
@@ -720,7 +719,7 @@ def plot_sdp_densities_and_logprior(
 
     # --- Names & labels ---
     names = plot_cfg.plot.param_latex_names
-    ksd_label = names.get("estimatedFDposteriorsShort")
+    ksd_label = names.get("estimatedSensitivityMeasureWithK")
     xlabel = names.get("mu_0", "theta")
     ylabel_density = names.get("nonparametric_prior", "Density")
     ylabel_logprior = names.get("log_prior", "log_prior")
@@ -741,7 +740,7 @@ def plot_sdp_densities_and_logprior(
 
     # ===== Top panel: densities =====
     # SDP densities
-    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, estimates)):
         f = (Phi_x @ psi).flatten()
         logZ = logsumexp(f) + np.log(dx)
         p_hat = np.exp(f - logZ)
@@ -773,7 +772,7 @@ def plot_sdp_densities_and_logprior(
     # ===== Bottom panel: log prior =====
 
     # SDP log prior approximations (centered)
-    for i, (psi, r_label, _) in enumerate(zip(psi_sdp_list, radius_labels, ksd_estimates)):
+    for i, (psi, r_label, _) in enumerate(zip(psi_sdp_list, radius_labels, estimates)):
         f = (Phi_x @ psi).flatten()
         c = float(np.mean(log_prior_true - f))  # match mean
         color = palette[i % len(palette)]
@@ -826,7 +825,7 @@ def plot_sdp_densities_and_logprior(
         plt.tight_layout(rect=[0, 0, 0.95, 1])
 
     # ===== Save =====
-    filename = "toy_gaussian_model_nonparametric_optimisation_densities_logprior.pdf"
+    filename = "toy_univariate_gaussian_model_nonparametric_qcqp.pdf"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -871,7 +870,7 @@ def plot_sdp_2d_densities(
 
     # --- Labels ---
     names = getattr(plot_cfg.plot, "param_latex_names", {})
-    ksd_label = names.get("estimatedFDposteriorsShort")
+    ksd_label = names.get("estimatedSensitivityMeasureWithK")
     xlabel = names.get("mu_01", r"$\mu_{01}$")
     ylabel = names.get("mu_02", r"$\mu_{02}$")
     approx_sym = r"$\approx$"
@@ -907,8 +906,9 @@ def plot_sdp_2d_densities(
     ax.contour(
         X, Y, prior_density_true,
         levels=contour_levels,
-        colors="grey",
-        linewidths=1.5,
+        colors="black",
+        linewidths=1.0,
+        linestyles="dashed",
     )
 
     ax.set_xlabel(xlabel)
@@ -947,7 +947,7 @@ def plot_sdp_2d_densities(
         plt.tight_layout(rect=[0, 0, 0.95, 1])
 
     # Save
-    filename = "toy_multivariate_gaussian_model_nonparametric_optimisation_densities_per_radius.pdf"
+    filename = "toy_multivariate_gaussian_model_nonparametric_qcqp.pdf"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -1151,7 +1151,7 @@ def plot_multivariate_joint_prior_densities_by_fd(results, output_dir, plot_cfg,
 
     fig, ax = plt.subplots(figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height))
 
-    N = 17  # Show top-N and bottom-N KSD priors only
+    N = 25  # Show top-N and bottom-N KSD priors only
     subset_results = sorted_results[:N] + sorted_results[-N:]
 
     # Identify the distribution with the maximum KSD
@@ -1182,8 +1182,8 @@ def plot_multivariate_joint_prior_densities_by_fd(results, output_dir, plot_cfg,
         else:
             color = cmap(norm(ksd_est))
             alpha = 0.4 + 0.6 * norm(ksd_est)
-            lw = 0.5 + 1.5 * norm(ksd_est)
-            levels = 3
+            lw = 0.5 + 1.0 * norm(ksd_est)
+            levels = 1
 
         sns.kdeplot(
             x=samples[:, 0],
@@ -1226,7 +1226,7 @@ def plot_multivariate_joint_prior_densities_by_fd(results, output_dir, plot_cfg,
     sm = ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedFDposteriorsShort)
+    cbar.set_label(plot_cfg.plot.param_latex_names.estimatedFDposteriorsQuadraticForm)
 
     # Save
     output_path = os.path.join(output_dir, "joint_prior_fd_contours.pdf")
@@ -1371,7 +1371,7 @@ def plot_runtime_parametric_nonparametric_with_ci(
     times_nonparametric: dict[int, dict[int, dict[int, float]]],
     plot_cfg: Any,
     output_dir: str,
-    ci_level: float = 0.95,
+    ci_level: float = 0.68,
     filename: str = "runtime_parametric_nonparametric.pdf",
 ) -> None:
     """
@@ -1422,9 +1422,8 @@ def plot_runtime_parametric_nonparametric_with_ci(
     tight = bool(_deep_get(plot_cfg, "plot.figure.tight_layout", True))
 
     names = _deep_get(plot_cfg, "plot.param_latex_names", {}) or {}
-    x_label = names.get("numPosteriorSamples", r"\# of Posterior Samples")
+    x_label = names.get("numPriorPosteriorSamples")
     y_label = names.get("runtimeSeconds", "Time (sec.)")
-    legend_subtitle = names.get("legendBasisFunctions", r"Non-parametric: \# of basis functions")
 
     # Colors
     palette = list(getattr(_deep_get(plot_cfg, "plot.color_palette", {}), "colors", []))
@@ -1445,18 +1444,20 @@ def plot_runtime_parametric_nonparametric_with_ci(
     def _to_int(x):
         return int(x)
 
-    # --- Process parametric
-    sample_sizes_param, means_param, cis_param = [], [], []
-    for s in sorted(times_parametric.keys(), key=_to_int):
-        vals = list(times_parametric[s].values())
-        m, h = mean_ci(vals)
-        sample_sizes_param.append(int(int(s)/1000))
-        means_param.append(m)
-        cis_param.append(h)
+    # # --- Process parametric
+    # sample_sizes_param, means_param, cis_param = [], [], []
+    # for s in sorted(times_parametric.keys(), key=_to_int):
+    #     vals = list(times_parametric[s].values())
+    #     m, h = mean_ci(vals)
+    #     sample_sizes_param.append(int(int(s)/1000))
+    #     means_param.append(m)
+    #     cis_param.append(h)
 
     # --- Process non-parametric
+    sample_sizes = []
     by_basis = defaultdict(lambda: ([], [], []))
     for s in sorted(times_nonparametric.keys(), key=_to_int):
+        sample_sizes.append(int(int(s) / 1000))
         for b, runs in times_nonparametric[s].items():
             vals = list(runs.values())
             m, h = mean_ci(vals)
@@ -1469,47 +1470,42 @@ def plot_runtime_parametric_nonparametric_with_ci(
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=fig_dpi)
     handles_ordered, labels_ordered = [], []
 
-    # Parametric
-    if sample_sizes_param:
-        h_param = ax.plot(
-            sample_sizes_param, means_param,
-            marker=marker, markersize=ms, linewidth=lw,
-            color=palette[0], label="Parametric",
-        )[0]
-        ax.fill_between(
-            sample_sizes_param,
-            np.array(means_param) - np.array(cis_param),
-            np.array(means_param) + np.array(cis_param),
-            color=palette[0], alpha=0.7
-        )
-        handles_ordered.append(h_param)
-        labels_ordered.append("Parametric")
-
-    # Subtitle
-    # dummy_title = Line2D([], [], linestyle="none", label=legend_subtitle)
-    # handles_ordered.append(dummy_title)
-    # labels_ordered.append(legend_subtitle)
+    # # Parametric
+    # if sample_sizes_param:
+    #     h_param = ax.plot(
+    #         sample_sizes_param, means_param,
+    #         marker=marker, markersize=ms, linewidth=lw,
+    #         color=palette[0], label="Parametric",
+    #     )[0]
+    #     ax.fill_between(
+    #         sample_sizes_param,
+    #         np.array(means_param) - np.array(cis_param),
+    #         np.array(means_param) + np.array(cis_param),
+    #         color=palette[0], alpha=0.7
+    #     )
+    #     handles_ordered.append(h_param)
+    #     labels_ordered.append("Parametric")
 
     # Non-parametric
-    for i, (b, (samples, means, cis)) in enumerate(sorted(by_basis.items()), start=1):
+    for i, (b, (samples, means, cis)) in enumerate(by_basis.items(), start=1):
         h_np = ax.plot(
-            sample_sizes_param, means,
+            sample_sizes, means,
             marker=marker, markersize=ms, linewidth=lw,
             color=palette[i % len(palette)], label=rf"{b}"
         )[0]
         ax.fill_between(
-            sample_sizes_param,
+            sample_sizes,
             np.array(means) - np.array(cis),
             np.array(means) + np.array(cis),
-            color=palette[i % len(palette)], alpha=0.7
+            color=palette[i % len(palette)], alpha=0.4
         )
         handles_ordered.append(h_np)
         labels_ordered.append(rf"K={b}")
 
     # Axes styling
-    ax.set_xlabel(r"$m$ (×10³)")
-    ax.set_xticks(sample_sizes_param)
-    ax.set_xticklabels(sample_sizes_param)
+    ax.set_xlabel(r"$m+l$ (×10³)")
+    ax.set_xticks(sample_sizes)
+    ax.set_xticklabels(sample_sizes)
     # ax.set_xticklabels([])
     ax.set_ylabel(y_label)
     ax.grid(True, alpha=grid_alpha)
@@ -1517,9 +1513,9 @@ def plot_runtime_parametric_nonparametric_with_ci(
     ax.spines["right"].set_visible(False)
 
     # Legend
-    spacer = Line2D([], [], linestyle="none", label="")
-    handles_ordered.append(spacer)
-    labels_ordered.append("")
+    # spacer = Line2D([], [], linestyle="none", label="")
+    # handles_ordered.append(spacer)
+    # labels_ordered.append("")
     legend_fs = float(_deep_get(plot_cfg, "plot.legend.fontsize",
                                 plt.rcParams["font.size"] * 0.8))
     leg = ax.legend(
@@ -1527,8 +1523,10 @@ def plot_runtime_parametric_nonparametric_with_ci(
         loc="center",
         fontsize=legend_fs,
         bbox_to_anchor=(1.2, 0.5),
-        frameon=True, fancybox=True, framealpha=0.95,
-        borderpad=0.4, handlelength=1.2, handletextpad=0.4, labelspacing=0.24,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.95,
+        # borderpad=0.4, handlelength=1.2, handletextpad=0.4, labelspacing=0.24,
     )
     leg._legend_box.align = "left"
 
@@ -1620,12 +1618,12 @@ def plot_runtime_nonparametric_with_ci(
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=fig_dpi)
     ax.plot(basis_funcs_nums, means_param,
             marker=marker, markersize=ms, linewidth=lw,
-            color=palette[0])
+            color=palette[2])
     ax.fill_between(
         basis_funcs_nums,
         np.array(means_param) - np.array(cis_param),
         np.array(means_param) + np.array(cis_param),
-        color=palette[0], alpha=0.7
+        color=palette[2], alpha=0.5
     )
 
     # Axes styling

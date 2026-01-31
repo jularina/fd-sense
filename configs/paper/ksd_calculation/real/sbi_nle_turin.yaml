@@ -36,23 +36,23 @@ data:
 #        high: 10.0
       theta_1:
         _target_: src.distributions.gaussian.Gaussian
-        mu: 5.5
-        sigma: 2.598
+        mu: 0
+        sigma: 1
 
       theta_2:
         _target_: src.distributions.gaussian.Gaussian
-        mu: 5.5
-        sigma: 2.598
+        mu: 0
+        sigma: 1
 
       theta_3:
         _target_: src.distributions.gaussian.Gaussian
-        mu: 250.5
-        sigma: 144.1
+        mu: 0
+        sigma: 1
 
       theta_4:
         _target_: src.distributions.gaussian.Gaussian
-        mu: 5.5
-        sigma: 2.598
+        mu: 0
+        sigma: 1
 
   candidate_prior:
     _target_: src.distributions.composite.CompositeProduct
@@ -112,45 +112,45 @@ data:
 #        low: 1.0
 #        high: 10.0
 
-      theta_1:
-        _target_: src.distributions.log_normal.LogNormal
-        mu_log: 1.151
-        sigma_log: 0.576
-
-      theta_2:
-        _target_: src.distributions.log_normal.LogNormal
-        mu_log: 1.151
-        sigma_log: 0.576
-
-      theta_3:
-        _target_: src.distributions.log_normal.LogNormal
-        mu_log: 3.107
-        sigma_log: 1.554
-
-      theta_4:
-        _target_: src.distributions.log_normal.LogNormal
-        mu_log: 1.151
-        sigma_log: 0.576
-
 #      theta_1:
-#        _target_: src.distributions.gaussian.Gaussian
-#        mu: -0.25
-#        sigma: 0.15
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 0
+#        sigma_log: 1
 #
 #      theta_2:
-#        _target_: src.distributions.gaussian.Gaussian
-#        mu: 0.60
-#        sigma: 0.10
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 1.151
+#        sigma_log: 0.576
 #
 #      theta_3:
-#        _target_: src.distributions.gaussian.Gaussian
-#        mu: -0.80
-#        sigma: 0.30
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 3.107
+#        sigma_log: 1.554
 #
 #      theta_4:
-#        _target_: src.distributions.gaussian.Gaussian
-#        mu: -0.95
-#        sigma: 0.25
+#        _target_: src.distributions.log_normal.LogNormal
+#        mu_log: 1.151
+#        sigma_log: 0.576
+
+      theta_1:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 1
+
+      theta_2:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 1
+
+      theta_3:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 1
+
+      theta_4:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 1
   true_dgp: null
   loss:
     _target_: src.losses.gaussian_log_likelihood.GaussianLogLikelihoodWithGivenGrads
@@ -254,10 +254,8 @@ ksd:
                 sigma_log: 11
 
       nonparametric:
-        basis_funcs_type:  RBFBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim  # RBFBasisFunctionMultidim
-        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "kmeans", "lengthscale": null, "scale_multiplier": 1, "metric": "full" } # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
-        radius_lower_bound: null
-        scale_samples: False
+        basis_funcs_type:  MaternBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim  # RBFBasisFunctionMultidim
+        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "scale_multiplier": 3} # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
 
     loss:
       GaussianLogLikelihoodWithGivenGrads:

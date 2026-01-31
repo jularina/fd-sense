@@ -22,7 +22,7 @@ class BayesianModel(ABC):
         self.prior: Any = data_config.candidate_prior
         self.prior_init: Any = data_config.base_prior
         self.prior_candidate: Any = data_config.candidate_prior
-        self.loss_lr_init: float = 1.0
+        self.loss_lr_init: float = 0.6
         self.m: int = data_config.posterior_samples_num
         self.m_prior: int = data_config.prior_samples_num
 

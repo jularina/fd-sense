@@ -9,4 +9,5 @@ BASIS_FUNCTIONS_REGISTRY = {
     "RBFBasisFunctionMultidim": RBFBasisFunctionMultidim,
     "SigmoidBasisFunctionMultidim": SigmoidBasisFunctionMultidim,
     "PolynomialBasisFunctionMultidim": PolynomialBasisFunctionMultidim,
+    "MaternBasisFunctionMultidim": MaternBasisFunctionMultidim,
 }

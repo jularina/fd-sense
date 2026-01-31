@@ -22,7 +22,7 @@ data:
 model:
   _target_: src.bayesian_model.ising.ising.IsingBayesianModel
 
-ksd:
+fd:
   kernel:
     _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
     lengthscale: null

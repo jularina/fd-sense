@@ -1,6 +1,5 @@
 import numpy as np
 from typing import Callable
-from src.kernels.base import BaseKernel
 
 
 class FisherDivergence:

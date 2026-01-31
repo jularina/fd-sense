@@ -1,7 +1,6 @@
 from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
 from src.optimization.qcqp import ParametricQCQPBase
 from src.optimization.corner_points_fisher import *
-from src.distributions.gaussian import MultivariateGaussian
 from src.utils.files_operations import load_plot_config
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.bayesian_model.base import BayesianModel
@@ -14,7 +13,6 @@ import hydra
 from hydra.utils import instantiate, get_original_cwd
 import time
 import json
-from typing import Optional, Dict, Any
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -92,6 +90,7 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel):
     plot_cfg = load_plot_config(plot_config_path)
     param_names = [name+"_0" for name in param_names]
     plot_multi_line_plots(results, param_names, plot_cfg, output_dir)
+
 
 def plots_across_gaussian_loss_lr_parameters_ranges(cfg, model: BayesianModel):
     """
@@ -230,8 +229,8 @@ def run_gaussian_priors_qcqp(cfg) -> None:
 
     # Prior
     prior_fd = PriorFDBase(model=model)
-    print(f"FD from score differences: {prior_fd.estimate_fisher():.4f}")
-    A_c, b_c, c_c = prior_fd.compute_fisher_quadratic_form()
+    print(f"FD from score differences: {prior_fd.estimate_fisher_prior_only():.4f}")
+    A_c, b_c, c_c = prior_fd.compute_fisher_quadratic_form_prior_only()
     eta = model.prior_candidate.natural_parameters()
     print(f"FD from quadratic form: {eta @ A_c @ eta + b_c @ eta + c_c:.4f}")
 
@@ -270,15 +269,8 @@ def run_gaussian_priors_qcqp(cfg) -> None:
 
     print("Lagrange dual")
     lagrange_dual_solution = solver.solve_dual_1d_lambda(radius=1.0)
-    print("lambda_star:", lagrange_dual_solution.lambda_star)
     print("eta_star:", lagrange_dual_solution.eta_star)
-    print("dual_value:", lagrange_dual_solution.dual_value)
-    print("objective at eta_star:", lagrange_dual_solution.primal_value)
-    print("constraint at eta_star:", lagrange_dual_solution.constraint_value, "(should be <= r)")
-
-    lagrange_dual_solution = solver.solve_dual_1d_lambda(radius=0.05)
     print("lambda_star:", lagrange_dual_solution.lambda_star)
-    print("eta_star:", lagrange_dual_solution.eta_star)
     print("dual_value:", lagrange_dual_solution.dual_value)
     print("objective at eta_star:", lagrange_dual_solution.primal_value)
     print("constraint at eta_star:", lagrange_dual_solution.constraint_value, "(should be <= r)")
@@ -316,7 +308,8 @@ def run_multivariate_gaussian_priors(cfg, save_samples: bool = True) -> None:
         cfg.ksd.optimize.loss.MultivariateGaussianLogLikelihood)
     qf_priors_all_combinations = optimizer.evaluate_all_prior_combinations()
 
-    density_plot_across_multivariate_prior_parameter_sets(cfg, model, qf_priors_all_combinations=qf_priors_all_combinations)
+    density_plot_across_multivariate_prior_parameter_sets(
+        cfg, model, qf_priors_all_combinations=qf_priors_all_combinations)
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
@@ -360,10 +353,10 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
     # Nonparametric optimisation
     estimator_prior = PriorFDNonParametric(model=model)
     estimator_posterior = PosteriorFDNonParametric(model=model)
-    psi_sdp_list, fd_estimates_list, radius_labels = [], [], []
-    psi_tr_list, fd_estimates_list_tr = [], []
+    sdp_psi_list, sdp_fd_estimates_list, radius_labels = [], [], []
+    sdp_psi_list, sdp_fd_estimates_list = [], []
 
-    for radius in [2.0, 4.0, 6.0]:
+    for radius in [0.5, 1.0, 5.0, 10.0]:
         optimizer = OptimisationNonparametricBase(
             estimator_posterior,
             estimator_prior,
@@ -373,10 +366,20 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
         start = time.perf_counter()
         result_sdp = optimizer.optimize_through_sdp_relaxation()
         elapsed = time.perf_counter() - start
-        print(f"SDP time: {elapsed}")
+        print(f"SDP primal relaxation time: {elapsed}")
 
-        psi_sdp_list.append(result_sdp["psi_opt"])
-        fd_estimates_list.append(result_sdp["primal_value"])
+        start = time.perf_counter()
+        result_lagrange_dual = optimizer.optimize_through_dual_1d_lambda()
+        elapsed = time.perf_counter() - start
+        print(f"Lagrange dual time: {elapsed}")
+
+        start = time.perf_counter()
+        result_sdp_dual = optimizer.optimize_dual_sdp_lambda_t()
+        elapsed = time.perf_counter() - start
+        print(f"SDP dual time: {elapsed}")
+
+        sdp_psi_list.append(result_sdp["eta_star"])
+        sdp_fd_estimates_list.append(result_sdp["primal_value"])
         radius_labels.append(radius)
 
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
@@ -385,20 +388,20 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
 
     plot_sdp_densities_and_logprior(
         basis_function=optimizer.basis_function,
-        psi_sdp_list=psi_sdp_list,
+        psi_sdp_list=sdp_psi_list,
         radius_labels=radius_labels,
-        ksd_estimates=fd_estimates_list,
+        estimates=sdp_fd_estimates_list,
         prior_distribution=model.prior_init,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
-        domain=(-6, 10),
+        domain=(-5, 12),
         resolution=300
     )
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
             config_name="multivariate_gaussian")
-def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False) -> None:
+def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = True) -> None:
     """
     Main function to compute FD and perform prior parameter grid search using Hydra for configuration.
 
@@ -414,38 +417,26 @@ def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples:
         np.save(output_dir + "/observations.npy", model.observations)
         np.save(output_dir + "/prior_samples.npy", model.prior_samples_init)
 
-    posterior_samples = np.load(output_dir + "/posterior_samples.npy")
-    prior_samples = np.load(output_dir + "/prior_samples.npy")
+    # Nonparametric optimisation
+    estimator_prior = PriorFDNonParametric(model=model)
+    estimator_posterior = PosteriorFDNonParametric(model=model)
+    psi_sdp_list, fd_estimates_list, radius_labels = [], [], []
 
-    fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-    print(f"Initial Fisher: {fisher_estimator.estimate_fisher():.4f}")
-    psi_sdp_list, ksd_estimates_list, radius_labels = [], [], []
-
-    # Nonparametric optimization
-    estimator_prior = PriorFDNonParametric(samples=prior_samples, model=model, candidate_type="prior")
-    estimator_posterior = PosteriorFDNonParametric(samples=posterior_samples, model=model, candidate_type="prior")
-
-    for radius_lower_bound in [0.1, 0.5, 5.0, 10.0, 20]:
+    for radius in [0.5, 1.0, 5.0, 10.0]:
         optimizer = OptimisationNonparametricBase(
             estimator_posterior,
             estimator_prior,
             cfg.ksd.optimize.prior.nonparametric,
-            radius_lower_bound=radius_lower_bound
+            radius=radius
         )
-
         start = time.perf_counter()
         result_sdp = optimizer.optimize_through_sdp_relaxation()
         elapsed = time.perf_counter() - start
-        print(f"SDP time: {elapsed}")
+        print(f"SDP relaxation time: {elapsed}")
 
-        start = time.perf_counter()
-        result_tr = optimizer.optimize_through_qcqp_trust_region()
-        elapsed = time.perf_counter() - start
-        print(f"TR time: {elapsed}")
-
-        psi_sdp_list.append(result_sdp["psi_opt"])
-        ksd_estimates_list.append(result_sdp["est"])
-        radius_labels.append(radius_lower_bound)
+        psi_sdp_list.append(result_sdp["eta_star"])
+        fd_estimates_list.append(result_sdp["primal_value"])
+        radius_labels.append(radius)
 
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
@@ -454,7 +445,7 @@ def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples:
         basis_function=optimizer.basis_function,
         psi_sdp_list=psi_sdp_list,
         radius_labels=radius_labels,
-        ksd_estimates=ksd_estimates_list,
+        ksd_estimates=fd_estimates_list,
         prior_distribution=model.prior_init,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
@@ -562,7 +553,7 @@ def run_inverse_wishart_priors(cfg) -> None:
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
-def run_gaussian_priors_diff_samples_num(cfg) -> None:
+def run_gaussian_priors_nonparametric_diff_samples_num(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
 
@@ -573,7 +564,7 @@ def run_gaussian_priors_diff_samples_num(cfg) -> None:
     samples_nums_list = [int(x) for x in np.linspace(1000, 10000, 10)]
     basis_funcs_num_list = [int(x) for x in np.linspace(5, 15, 3)]
     times_parametric, times_nonparametric = defaultdict(dict),  defaultdict(lambda: defaultdict(dict))
-    steps = 30
+    steps = 200
 
     for step in range(steps):
         print(f"Parametric running step {step}.")
@@ -581,10 +572,12 @@ def run_gaussian_priors_diff_samples_num(cfg) -> None:
             cfg.data.posterior_samples_num = sample_nums
             model = instantiate(cfg.model, data_config=cfg.data)
             start = time.perf_counter()
-            fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init,
-                                               model=model, candidate_type="prior")
+            fisher_estimator = PosteriorFDBase(model=model)
             optimizer = OptimizationCornerPointsUnivariateGaussian(
-                fisher_estimator, cfg.ksd.optimize.prior.Gaussian, cfg.ksd.optimize.loss.GaussianLogLikelihood)
+                fisher_estimator,
+                cfg.ksd.optimize.prior.Gaussian,
+                cfg.ksd.optimize.loss.GaussianLogLikelihood
+            )
             prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
             elapsed = time.perf_counter() - start
             largest_fd = prior_corners[0][2]
@@ -594,37 +587,36 @@ def run_gaussian_priors_diff_samples_num(cfg) -> None:
 
     data_path = os.path.join(get_original_cwd(), "data/univariate_gaussian/runtimes/")
     os.makedirs(data_path, exist_ok=True)
-    with open(data_path + "parametric_optimisation_times.json", "w") as f:
+    with open(data_path + "parametric_qcqp_optimisation_times.json", "w") as f:
         json.dump(times_parametric, f, indent=4)
 
+    samples_nums_list = [int(x) for x in np.linspace(500, 10000, 10)]
     for step in range(steps):
-        print(f"Non-parametric running step {step}.")
+        print(f"Non-parametric QCQP running step {step}.")
         for sample_nums in samples_nums_list:
             for basis_funcs_num in basis_funcs_num_list:
                 cfg.data.posterior_samples_num = sample_nums
+                cfg.data.prior_samples_num = sample_nums
                 cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
                 model = instantiate(cfg.model, data_config=cfg.data)
                 start = time.perf_counter()
-
-                estimator_prior = PriorFDNonParametric(
-                    samples=model.prior_samples_init, model=model, candidate_type="prior")
-                estimator_posterior = PosteriorFDNonParametric(
-                    samples=model.posterior_samples_init, model=model, candidate_type="prior")
+                estimator_prior = PriorFDNonParametric(model=model)
+                estimator_posterior = PosteriorFDNonParametric(model=model)
                 optimizer = OptimisationNonparametricBase(
                     estimator_posterior,
                     estimator_prior,
                     cfg.ksd.optimize.prior.nonparametric,
-                    radius_lower_bound=5.0
+                    radius=2.0
                 )
-                result_sdp = optimizer.optimize_through_sdp_relaxation()
+                result_sdp_dual = optimizer.optimize_dual_sdp_lambda_t()
                 elapsed = time.perf_counter() - start
-                largest_ksd = result_sdp["est"]
-                times_list_nonparametric.append((sample_nums, basis_funcs_num, elapsed))
-                times_nonparametric[sample_nums][basis_funcs_num][step] = elapsed
+                largest_fd = result_sdp_dual["dual_value"]
+                times_list_nonparametric.append((sample_nums*2, basis_funcs_num, elapsed))
+                times_nonparametric[sample_nums*2][basis_funcs_num][step] = elapsed
                 print(
-                    f"***Non-parametric*** Samples: {sample_nums}, Basis Functions num: {basis_funcs_num}, Initial FD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
+                    f"***Non-parametric*** Samples: {sample_nums*2}, Basis Functions num: {basis_funcs_num}, Initial FD: {largest_fd:.4f}, Time: {elapsed:.3f} sec")
 
-    with open(data_path + "nonparametric_optimisation_times.json", "w") as f:
+    with open(data_path + "nonparametric_qcqp_optimisation_times.json", "w") as f:
         json.dump(times_nonparametric, f, indent=4)
 
 
@@ -640,7 +632,7 @@ def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
     samples_nums_list = [int(x) for x in np.linspace(1000, 10000, 10)]
     basis_funcs_num_list = [int(x) for x in np.linspace(5, 15, 3)]
     times_parametric, times_nonparametric = defaultdict(dict),  defaultdict(lambda: defaultdict(dict))
-    steps = 10
+    steps = 200
 
     for step in range(steps):
         print(f"Parametric running step {step}.")
@@ -648,8 +640,7 @@ def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
             cfg.data.posterior_samples_num = sample_nums
             model = instantiate(cfg.model, data_config=cfg.data)
             start = time.perf_counter()
-            fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init,
-                                               model=model, candidate_type="prior")
+            fisher_estimator = PosteriorFDBase(model=model)
             optimizer = OptimizationCornerPointsMultivariateGaussian(
                 fisher_estimator, cfg.ksd.optimize.prior.MultivariateGaussian,
                 cfg.ksd.optimize.loss.MultivariateGaussianLogLikelihood)
@@ -662,36 +653,36 @@ def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
 
     data_path = os.path.join(get_original_cwd(), "data/multivariate_gaussian/runtimes/")
     os.makedirs(data_path, exist_ok=True)
-    with open(data_path + "parametric_optimisation_times.json", "w") as f:
+    with open(data_path + "parametric_qcqp_optimisation_times.json", "w") as f:
         json.dump(times_parametric, f, indent=4)
 
+    samples_nums_list = [int(x) for x in np.linspace(500, 10000, 10)]
     for step in range(steps):
         print(f"Parametric running step {step}.")
         for sample_nums in samples_nums_list:
             for basis_funcs_num in basis_funcs_num_list:
                 cfg.data.posterior_samples_num = sample_nums
+                cfg.data.prior_samples_num = sample_nums
                 cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
                 model = instantiate(cfg.model, data_config=cfg.data)
                 start = time.perf_counter()
-                estimator_prior = PriorFDNonParametric(samples=model.prior_samples_init, model=model,
-                                                       candidate_type="prior")
-                estimator_posterior = PosteriorFDNonParametric(samples=model.posterior_samples_init, model=model,
-                                                               candidate_type="prior")
+                estimator_prior = PriorFDNonParametric(model=model)
+                estimator_posterior = PosteriorFDNonParametric(model=model)
                 optimizer = OptimisationNonparametricBase(
                     estimator_posterior,
                     estimator_prior,
                     cfg.ksd.optimize.prior.nonparametric,
-                    radius_lower_bound=5.0
+                    radius=2.0
                 )
-                result_sdp = optimizer.optimize_through_sdp_relaxation()
+                result_sdp_dual = optimizer.optimize_dual_sdp_lambda_t()
                 elapsed = time.perf_counter() - start
-                largest_ksd = result_sdp["est"]
-                times_list_nonparametric.append((sample_nums, basis_funcs_num, elapsed))
-                times_nonparametric[sample_nums][basis_funcs_num][step] = elapsed
+                largest_ksd = result_sdp_dual["dual_value"]
+                times_list_nonparametric.append((sample_nums*2, basis_funcs_num, elapsed))
+                times_nonparametric[sample_nums*2][basis_funcs_num][step] = elapsed
                 print(
-                    f"***Non-parametric*** Samples: {sample_nums}, Basis Functions num: {basis_funcs_num}, Initial FD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
+                    f"***Non-parametric*** Samples: {sample_nums*2}, Basis Functions num: {basis_funcs_num}, Initial FD: {largest_ksd:.4f}, Time: {elapsed:.3f} sec")
 
-    with open(data_path + "nonparametric_optimisation_times.json", "w") as f:
+    with open(data_path + "nonparametric_qcqp_optimisation_times.json", "w") as f:
         json.dump(times_nonparametric, f, indent=4)
 
 
@@ -706,28 +697,26 @@ def run_multivariate_gaussian_priors_diff_basis_funcs_num(cfg) -> None:
     times_list_parametric, times_list_nonparametric = [], []
     basis_funcs_num_list = [int(x) for x in np.linspace(5, 25, 21)]
     times_nonparametric = defaultdict(dict)
-    steps = 10
+    steps = 100
 
     for step in range(steps):
         print(f"Parametric running step {step}.")
         for basis_funcs_num in basis_funcs_num_list:
-            cfg.data.posterior_samples_num = 2000
+            cfg.data.posterior_samples_num = 1000
             cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"] = basis_funcs_num
             model = instantiate(cfg.model, data_config=cfg.data)
-            start = time.perf_counter()
-            estimator_prior = PriorFDNonParametric(samples=model.prior_samples_init, model=model,
-                                                   candidate_type="prior")
-            estimator_posterior = PosteriorFDNonParametric(samples=model.posterior_samples_init, model=model,
-                                                           candidate_type="prior")
+            estimator_prior = PriorFDNonParametric(model=model)
+            estimator_posterior = PosteriorFDNonParametric(model=model)
             optimizer = OptimisationNonparametricBase(
                 estimator_posterior,
                 estimator_prior,
                 cfg.ksd.optimize.prior.nonparametric,
-                radius_lower_bound=5.0
+                radius=2.0
             )
-            result_sdp = optimizer.optimize_through_sdp_relaxation()
+            start = time.perf_counter()
+            result_sdp_dual = optimizer.optimize_dual_sdp_lambda_t()
             elapsed = time.perf_counter() - start
-            largest_ksd = result_sdp["est"]
+            largest_ksd = result_sdp_dual["dual_value"]
             times_list_nonparametric.append((basis_funcs_num, elapsed))
             times_nonparametric[basis_funcs_num][step] = elapsed
             print(
@@ -765,30 +754,41 @@ def run_priors_optimisation_runtimes(cfg):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
-
     data_path = os.path.join(get_original_cwd(), "data/multivariate_gaussian/runtimes/")
 
-    with open(data_path + "nonparametric_optimisation_times_diff_basis_funcs_nums.json", "r") as f:
+    with open(data_path + "nonparametric_qcqp_optimisation_times.json", "r") as f:
         nonparametric_optimisation_times = json.load(f)
-
-    plot_runtime_nonparametric_with_ci(
+    with open(data_path + "parametric_qcqp_optimisation_times.json", "r") as f:
+        parametric_optimisation_times = json.load(f)
+    plot_runtime_parametric_nonparametric_with_ci(
+        parametric_optimisation_times,
         nonparametric_optimisation_times,
         plot_cfg,
         output_dir,
-        filename="runtime_nonparametric_multivariate.pdf"
+        filename="runtime_parametric_nonparametric_qcqp_multivariate.pdf"
     )
 
 
+    # with open(data_path + "nonparametric_qcqp_optimisation_times.json", "r") as f:
+    #     nonparametric_optimisation_times = json.load(f)
+    # plot_runtime_nonparametric_with_ci(
+    #     nonparametric_optimisation_times,
+    #     plot_cfg,
+    #     output_dir,
+    #     filename="runtime_parametric_nonparametric_qcqp_univariate.pdf"
+    # )
+
+
 if __name__ == "__main__":
-    # run_gaussian_priors()
-    # run_gaussian_lr()
+    run_gaussian_priors()
+    run_gaussian_lr()
     # run_multivariate_gaussian_priors()
     # run_gaussian_priors_qcqp()
     # run_inverse_wishart_priors()
-    run_gaussian_priors_nonparametric_diff_radii()
-    # run_multivariate_gaussian_priors_nonparametric_diff_radii()
+    # run_gaussian_priors_nonparametric_diff_radii()
+    run_multivariate_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums()
-    # run_gaussian_priors_diff_samples_num()
+    # run_gaussian_priors_nonparametric_diff_samples_num()
     # run_multivariate_gaussian_priors_diff_samples_num()
-    # run_multivariate_gaussian_priors_diff_basis_funcs_num()
+    run_multivariate_gaussian_priors_diff_basis_funcs_num()
     # run_priors_optimisation_runtimes()
