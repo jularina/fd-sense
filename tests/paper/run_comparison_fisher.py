@@ -6,6 +6,7 @@ import os
 import glob
 import numpy as np
 import pymc as pm
+from dataclasses import dataclass
 
 from src.plots.paper.comparison_paper_funcs import *
 from src.utils.files_operations import load_plot_config
@@ -14,6 +15,110 @@ from src.bayesian_model.base import BayesianModel
 from src.discrepancies.posterior_fisher import PosteriorFDBase
 from src.utils.display import print_optimised_corners_values
 
+
+@dataclass
+class BlockDecomposition:
+    name: str
+    main_quad: float          # eta_j^T A_jj eta_j
+    linear: float             # b_j^T eta_j
+    interaction: float        # sum_{k!=j} eta_j^T A_jk eta_k   (counted ONCE per block; totals will be 2x this)
+    total_with_half_interactions: float  # main + linear + interaction/?? (see note below)
+
+
+def decompose_prior_qf_by_blocks(
+    eta: np.ndarray,
+    A: np.ndarray,
+    b: np.ndarray,
+    c: float,
+    names: List[str],
+    block_size: int = 2,
+) -> Tuple[Dict[str, BlockDecomposition], Dict[str, float]]:
+    """
+    Decompose Q(eta)=eta^T A eta + b^T eta + c into block contributions.
+
+    Returns:
+      per_block: dict of BlockDecomposition
+      totals: dict with sanity-check totals
+    """
+    eta = np.asarray(eta).reshape(-1)
+    b = np.asarray(b).reshape(-1)
+    A = np.asarray(A)
+
+    d = eta.shape[0]
+    assert A.shape == (d, d), f"A shape {A.shape} does not match eta length {d}"
+    assert b.shape == (d,), f"b length {b.shape} does not match eta length {d}"
+    assert d == block_size * len(names), f"eta length {d} != {block_size} * len(names) {len(names)}"
+
+    # Full value
+    Q_full = float(eta @ A @ eta + b @ eta + c)
+    per_block: Dict[str, BlockDecomposition] = {}
+
+    # Precompute block indices
+    block_inds = []
+    for j, nm in enumerate(names):
+        idx = np.arange(j * block_size, (j + 1) * block_size)
+        block_inds.append((nm, idx))
+
+    # Compute within-block and interaction pieces
+    for j, (nm, idx_j) in enumerate(block_inds):
+        eta_j = eta[idx_j]
+        b_j = b[idx_j]
+        A_jj = A[np.ix_(idx_j, idx_j)]
+
+        main_quad = float(eta_j @ A_jj @ eta_j)
+        linear = float(b_j @ eta_j)
+
+        # interaction_j := sum_{k != j} eta_j^T A_jk eta_k  (no factor 2 here)
+        interaction = 0.0
+        for k, (_, idx_k) in enumerate(block_inds):
+            if k == j:
+                continue
+            A_jk = A[np.ix_(idx_j, idx_k)]
+            eta_k = eta[idx_k]
+            interaction += float(eta_j @ A_jk @ eta_k)
+
+        # A clean “per-block total” that sums back to Q (up to constant) is:
+        # main + linear + 0.5 * (2 * sum_{j<k} eta_j^T A_jk eta_k) attributed evenly.
+        # Since interaction here counts both directions across j, we use 0.5 * interaction.
+        total_with_half_interactions = main_quad + linear + 0.5 * interaction
+
+        per_block[nm] = BlockDecomposition(
+            name=nm,
+            main_quad=main_quad,
+            linear=linear,
+            interaction=interaction,
+            total_with_half_interactions=total_with_half_interactions,
+        )
+
+    # Sanity checks
+    main_sum = sum(v.main_quad for v in per_block.values())
+    linear_sum = sum(v.linear for v in per_block.values())
+
+    # Each cross term eta_j^T A_jk eta_k is counted twice in sum_j interaction_j (once as j→k and once as k→j),
+    # so the true total cross contribution to eta^T A eta is:
+    # cross_total = 0.5 * sum_j interaction_j
+    cross_total = 0.5 * sum(v.interaction for v in per_block.values())
+
+    Q_reconstructed_no_c = main_sum + cross_total + linear_sum
+    Q_reconstructed = Q_reconstructed_no_c + float(c)
+
+    totals = {
+        "Q_full": Q_full,
+        "main_sum": float(main_sum),
+        "linear_sum": float(linear_sum),
+        "cross_total": float(cross_total),
+        "c": float(c),
+        "Q_reconstructed": float(Q_reconstructed),
+        "abs_err": float(abs(Q_reconstructed - Q_full)),
+    }
+
+    return per_block, totals
+
+
+def rank_blocks(per_block: Dict[str, BlockDecomposition], key: str = "total_with_half_interactions"):
+    """Return a list of (name, value) sorted descending by chosen key."""
+    pairs = [(nm, getattr(obj, key)) for nm, obj in per_block.items()]
+    return sorted(pairs, key=lambda x: x[1], reverse=True)
 
 def sample_trunc_normal_loc1(x, a, b, n, rng):
     out = np.empty((n, 1), dtype=float)
@@ -345,21 +450,28 @@ def run_bioassay(cfg: DictConfig, sample=False):
 
     print("=== FD for Bioassay model ===")
     model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
-    fisher_estimator = PosteriorFDBase(samples=model.posterior_samples_init, model=model, candidate_type="prior")
-    fd_value = float(fisher_estimator.estimate_fisher())
+    fisher_estimator = PosteriorFDBase(model=model)
+    fd_value = float(fisher_estimator.estimate_fisher_prior_only())
     print(f"[FD] Posterior FD (baseline prior): {fd_value:.5f}")
 
     # Parametric prior optimisation
-    optimizer = OptimizationCornerPointsCompositePrior(
-        fisher_estimator,
-        cfg.ksd.optimize.prior.Composite,
-        cfg.ksd.optimize.loss.LogisticBinomialLogLikelihood
+    optimizer = OptimizationCornerPointsCompositePrior(fisher_estimator,
+                                                       cfg.fd.optimize.prior.Composite,
+                                                       cfg.fd.optimize.loss.LogisticBinomialLogLikelihood,
+                                                       )
+    qf_corners, eta_star = optimizer.evaluate_all_prior_corners()
+
+    # Interpretation
+    A, b, c = fisher_estimator.compute_fisher_quadratic_form_prior_only()
+    names = ["alpha", "beta"]
+    per_block, totals = decompose_prior_qf_by_blocks(
+        eta=eta_star, A=A, b=b, c=c, names=names, block_size=2
     )
-    prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
-    worst_corner_params = {}
-    worst_corner_params["family"] = "Laplace"
-    worst_corner_params["params"] = worst_corner
-    print_optimised_corners_values(prior_corners)
+    print(totals)
+    ranking = rank_blocks(per_block, key="total_with_half_interactions")
+    print("Ranked (main + linear + 0.5*interactions):")
+    for nm, val in ranking:
+        print(nm, val)
 
 
 @hydra.main(version_base="1.1",
@@ -372,28 +484,26 @@ def plot_comparison_plots_wim(cfg: DictConfig):
 
     plot_prior_range_comparison_split(
         wim_cauchy_scales_beta=[2.5, 5, 10],
-        normal_mu_range=(-2, 2),
-        normal_sigma_range=(5, 10),
-        normal_mu_points=6,
-        normal_sigma_points=3,
-        laplace_b_range=(10, 20),
-        laplace_b_points=20,
+        wim_cauchy_scales_alpha=[10],
+        eta_1_alpha_range = [-0.12, 0.12],
+        eta_2_alpha_range = [-0.02, -0.00125],
+        eta_1_beta_range  = [-5.12, 5.12],
+        eta_2_beta_range  = [-1.28, -0.005],
         plot_cfg=plot_cfg,
         output_dir=output_dir,
         filenames=(
             "comparison_prior_range_wim_cauchy.pdf",
-            "comparison_prior_range_wim_ksd_normal.pdf",
-            "comparison_prior_range_wim_ksd_laplace.pdf",
+            "comparison_prior_range_wim_fd_normal.pdf",
         ),
         normal_fill_alpha=0.12
     )
 
 
 if __name__ == "__main__":
-    run_laplace_cauchy_priors_normal_reference_1_4_berger()
+    # run_laplace_cauchy_priors_normal_reference_1_4_berger()
     # run_laplace_cauchy_priors_uniform_reference_1_4_berger()
     # run_nonconjugate_reference_prior_mcmc_1_4_berger()
     # plot_comparison_plots_1_4_berger()
     # run_normals_comparison_section_3_3_berger()
-    # run_bioassay()
+    run_bioassay()
     # plot_comparison_plots_wim()

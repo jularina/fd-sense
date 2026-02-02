@@ -233,14 +233,11 @@ def _save_fig(fig, output_dir: str, filename: str, plot_cfg):
 
 def plot_prior_range_comparison_split(
     wim_cauchy_scales_beta,
-    x0_value=0,
-    mu0_laplace=0,
-    normal_mu_range=(-5, 5),
-    normal_sigma_range=(5, 10),
-    normal_mu_points=6,
-    normal_sigma_points=3,
-    laplace_b_range=(3, 14),
-    laplace_b_points=20,
+    wim_cauchy_scales_alpha,
+    eta_1_alpha_range,
+    eta_2_alpha_range,
+    eta_1_beta_range,
+    eta_2_beta_range,
     plot_cfg=None,
     output_dir=".",
     filenames=(
@@ -259,72 +256,119 @@ def plot_prior_range_comparison_split(
     base_color = plot_cfg.plot.color_palette.colors[0]  # shared color
 
     # ------------------------------ (a) WIM / Cauchy dots ------------------------------
-    fig_a, ax_a = plt.subplots(1, 1, figsize=(W, H), dpi=dpi)
-    scales = np.asarray(wim_cauchy_scales_beta, dtype=float)
-    ax_a.plot(scales, np.zeros_like(scales), linestyle="none",
-              marker=".", markersize=10, color="black")
-    pad = 0.1 * (scales.max() - scales.min() if scales.size else 1.0)
-    xmin = max(0.0, (scales.min() - pad) if scales.size else 0.0)
-    xmax = (scales.max() + pad) if scales.size else 1.0
-    ax_a.set_xlim(xmin, xmax)
-    ax_a.set_ylim(-0.5, 0.5)
-    ax_a.set_ylabel(r"$x_0$")
+    fig_a, (ax_a_alpha, ax_a_beta) = plt.subplots(
+        2, 1, figsize=(W, H), dpi=dpi, sharex=True
+    )
 
-    ax_a.set_xlabel(r"$\gamma_0$")
-    ax_a.spines["top"].set_visible(False)
-    ax_a.spines["right"].set_visible(False)
+    # --- Alpha ---
+    scales_alpha = np.asarray(wim_cauchy_scales_alpha, dtype=float)
+    ax_a_alpha.plot(
+        scales_alpha,
+        np.zeros_like(scales_alpha),
+        linestyle="none",
+        marker=".",
+        markersize=10,
+        color="black",
+    )
+    ax_a_alpha.set_title(r"$\alpha$", pad=4)
+    ax_a_alpha.set_ylabel(r"$\mu_\alpha$")
+    ax_a_alpha.spines["top"].set_visible(False)
+    ax_a_alpha.spines["right"].set_visible(False)
+    ax_a_alpha.plot(10, 0, marker="*", color="red", markersize=10, zorder=5)
+
+    # --- Beta ---
+    scales_beta = np.asarray(wim_cauchy_scales_beta, dtype=float)
+    ax_a_beta.plot(
+        scales_beta,
+        np.zeros_like(scales_beta),
+        linestyle="none",
+        marker=".",
+        markersize=10,
+        color="black",
+    )
+    ax_a_beta.plot(2.5, 0, marker="*", color="red", markersize=10, zorder=5)
+    ax_a_beta.set_title(r"$\beta$", pad=4)
+    ax_a_beta.set_ylabel(r"$\mu_\beta$")
+    ax_a_beta.set_xlabel(r"$\gamma_\beta$")
+    ax_a_beta.spines["top"].set_visible(False)
+    ax_a_beta.spines["right"].set_visible(False)
+
+    # --- Shared limits ---
+    all_scales = np.concatenate(
+        [scales_alpha, scales_beta]
+    ) if (scales_alpha.size and scales_beta.size) else (
+        scales_alpha if scales_alpha.size else scales_beta
+    )
+
+    pad = 0.1 * (all_scales.max() - all_scales.min() if all_scales.size else 1.0)
+    xmin = max(0.0, (all_scales.min() - pad) if all_scales.size else 0.0)
+    xmax = (all_scales.max() + pad) if all_scales.size else 1.0
+
+    for ax in (ax_a_alpha, ax_a_beta):
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(-0.5, 0.5)
+
     _save_fig(fig_a, output_dir, filenames[0], plot_cfg)
 
-    # ------------------------------ (b) KSD / Normal grid ------------------------------
-    fig_b, ax_b = plt.subplots(1, 1, figsize=(W, H), dpi=dpi)
-    mu_min, mu_max = normal_mu_range
-    s_min, s_max = normal_sigma_range
-    mu_vals = np.linspace(mu_min, mu_max, max(2, int(normal_mu_points)))
-    sigma_vals = np.linspace(s_min, s_max, max(2, int(normal_sigma_points)))
-    M, S = np.meshgrid(mu_vals, sigma_vals)
+    # ------------------------------ (b) FD / Normal grid ------------------------------
+    fig_b, (ax_b_alpha, ax_b_beta) = plt.subplots(
+        2, 1, figsize=(W, H), dpi=dpi, sharex=False
+    )
 
-    # Fill rectangle (area) with config color and alpha
-    rect = Rectangle((mu_min, s_min), mu_max - mu_min, s_max - s_min,
-                     facecolor=base_color, edgecolor="none", alpha=normal_fill_alpha)
-    ax_b.add_patch(rect)
-    ax_b.plot([mu_min, mu_max, mu_max, mu_min, mu_min],
-              [s_min,  s_min,  s_max,  s_max,  s_min],
-              color=base_color, linewidth=1)
-    corner_pts = [(mu_min, s_min), (mu_min, s_max), (mu_max, s_min), (mu_max, s_max)]
-    for (xm, ys) in corner_pts:
-        if xm == mu_min and ys == s_min:
-            ax_b.plot(xm, ys, marker="*", color="red", markersize=10, zorder=5)
-        else:
-            ax_b.plot(xm, ys, marker=".", color="black", markersize=10, zorder=5)
+    def _draw_eta_box(ax, eta1_range, eta2_range, star_xy, title):
+        e1_min, e1_max = eta1_range
+        e2_min, e2_max = eta2_range
 
-    ax_b.set_xlabel(r"$\mu_0$")
-    ax_b.set_ylabel(r"$\sigma_0$")
-    ax_b.spines["top"].set_visible(False)
-    ax_b.spines["right"].set_visible(False)
+        # filled rectangle
+        rect = Rectangle(
+            (e1_min, e2_min),
+            e1_max - e1_min,
+            e2_max - e2_min,
+            facecolor=base_color,
+            edgecolor="none",
+            alpha=normal_fill_alpha,
+        )
+        ax.add_patch(rect)
+
+        # outline
+        ax.plot(
+            [e1_min, e1_max, e1_max, e1_min, e1_min],
+            [e2_min, e2_min, e2_max, e2_max, e2_min],
+            color=base_color,
+            linewidth=1,
+        )
+
+        # corners: star at specified corner, dots at the others
+        corners = [(e1_min, e2_min), (e1_min, e2_max), (e1_max, e2_min), (e1_max, e2_max)]
+        sx, sy = star_xy
+        for (x, y) in corners:
+            if np.isclose(x, sx) and np.isclose(y, sy):
+                ax.plot(x, y, marker="*", color="red", markersize=10, zorder=5)
+            else:
+                ax.plot(x, y, marker=".", color="black", markersize=10, zorder=5)
+
+        ax.set_title(title, pad=4)
+        ax.set_ylabel(r"$\eta_2$")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    # Alpha: star at (-0.12, -0.02)
+    _draw_eta_box(
+        ax=ax_b_alpha,
+        eta1_range=eta_1_alpha_range,
+        eta2_range=eta_2_alpha_range,
+        star_xy=(-0.12, -0.02),
+        title=r"$\alpha$",
+    )
+
+    # Beta: star at (-5.12, -1.28)
+    _draw_eta_box(
+        ax=ax_b_beta,
+        eta1_range=eta_1_beta_range,
+        eta2_range=eta_2_beta_range,
+        star_xy=(-5.12, -1.28),
+        title=r"$\beta$",
+    )
+
+    ax_b_beta.set_xlabel(r"$\eta_1$")
     _save_fig(fig_b, output_dir, filenames[1], plot_cfg)
-
-    # ------------------------------ (c) KSD / Laplace line + corners -------------------
-    fig_c, ax_c = plt.subplots(1, 1, figsize=(W, H), dpi=dpi)
-    b_min, b_max = laplace_b_range
-    b_vals = np.linspace(b_min, b_max, max(2, int(laplace_b_points)))
-
-    # constant μ0 (argument of the function, e.g. mu0_value=0)
-    y_val = mu0_laplace * np.ones_like(b_vals)
-
-    # Colored line segment along the range using config color
-    ax_c.plot([b_min, b_max], [mu0_laplace, mu0_laplace],
-              linestyle="-", linewidth=2.0, color=base_color)
-
-    # Corner stars in red
-    ax_c.plot(b_min, mu0_laplace, marker=".", color="black", markersize=10, zorder=5)
-    ax_c.plot(b_max, mu0_laplace, marker="*", color="red", markersize=10, zorder=5)
-
-    # Axes
-    ax_c.set_xlim(b_min - 0.1 * (b_max - b_min), b_max + 0.1 * (b_max - b_min))
-    ax_c.set_ylim(mu0_laplace - 0.5, mu0_laplace + 0.5)
-    ax_c.set_xlabel(r"$b_0$")
-    ax_c.set_ylabel(r"$\mu_0$")
-
-    ax_c.spines["top"].set_visible(False)
-    ax_c.spines["right"].set_visible(False)
-    _save_fig(fig_c, output_dir, filenames[2], plot_cfg)

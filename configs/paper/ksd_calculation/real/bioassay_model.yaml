@@ -3,24 +3,24 @@ data:
     _target_: src.distributions.composite.CompositeProduct
     distributions:
       alpha:
-        _target_: src.distributions.uniform.Uniform
-        low: -4
-        high: 8
+        _target_: src.distributions.cauchy.Cauchy
+        x: 0
+        gamma: 10
       beta:
-        _target_: src.distributions.uniform.Uniform
-        low: -10
-        high: 40
+        _target_: src.distributions.cauchy.Cauchy
+        x: 0
+        gamma: 2.5
   candidate_prior:
     _target_: src.distributions.composite.CompositeProduct
     distributions:
       alpha:
-        _target_: src.distributions.cauchy.Cauchy
-        x: 0
-        gamma: 2.5
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
       beta:
-        _target_: src.distributions.cauchy.Cauchy
-        x: 0
-        gamma: 2.5
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 10
   true_dgp: null
   loss:
     _target_: src.losses.logistic_binomial_log_likelihood.LogisticBinomialLogLikelihood
@@ -35,7 +35,7 @@ data:
 model:
   _target_: src.bayesian_model.bioassay.bioassay.BioassayModel
 
-ksd:
+fd:
   kernel:
     _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
     lengthscale: null
@@ -47,41 +47,32 @@ ksd:
         combine_rule: product
         components:
           - name: alpha
-            family: Laplace
+            family: Cauchy
             parameters_box_range:
               ranges:
-                mu: [ 0, 0 ]
-                b: [ 3, 14 ]
+                x: [ -3, 3 ]
+                gamma: [ 0.7, 1.3 ]
               nums:
                 mu: 1
                 b: 12
           - name: beta
-            family: Laplace
+            family: Cauchy
             parameters_box_range:
               ranges:
-                mu: [ 0, 0 ]
-                b: [ 3, 14 ]
+                mu: [ -2, 2 ]
+                b: [ -0.2, 14 ]
               nums:
                 mu: 1
                 b: 12
-#          - name: alpha
-#            family: Gaussian
-#            parameters_box_range:
-#              ranges:
-#                mu: [ -5, 5 ]
-#                sigma: [ 5, 10 ]
-#              nums:
-#                mu: 11
-#                sigma: 6
-#          - name: beta
-#            family: Gaussian
-#            parameters_box_range:
-#              ranges:
-#                mu: [ -5, 5 ]
-#                sigma: [ 5, 10 ]
-#              nums:
-#                mu: 11
-#                sigma: 6
+        eta_components:
+          - name: alpha
+            eta_range:
+              eta_1: [ -0.12, 0.12 ]
+              eta_2: [ -0.02, -0.00125 ]
+          - name: beta
+            eta_range:
+              eta_1: [ -5.12, 5.12 ]
+              eta_2: [ -1.28, -0.005 ]
     loss:
       LogisticBinomialLogLikelihood:
         parameters_box_range:

@@ -282,10 +282,10 @@ class OptimizationCornerPointsCompositePrior:
         self.A_prior, self.b_prior, self.c_prior = self.posterior_estimator.compute_fisher_quadratic_form_prior_only()
 
         # Eta grid through prior distributions
-        self.eta_corners_through_prior = [
-            self._create_eta_corners_through_prior(comp_cfg)
-            for comp_cfg in self.components_cfg
-        ]
+        # self.eta_corners_through_prior = [
+        #     self._create_eta_corners_through_prior(comp_cfg)
+        #     for comp_cfg in self.components_cfg
+        # ]
 
         # Eta grid
         self.eta_corners = self._create_eta_corners()
