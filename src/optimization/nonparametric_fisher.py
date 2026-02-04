@@ -51,6 +51,10 @@ class OptimisationNonparametricBase:
             eps_obj = max(1e-12, 1e-4 * avg_obj)
             self.A_c = self._sym(self.A_c + eps_prior * np.eye(self.d))
             self.A = self._sym(self.A + eps_obj * np.eye(self.d))
+            psd, rank = self._check_pd_psd_and_rank(self.A)
+            print(f"After nuggets A is {psd} with rank {rank}.")
+            psd, rank = self._check_pd_psd_and_rank(self.A_c)
+            print(f"After nuggets A_c is {psd} with rank {rank}.")
 
         self.r = self._compute_min_radius() + radius
         print(f"Radius {self.r}.")

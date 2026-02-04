@@ -384,8 +384,9 @@ class MaternBasisFunctionMultidim(BaseBasisFunction):
         metric: Literal["diag", "full"] = "diag",
         nu: float = 1.5,
         variance: float = 1.0,
-        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        method: Literal["kmeans", "random", "farthest", "kmeans_mix", "quantile_grid"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",  # "prior" or "posterior"
+        estimation_centers_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
         floor_frac: float = 0.1,
         jitter: float = 1e-8,
@@ -417,6 +418,7 @@ class MaternBasisFunctionMultidim(BaseBasisFunction):
             prior_samples=prior_samples,
             num_centers=num_basis_functions,
             method=method,
+            estimation_centers_source=estimation_centers_source,
         )
         _, self.dim = self.centers.shape
         self.num_basis = int(self.centers.shape[0])
@@ -484,8 +486,9 @@ class MaternBasisFunctionMultidim(BaseBasisFunction):
         prior_samples: Optional[np.ndarray],
         num_centers: int,
         method: str,
+        estimation_centers_source: str,
     ) -> np.ndarray:
-        if prior_samples is not None:
+        if estimation_centers_source == "prior":
             X = np.asarray(prior_samples, dtype=float)
         else:
             X = np.asarray(posterior_samples, dtype=float)
@@ -521,7 +524,38 @@ class MaternBasisFunctionMultidim(BaseBasisFunction):
                 n_clusters=min(num_centers, len(Xmix)), random_state=0
             ).fit(Xmix).cluster_centers_
 
+        if method == "quantile_grid":
+            return self._select_centers_quantile_grid(X, num_centers=num_centers)
+
         raise ValueError(f"Unknown center selection method: {method}")
+
+    def _select_centers_quantile_grid(
+            self,
+            X: np.ndarray,
+            num_centers: int,
+            q_low: float = 0.05,
+            q_high: float = 0.95,
+    ) -> np.ndarray:
+        X = np.asarray(X, dtype=float)
+        d = X.shape[1]
+        if d != 2:
+            raise ValueError("quantile_grid currently implemented for d=2 (ECMO).")
+
+        # pick grid sizes close to sqrt(num_centers)
+        g1 = int(np.floor(np.sqrt(num_centers)))
+        g2 = int(np.ceil(num_centers / g1))
+
+        qx = np.linspace(q_low, q_high, g1)
+        qy = np.linspace(q_low, q_high, g2)
+
+        xs = np.quantile(X[:, 0], qx)
+        ys = np.quantile(X[:, 1], qy)
+
+        Gx, Gy = np.meshgrid(xs, ys, indexing="xy")
+        C = np.column_stack([Gx.ravel(), Gy.ravel()])
+
+        # trim if too many
+        return C[:num_centers]
 
     def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
         n = X.shape[0]

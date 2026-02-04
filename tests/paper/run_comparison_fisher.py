@@ -13,7 +13,11 @@ from src.utils.files_operations import load_plot_config
 from src.optimization.corner_points_fisher import *
 from src.bayesian_model.base import BayesianModel
 from src.discrepancies.posterior_fisher import PosteriorFDBase
-from src.utils.display import print_optimised_corners_values
+from src.discrepancies.prior_fisher import PriorFDBase, PriorFDNonParametric
+from src.discrepancies.posterior_fisher import PosteriorFDBase, PosteriorFDNonParametric
+from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
+from src.plots.paper.toy_paper_fisher_funcs import *
+from src.basis_functions.basis_functions import *
 
 
 @dataclass
@@ -499,11 +503,287 @@ def plot_comparison_plots_wim(cfg: DictConfig):
     )
 
 
+def _sigmoid(z):
+    return 1.0 / (1.0 + np.exp(-z))
+
+
+def _cauchy_pdf(x, loc=0.0, scale=1.0):
+    # density of Cauchy(loc, scale)
+    z = (x - loc) / scale
+    return 1.0 / (np.pi * scale * (1.0 + z**2))
+
+
+def sample_ecmo(
+    y1=6, n1=10,
+    y2=9, n2=9,
+    gamma_loc=0.0, gamma_scale=0.419,
+    delta_loc=0.0, delta_scale=1.099,
+    ngrid_gamma=600,
+    ngrid_delta=600,
+    gamma_range=(-8.0, 8.0),
+    delta_range=(-12.0, 12.0),
+    nsamp=2000,
+    seed=0,
+):
+    """
+    Sample approximately from the reference posterior for ECMO model using a grid approximation.
+
+    Reference prior:
+        gamma ~ Cauchy(0, 0.419)
+        delta ~ Cauchy(0, 1.099)
+
+    Parameters are:
+        eta1 = gamma - delta/2
+        eta2 = gamma + delta/2
+        p1 = sigmoid(eta1), p2 = sigmoid(eta2)
+
+    Likelihood:
+        y1 ~ Bin(n1, p1), y2 ~ Bin(n2, p2)
+    """
+    rng = np.random.default_rng(seed)
+
+    # Grid in (gamma, delta)
+    gammas = np.linspace(gamma_range[0], gamma_range[1], ngrid_gamma)
+    deltas = np.linspace(delta_range[0], delta_range[1], ngrid_delta)
+
+    G, D = np.meshgrid(gammas, deltas, indexing="xy")  # shapes (ngrid_delta, ngrid_gamma)
+
+    # Map (gamma, delta) -> (p1, p2)
+    eta1 = G - 0.5 * D
+    eta2 = G + 0.5 * D
+    p1 = _sigmoid(eta1)
+    p2 = _sigmoid(eta2)
+
+    # Log-likelihood up to an additive constant (binomial coefficients drop)
+    # log L = y1 log p1 + (n1-y1) log(1-p1) + y2 log p2 + (n2-y2) log(1-p2)
+    eps = 1e-12
+    loglik = (
+        y1 * np.log(np.clip(p1, eps, 1 - eps)) + (n1 - y1) * np.log(np.clip(1 - p1, eps, 1 - eps)) +
+        y2 * np.log(np.clip(p2, eps, 1 - eps)) + (n2 - y2) * np.log(np.clip(1 - p2, eps, 1 - eps))
+    )
+
+    # Log-prior (independent Cauchy)
+    prior = _cauchy_pdf(G, loc=gamma_loc, scale=gamma_scale) * _cauchy_pdf(D, loc=delta_loc, scale=delta_scale)
+    logprior = np.log(np.clip(prior, eps, None))
+
+    # Unnormalised log-posterior on the grid
+    logpost = loglik + logprior
+
+    # Stabilise and convert to probabilities
+    logpost = logpost - np.max(logpost)
+    post_unnorm = np.exp(logpost)
+    post = post_unnorm / np.sum(post_unnorm)
+
+    # Sample grid cells according to posterior mass
+    flat_idx = rng.choice(post.size, size=nsamp, replace=True, p=post.ravel())
+    idx_delta, idx_gamma = np.unravel_index(flat_idx, post.shape)
+
+    samp_gamma = gammas[idx_gamma].astype(float)
+    samp_delta = deltas[idx_delta].astype(float)
+
+    # Jitter within cell to avoid grid artifacts
+    dg = (gammas[1] - gammas[0]) if ngrid_gamma > 1 else 1.0
+    dd = (deltas[1] - deltas[0]) if ngrid_delta > 1 else 1.0
+    samp_gamma += (rng.random(nsamp) - 0.5) * dg
+    samp_delta += (rng.random(nsamp) - 0.5) * dd
+
+    samples = np.column_stack((samp_gamma, samp_delta))
+
+    return samples
+
+def sample_ecmo_prior(
+    nsamp=2000,
+    gamma_loc=0.0, gamma_scale=0.419,
+    delta_loc=0.0, delta_scale=1.099,
+    seed=0,
+):
+    """Independent Cauchy prior samples for (gamma, delta)."""
+    rng = np.random.default_rng(seed)
+    samp_gamma = rng.standard_cauchy(size=nsamp) * gamma_scale + gamma_loc
+    samp_delta = rng.standard_cauchy(size=nsamp) * delta_scale + delta_loc
+    return np.column_stack((samp_gamma, samp_delta))
+
+
+# Interpretability
+def log_cauchy_pdf(x: np.ndarray, loc: float, scale: float) -> np.ndarray:
+    z = (x - loc) / scale
+    return -np.log(np.pi * scale) - np.log1p(z**2)
+
+
+def log_gaussian_pdf(x: np.ndarray, mean: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    # x: (m,d)
+    x = np.asarray(x, dtype=float)
+    d = x.shape[1]
+    mean = np.asarray(mean, dtype=float).reshape(1, d)
+    cov = np.asarray(cov, dtype=float)
+    L = np.linalg.cholesky(cov)
+    diff = x - mean
+    sol = np.linalg.solve(L, diff.T)          # (d,m)
+    quad = np.sum(sol**2, axis=0)             # (m,)
+    logdet = 2.0 * np.sum(np.log(np.diag(L)))
+    return -0.5 * (d * np.log(2*np.pi) + logdet + quad)
+
+
+def log_pi_ref(samples: np.ndarray,
+               gamma_loc=0.0, gamma_scale=0.419,
+               delta_loc=0.0, delta_scale=1.099) -> np.ndarray:
+    gamma = samples[:, 0]
+    delta = samples[:, 1]
+    return log_cauchy_pdf(gamma, gamma_loc, gamma_scale) + log_cauchy_pdf(delta, delta_loc, delta_scale)
+
+
+def log_pi_K_unnormalized(samples: np.ndarray,
+                          eta: np.ndarray,
+                          basis_func,
+                          g_mean: np.ndarray,
+                          g_cov: np.ndarray) -> np.ndarray:
+    """
+    Unnormalised log candidate prior: eta^T T(theta) + log g(theta).
+    (Normaliser cancels in self-normalised IS.)
+    """
+    eta = np.asarray(eta, dtype=float).reshape(-1)  # (K,)
+    # basis evaluate
+    Phi = basis_func.evaluate(samples)  # (m,d,K)
+    if Phi.ndim != 3:
+        raise ValueError(f"Expected basis_func.evaluate to return (m,d,K), got {Phi.shape}")
+    # Use scalar basis per k. Prefer metric='full' so Phi[:,0,:] is the scalar basis.
+    T = Phi[:, 0, :]  # (m,K)
+    log_g = log_gaussian_pdf(samples, mean=g_mean, cov=g_cov)  # (m,)
+    return T @ eta + log_g
+
+
+def prob_delta_positive_under_eta(
+    posterior_samples: np.ndarray,
+    eta_star: np.ndarray,
+    basis_func,
+    g_mean: np.ndarray,
+    g_cov: np.ndarray,
+    gamma_loc=0.0, gamma_scale=0.419,
+    delta_loc=0.0, delta_scale=1.099,
+) -> float:
+    """
+    Self-normalised IS estimate of P(delta>0 | y) under candidate prior defined by eta_star.
+    posterior_samples are drawn from reference posterior.
+    """
+    logw = (
+        log_pi_K_unnormalized(posterior_samples, eta_star, basis_func, g_mean, g_cov)
+        - log_pi_ref(posterior_samples, gamma_loc, gamma_scale, delta_loc, delta_scale)
+    )
+    # stabilise
+    logw = logw - np.max(logw)
+    w = np.exp(logw)
+    ind = (posterior_samples[:, 1] > 0).astype(float)
+    return float(np.sum(w * ind) / np.sum(w))
+
+def compute_interpretability(cfg, model, result_sdp, fd_estimates_list, radii):
+    posterior_samples = model.posterior_samples_init
+    prior_samples = model.prior_samples_init
+    basis_func = MaternBasisFunctionMultidim(
+        posterior_samples=posterior_samples,
+        prior_samples=prior_samples,
+        num_basis_functions=cfg.ksd.optimize.prior.nonparametric.basis_funcs_kwargs["num_basis_functions"],
+        metric="full",
+        method="quantile_grid",
+        estimation_samples_source="posterior",
+        estimation_centers_source="posterior",
+    )
+    g_mean = np.zeros(2)
+    g_cov = np.cov(posterior_samples, rowvar=False) + 1e-3 * np.eye(2)
+    prob_list = []
+
+    for i, (eta_star, radius) in enumerate(zip(result_sdp, radii)):
+        p_delta_pos = prob_delta_positive_under_eta(
+            posterior_samples=posterior_samples,
+            eta_star=eta_star,
+            basis_func=basis_func,
+            g_mean=g_mean,
+            g_cov=g_cov,
+        )
+        prob_list.append(p_delta_pos)
+        print(f"radius={radius:>5}  FD*={fd_estimates_list[i]:.4f}  P(delta>0)={p_delta_pos:.4f}")
+
+
+@hydra.main(version_base="1.1",
+            config_path="../../configs/paper/ksd_calculation/real/",
+            config_name="ecmo_model")
+def run_ecmo(cfg: DictConfig, sample=False):
+    data_dir = os.path.join(get_original_cwd(), "data/ecmo/")
+    y1, n1 = 6, 10
+    y2, n2 = 9, 9
+
+    if sample:
+        samples = sample_ecmo(
+            y1=y1, n1=n1,
+            y2=y2, n2=n2,
+            gamma_loc=0.0, gamma_scale=0.419,
+            delta_loc=0.0, delta_scale=1.099,
+            ngrid_gamma=600,
+            ngrid_delta=600,
+            gamma_range=(-8.0, 8.0),
+            delta_range=(-12.0, 12.0),
+            nsamp=5000,
+            seed=0,
+        )
+        prior_samples = sample_ecmo_prior(
+            nsamp=2000,
+            gamma_loc=0.0, gamma_scale=0.419,
+            delta_loc=0.0, delta_scale=1.099,
+            seed=1,
+        )
+        np.save(os.path.join(data_dir, "prior_samples.npy"), prior_samples)
+        np.save(os.path.join(data_dir, "posterior_samples.npy"), samples)
+        observations = np.array([[y1, n1], [y2, n2]], dtype=float)
+        np.save(os.path.join(data_dir, "observations.npy"), observations)
+
+    print("=== FD for ECMO model ===")
+    model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
+    fisher_estimator = PosteriorFDBase(model=model)
+    fd_value = float(fisher_estimator.estimate_fisher_prior_only())
+    print(f"[FD] Posterior FD (baseline prior): {fd_value:.5f}")
+
+    # Nonparametric optimisation
+    radii = [1.5, 3.0, 5.0, 10.0, 20.0, 40.0]
+    estimator_prior = PriorFDNonParametric(model=model)
+    estimator_posterior = PosteriorFDNonParametric(model=model)
+    psi_sdp_list, fd_estimates_list, radius_labels = [], [], []
+
+    for radius in radii:
+        optimizer = OptimisationNonparametricBase(
+            estimator_posterior,
+            estimator_prior,
+            cfg.ksd.optimize.prior.nonparametric,
+            radius=radius,
+            add_nuggets=False,
+        )
+        result_sdp = optimizer.optimize_through_sdp_relaxation()
+        psi_sdp_list.append(result_sdp["eta_star"])
+        fd_estimates_list.append(result_sdp["primal_value"])
+        radius_labels.append(radius)
+
+    compute_interpretability(cfg, model, psi_sdp_list, fd_estimates_list, radii)
+
+    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    plot_cfg = load_plot_config(plot_config_path)
+    plot_sdp_2d_densities(
+        basis_function=optimizer.basis_function,
+        psi_sdp_list=psi_sdp_list,
+        radius_labels=radius_labels,
+        ksd_estimates=fd_estimates_list,
+        prior_distribution=model.prior_init,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        domain=((-5, 5), (-7, 15)),
+        resolution=300
+    )
+
+
 if __name__ == "__main__":
     # run_laplace_cauchy_priors_normal_reference_1_4_berger()
     # run_laplace_cauchy_priors_uniform_reference_1_4_berger()
     # run_nonconjugate_reference_prior_mcmc_1_4_berger()
     # plot_comparison_plots_1_4_berger()
     # run_normals_comparison_section_3_3_berger()
-    run_bioassay()
+    # run_bioassay()
     # plot_comparison_plots_wim()
+    run_ecmo()
