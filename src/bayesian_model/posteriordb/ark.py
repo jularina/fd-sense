@@ -31,6 +31,7 @@ class ArkBayesianModel(ABC):
         self.warmup = getattr(data_config, "warmup", 0)
 
         (self.observations,
+         self.x,
          self.posterior_samples_init,
          self.posterior_sample_colnames,
          self.K) = self._prepare_data()
@@ -64,7 +65,7 @@ class ArkBayesianModel(ABC):
         self.prior = copy.deepcopy(self.prior_candidate) if deep else self.prior_candidate
         return self
 
-    def _prepare_observations(self, datavals: Dict[str, Any]) -> Tuple[np.ndarray, int]:
+    def _prepare_observations(self, datavals: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, int]:
         """
         For AR(K): datavals expected keys: 'K', 'T', 'y'.
         We set loss data with y and K; observations are y[K:] as (n,1) for bookkeeping.
@@ -80,7 +81,7 @@ class ArkBayesianModel(ABC):
             self.loss.set_data(y, K)
 
         obs = y[K:].reshape(-1, 1)
-        return obs, K
+        return obs, y, K
 
     def _norm_warmup(self, warmup, n_chains: int):
         if isinstance(warmup, (list, tuple)):
@@ -146,20 +147,21 @@ class ArkBayesianModel(ABC):
         idx = [name_to_idx[n] for n in want]
         return samples[:, idx], want
 
-    def _prepare_data(self) -> Tuple[np.ndarray, np.ndarray, List[str], int]:
+    def _prepare_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str], int]:
         my_pdb = PosteriorDatabase(self.pdb_path)
         posterior = my_pdb.posterior(self.pdb_model_name)
 
         datavals = posterior.data.values()
-        observations, K = self._prepare_observations(datavals)
+        observations, x, K = self._prepare_observations(datavals)
 
+        t = posterior.reference_draws()
         reference_df = pd.DataFrame(posterior.reference_draws())
         posterior_samples, colnames = self._prepare_posterior_draws(
             reference_df, warmup=self.warmup
         )
         posterior_samples, ordered_names = self._reorder_to_prior_order(posterior_samples, colnames, K)
 
-        return observations, posterior_samples, ordered_names, K
+        return observations, x, posterior_samples, ordered_names, K
 
     def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
         return self.prior_init.sample(n_samples)

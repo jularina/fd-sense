@@ -266,6 +266,7 @@ def plot_lr_vs_ksd(
 def plot_lr_vs_ksd_multi(
     lr_grids,
     ds,
+    beta_refs,
     plot_cfg,
     output_dir: str,
     filename: str = "ising_experiment_multi_d_lr_vs_ksd.pdf",
@@ -285,11 +286,14 @@ def plot_lr_vs_ksd_multi(
         ys = np.array(grid[:, 1], dtype=float)
         idx = np.argsort(xs)
         xs, ys = xs[idx], ys[idx]
-        ax.plot(xs, ys, marker="o", linewidth=1.5, markersize=3.5,
-                color=colors[i % len(colors)], label=fr"$d={d}$")
+        ax.plot(xs, ys, marker="o", linewidth=1.5, markersize=3.0,
+                color=colors[i % len(colors)], label=fr"{d}")
 
         max_idx = np.argmax(ys)
+        beta_ref = beta_refs[i]
+        y_ref = np.interp(beta_ref, xs, ys)
         ax.plot(xs[max_idx], ys[max_idx], marker="*", color="red", markersize=6, zorder=5)
+        ax.plot(beta_ref, y_ref, marker="x", color="black", markersize=6, zorder=5)
 
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -300,6 +304,207 @@ def plot_lr_vs_ksd_multi(
     xmax = max(grid[:, 0].max() for grid in lr_grids)
     if xmin > 0 and (xmax / max(xmin, 1e-20) > 1e3):
         ax.set_xscale("log")
+
+    if legend:
+        ax.legend()
+
+    _save_fig(fig, output_dir, filename, plot_cfg)
+
+
+def _make_figure(plot_cfg):
+    fig, ax = plt.subplots(
+        1,
+        1,
+        figsize=(
+            plot_cfg.plot.figure.size.width,
+            plot_cfg.plot.figure.size.height,
+        ),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    fig.subplots_adjust(
+        left=0.24,
+        right=0.98,
+        bottom=0.20,
+        top=0.98,
+    )
+    return fig, ax
+
+
+def plot_lr_vs_loss_multi(
+    lr_grids,
+    losses,
+    beta_refs,
+    plot_cfg,
+    output_dir: str,
+    filename: str,
+    xlabel: str = r"$\beta$",
+    legend: bool = True,
+    ylbl: str = "estimatedFDposteriorsQuadraticForm",
+    logy: bool = False,
+    method: str = "",
+):
+    _apply_plot_rc(plot_cfg)
+
+    fig, ax = _make_figure(plot_cfg)
+
+    colors = plot_cfg.plot.color_palette.colors
+    line_styles = ["-", "--", "-."]
+
+    xmin_candidates = []
+    xmax_candidates = []
+    y_refs = []
+
+    for i, (grid, loss_name, beta_ref) in enumerate(zip(lr_grids, losses, beta_refs)):
+        xs = np.array(grid[:, 0], dtype=float)
+        ys = np.array(grid[:, 1], dtype=float)
+
+        idx = np.argsort(xs)
+        xs, ys = xs[idx], ys[idx]
+
+        left = max(beta_ref - 0.3, 0.01)
+        right = beta_ref + 0.3
+
+        mask = (xs >= left) & (xs <= right)
+        xs_plot = xs[mask]
+        ys_plot = ys[mask]
+
+        ax.plot(
+            xs_plot,
+            ys_plot,
+            linewidth=1.8,
+            linestyle=line_styles[i % len(line_styles)],
+            color=colors[i % len(colors)],
+            label=loss_name,
+        )
+
+        max_idx = np.argmax(ys_plot)
+        y_ref = np.interp(beta_ref, xs_plot, ys_plot)
+        y_refs.append(y_ref)
+
+        ax.plot(
+            xs_plot[max_idx],
+            ys_plot[max_idx],
+            marker="*",
+            color="red",
+            markersize=6,
+            zorder=5,
+        )
+        ax.plot(
+            beta_ref,
+            y_ref,
+            marker="x",
+            color="black",
+            markersize=6,
+            zorder=5,
+        )
+
+        xmin_candidates.append(left)
+        xmax_candidates.append(right)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_xlabel(xlabel)
+
+    if logy:
+        ax.set_yscale("log")
+        ax.set_ylim(min(y_refs), 10 ** 7)
+
+    ax.set_xlim(0.0, 1.0)
+
+    if method != "syring":
+        ax.tick_params(axis="y", labelleft=False)
+
+    if method == "syring":
+        ax.set_ylabel(plot_cfg.plot.param_latex_names[ylbl])
+        if legend:
+            ax.legend()
+
+    _save_fig(fig, output_dir, filename, plot_cfg)
+
+
+def plot_lr_vs_method_multi(
+    lr_grids,
+    methods,
+    beta_refs,
+    plot_cfg,
+    output_dir: str,
+    filename: str,
+    xlabel: str = r"$\beta$",
+    legend: bool = True,
+    ylbl: str = "estimatedFDposteriorsQuadraticForm",
+    logy: bool = False,
+        loss: str = "",
+):
+    _apply_plot_rc(plot_cfg)
+
+    fig, ax = _make_figure(plot_cfg)
+
+    colors = plot_cfg.plot.color_palette.colors
+    line_styles = ["-", "--", "-."]
+
+    y_refs = []
+
+    for i, (grid, method_name, beta_ref) in enumerate(zip(lr_grids, methods, beta_refs)):
+        # if loss == "ksd" and method_name == "Lyddon et.al.":
+        #     continue
+        xs = np.array(grid[:, 0], dtype=float)
+        ys = np.array(grid[:, 1], dtype=float)
+
+        idx = np.argsort(xs)
+        xs, ys = xs[idx], ys[idx]
+
+        left = max(beta_ref - 0.3, 0.01)
+        right = beta_ref + 0.3
+
+        mask = (xs >= left) & (xs <= right)
+        xs_plot = xs[mask]
+        ys_plot = ys[mask]
+
+        ax.plot(
+            xs_plot,
+            ys_plot,
+            linewidth=1.8,
+            linestyle=line_styles[i % len(line_styles)],
+            color=colors[i % len(colors)],
+            label=method_name,
+        )
+
+        max_idx = np.argmax(ys_plot)
+        y_ref = np.interp(beta_ref, xs_plot, ys_plot)
+        y_refs.append(y_ref)
+
+        ax.plot(
+            xs_plot[max_idx],
+            ys_plot[max_idx],
+            marker="*",
+            color="red",
+            markersize=6,
+            zorder=5,
+        )
+        ax.plot(
+            beta_ref,
+            y_ref,
+            marker="x",
+            color="black",
+            markersize=6,
+            zorder=5,
+        )
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_xlabel(xlabel)
+
+    if logy:
+        ax.set_yscale("log")
+        ax.set_ylim(min(y_refs), 10 ** 7)
+
+    if loss == "ksd":
+        ax.set_xlim(0.0, 1.0)
+    else:
+        ax.set_xlim(0.0, 1.0)
+
+    ax.set_ylabel(plot_cfg.plot.param_latex_names[ylbl])
 
     if legend:
         ax.legend()

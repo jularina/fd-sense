@@ -1,7 +1,7 @@
 from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
 from src.optimization.qcqp import ParametricQCQPBase
 from src.optimization.corner_points_fisher import *
-from src.utils.files_operations import load_plot_config
+from src.utils.files_operations import *
 from src.utils.distributions import DISTRIBUTION_MAP
 from src.bayesian_model.base import BayesianModel
 from src.plots.paper.toy_paper_fisher_funcs import *
@@ -22,41 +22,9 @@ def density_plot_across_multivariate_prior_parameter_sets(
     model,
     qf_priors_all_combinations,
 ):
-    # param_values_dict = {
-    #     "MultivariateGaussian": [
-    #         {"mu": np.array([0.0, 0.0]), "cov": np.eye(2)},
-    #         {"mu": np.array([2.0, 3.0]), "cov": 0.5 * np.eye(2)},
-    #         {"mu": np.array([-2.0, 1.0]), "cov": np.array([[1.0, 0.5], [0.5, 1.5]])},
-    #     ]
-    # }
-    #
-    # dist_name = "MultivariateGaussian"
-    # distribution_cls = MultivariateGaussian
-    # param_values = param_values_dict[dist_name]
-    # dist_results = {}
-    # all_dists = {}
-    #
-    # for param_dict in param_values:
-    #     model.set_prior_parameters(param_dict, distribution_cls=distribution_cls)
-    #     fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-    #     fisher = fisher_estimator.estimate_fisher()
-    #     key = (tuple(param_dict["mu"].flatten()), tuple(param_dict["cov"].flatten()))
-    #     dist_results[key] = fisher
-    #     all_dists[key] = param_dict
-    #
-    #     print(f"[INFO] Prior: {param_dict}, Fisher Divergence: {fisher:.4f}")
-    #
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
-    # plot_multivariate_priors_densities(
-    #     all_params=all_dists,
-    #     all_ksds=dist_results,
-    #     output_dir=output_dir,
-    #     plot_cfg=plot_cfg,
-    #     true_theta=cfg.data.base_prior.mu,
-    #     true_cov=cfg.data.base_prior.cov
-    # )
     plot_multivariate_joint_prior_densities_by_fd(
         results=qf_priors_all_combinations,
         output_dir=output_dir,
@@ -137,52 +105,6 @@ def plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, eta_results
     plot_eta_surface(eta_results, corner_points, plot_cfg, output_dir)
 
 
-def density_plot_across_univariate_prior_parameter_sets(cfg, model: BayesianModel, posterior_samples: np.ndarray):
-    """
-    Recalculates FD across all prior hyperparameter combinations for each distribution.
-
-    Args:
-        cfg (DictConfig): Configuration loaded by Hydra.
-        model (BayesianModel): Model.
-        posterior_samples (np.ndarray): Posterior samples.
-        kernel (BaseKernel): Kernel.
-    """
-    all_fd_results = {}
-    param_values_dict = {"Gaussian": np.array([[-7, 1], [5, 3], [9, 2]]), "LogNormal": np.array([[1, 0.5]])}
-    for dist_name, dist_cfg in cfg.ksd.optimize.prior.items():
-        if dist_name not in DISTRIBUTION_MAP:
-            continue
-        distribution_cls = DISTRIBUTION_MAP[dist_name]
-        box_cfg = dist_cfg.parameters_box_range
-        param_names = list(box_cfg.ranges.keys())
-        param_values = param_values_dict[dist_name]
-        dist_fd_results = {}
-
-        for values in param_values:
-            prior_params = dict(zip(param_names, values))
-            model.set_prior_parameters(prior_params, distribution_cls=distribution_cls)
-            fisher_estimator = PosteriorFDBase(samples=posterior_samples, model=model, candidate_type="prior")
-            fd = fisher_estimator.estimate_fisher()
-            dist_fd_results[tuple(values)] = fd
-            print(f"Dist: {dist_name}, Prior: {prior_params}, mu_n: {model.mu_n}, FD: {fd:.4f}")
-
-        all_fd_results[dist_name] = {
-            "fd": dist_fd_results,
-            "param_names": [p + "_0" for p in param_names],
-            "distribution_cls": distribution_cls
-        }
-
-    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
-    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
-    plot_cfg = load_plot_config(plot_config_path)
-    plot_prior_densities_by_fd(
-        all_ksd_data=all_fd_results,
-        cfg=cfg,
-        plot_cfg=plot_cfg,
-        output_dir=output_dir,
-    )
-
-
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
             config_name="univariate_gaussian")
 def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
@@ -213,7 +135,6 @@ def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
 
     plots_across_gaussian_prior_parameters_ranges(cfg, model)
     plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, prior_combinations, prior_corners)
-    # density_plot_across_univariate_prior_parameter_sets(cfg, model)
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
@@ -310,6 +231,85 @@ def run_multivariate_gaussian_priors(cfg, save_samples: bool = True) -> None:
 
     density_plot_across_multivariate_prior_parameter_sets(
         cfg, model, qf_priors_all_combinations=qf_priors_all_combinations)
+
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+def comparison_plot_existing_methods(cfg):
+    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    plot_cfg = load_plot_config(plot_config_path)
+
+    mu_ref = np.array([2.0, 3.0])
+    mu_cand_1 = np.array([2.0, 3.0])
+    mu_cand_2 = np.array([2.0, 3.0])
+    Sigma_ref = np.array([[1.5, 0.5],
+                          [0.5, 0.3]])
+    Sigma_1 = np.array([[0.70, 0.25],
+                        [0.1, 0.15]])
+    Sigma_2 = np.array([[0.90, -0.20],
+                        [-0.20, 0.25]])
+
+    plot_existing_methods_comparison_gaussians(
+        output_dir=output_dir,
+        plot_cfg=plot_cfg,
+        mu_ref=mu_ref,
+        mu_cand_1=mu_cand_1,
+        mu_cand_2=mu_cand_2,
+        Sigma_ref=Sigma_ref,
+        Sigma_cand_1=Sigma_1,
+        Sigma_cand_2=Sigma_2,
+        filename="comparison_same_mean_diff_cov.pdf",
+    )
+
+    mu_ref = np.array([2.0, 3.0])
+    mu_cand_1 = np.array([0.0, 5.0])
+    mu_cand_2 = np.array([3.5, 1.5])
+    Sigma_ref = np.array([[1.5, 0.5],
+                          [0.5, 0.3]])
+    Sigma_1 = np.array([[1.5, 0.5],
+                        [0.5, 0.3]])
+    Sigma_2 = np.array([[1.5, 0.5],
+                        [0.5, 0.3]])
+
+    plot_existing_methods_comparison_gaussians(
+        output_dir=output_dir,
+        plot_cfg=plot_cfg,
+        mu_ref=mu_ref,
+        mu_cand_1=mu_cand_1,
+        mu_cand_2=mu_cand_2,
+        Sigma_ref=Sigma_ref,
+        Sigma_cand_1=Sigma_1,
+        Sigma_cand_2=Sigma_2,
+        filename="comparison_same_cov_diff_mean.pdf",
+    )
+
+    ms = list(range(1000, 10001, 1000))
+    dims = [1]
+    results = load_results_json(
+        "/Users/arinaodv/Desktop/folder/study_phd/code/stein-sense/data/multivariate_gaussian/comparison/finite_sample_results.json")
+    results = convert_dim_keys_to_int(results)
+    results = plot_finite_sample_complexity_gaussians(
+        output_dir=output_dir,
+        plot_cfg=plot_cfg,
+        ms=ms,
+        dims=dims,
+        n_rep=500,
+        seed=27,
+        logy=False,
+        # results=results
+    )
+    # save_to_serializable_json(results, "/Users/arinaodv/Desktop/folder/study_phd/code/stein-sense/data/multivariate_gaussian/comparison/finite_sample_results.json")
+
+    # plot_runtime_complexity_gaussians(
+    #     output_dir=output_dir,
+    #     plot_cfg=plot_cfg,
+    #     ms=ms,
+    #     dims=dims,
+    #     n_rep=500,
+    #     seed=27,
+    #     logy=True,
+    #     results=results,
+    # )
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
@@ -768,7 +768,6 @@ def run_priors_optimisation_runtimes(cfg):
         filename="runtime_parametric_nonparametric_qcqp_multivariate.pdf"
     )
 
-
     # with open(data_path + "nonparametric_qcqp_optimisation_times.json", "r") as f:
     #     nonparametric_optimisation_times = json.load(f)
     # plot_runtime_nonparametric_with_ci(
@@ -780,15 +779,16 @@ def run_priors_optimisation_runtimes(cfg):
 
 
 if __name__ == "__main__":
-    run_gaussian_priors()
-    run_gaussian_lr()
+    # run_gaussian_priors()
+    # run_gaussian_lr()
     # run_multivariate_gaussian_priors()
+    comparison_plot_existing_methods()
     # run_gaussian_priors_qcqp()
     # run_inverse_wishart_priors()
     # run_gaussian_priors_nonparametric_diff_radii()
-    run_multivariate_gaussian_priors_nonparametric_diff_radii()
+    # run_multivariate_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums()
     # run_gaussian_priors_nonparametric_diff_samples_num()
     # run_multivariate_gaussian_priors_diff_samples_num()
-    run_multivariate_gaussian_priors_diff_basis_funcs_num()
+    # run_multivariate_gaussian_priors_diff_basis_funcs_num()
     # run_priors_optimisation_runtimes()

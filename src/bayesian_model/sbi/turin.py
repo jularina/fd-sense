@@ -84,6 +84,29 @@ class TurinBayesianModel(ABC):
         z = norm.ppf(u)
         return z
 
+    @staticmethod
+    def _theta_to_uniform_0_1(
+        theta: np.ndarray,
+        lower: np.ndarray,
+        upper: np.ndarray,
+        eps: float = 1e-9,
+    ) -> np.ndarray:
+        """
+        Componentwise transform from theta in (lower, upper) to U(0,1).
+        """
+        theta = np.asarray(theta, dtype=np.float64)
+        lower = np.asarray(lower, dtype=np.float64)
+        upper = np.asarray(upper, dtype=np.float64)
+
+        denom = upper - lower
+        if np.any(denom <= 0):
+            raise ValueError("All entries of (upper - lower) must be positive.")
+
+        u = (theta - lower) / denom
+        u = np.clip(u, eps, 1.0 - eps)
+
+        return u
+
     def _prepare_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         ckpt = torch.load(self.archive_path, map_location="cpu")
 
@@ -92,8 +115,8 @@ class TurinBayesianModel(ABC):
         upper = np.array([10.0, 10.0, 500.0, 10.0], dtype=np.float64)
         prior_samples = ckpt["theta_nle"].cpu().numpy()
         posterior_samples = ckpt["posterior_samples_nle"].cpu().numpy()
-        prior_samples = self._theta_to_z_probit(prior_samples, lower, upper)
-        posterior_samples = self._theta_to_z_probit(posterior_samples, lower, upper)
+        prior_samples = self._theta_to_uniform_0_1(prior_samples, lower, upper)
+        posterior_samples = self._theta_to_uniform_0_1(posterior_samples, lower, upper)
 
         observations = ckpt["obs_x"].cpu().numpy()
         likelihood_grads = ckpt["likelihod_grads"].cpu().numpy()

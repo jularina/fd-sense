@@ -18,41 +18,41 @@ data:
 #        _target_: src.distributions.uniform.Uniform
 #        low: 1e-10
 #        high: 1e-9
-#      theta_1:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 10.0
-#      theta_2:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 10.0
-#      theta_3:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 500.0
-#      theta_4:
-#        _target_: src.distributions.uniform.Uniform
-#        low: 1.0
-#        high: 10.0
       theta_1:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
-
+        _target_: src.distributions.uniform.Uniform
+        low: 0.0
+        high: 1.0
       theta_2:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
-
+        _target_: src.distributions.uniform.Uniform
+        low: 0.0
+        high: 1.0
       theta_3:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
-
+        _target_: src.distributions.uniform.Uniform
+        low: 0.0
+        high: 1.0
       theta_4:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
+        _target_: src.distributions.uniform.Uniform
+        low: 0.0
+        high: 1.0
+#      theta_1:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
+#
+#      theta_2:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
+#
+#      theta_3:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
+#
+#      theta_4:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
 
   candidate_prior:
     _target_: src.distributions.composite.CompositeProduct
@@ -132,29 +132,46 @@ data:
 #        mu_log: 1.151
 #        sigma_log: 0.576
 
+#      theta_1:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
+#
+#      theta_2:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
+#
+#      theta_3:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
+#
+#      theta_4:
+#        _target_: src.distributions.gaussian.Gaussian
+#        mu: 0
+#        sigma: 1
       theta_1:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
-
+        _target_: src.distributions.beta.Beta
+        alpha: 1.0
+        beta: 1.5
       theta_2:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
-
+        _target_: src.distributions.beta.Beta
+        alpha: 1.0
+        beta: 1.5
       theta_3:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
-
+        _target_: src.distributions.beta.Beta
+        alpha: 1.0
+        beta: 1.5
       theta_4:
-        _target_: src.distributions.gaussian.Gaussian
-        mu: 0
-        sigma: 1
+        _target_: src.distributions.beta.Beta
+        alpha: 1.5
+        beta: 1.0
   true_dgp: null
   loss:
     _target_: src.losses.gaussian_log_likelihood.GaussianLogLikelihoodWithGivenGrads
   loss_lr: 1.0
+  loss_lr_init: 1.0
   observations_path: null # from pre-saved archive
   posterior_samples_path: null # from pre-saved archive
   prior_samples_path: null # from pre-saved archive
@@ -166,7 +183,7 @@ data:
 model:
   _target_: src.bayesian_model.sbi.turin.TurinBayesianModel
 
-ksd:
+fd:
   kernel:
     _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
     lengthscale: null
@@ -176,7 +193,28 @@ ksd:
     prior:
       Composite:
         combine_rule: product
-        components:
+        eta_components:
+          - name: theta_1   # G0
+            eta_range:
+              eta_1: [ 0.0, 0.5 ]
+              eta_2: [ 0.0, 0.5 ]
+
+          - name: theta_2   # T
+            eta_range:
+              eta_1: [ 0.0, 0.5 ]
+              eta_2: [ 0.0, 0.5 ]
+
+          - name: theta_3   # nu
+            eta_range:
+              eta_1: [ 0.0, 0.5 ]
+              eta_2: [ 0.0, 0.5 ]
+
+          - name: theta_4   # sigma_W2
+            eta_range:
+              eta_1: [ 0.0, 0.5 ]
+              eta_2: [ 0.0, 0.5 ]
+
+#        components:
 #          - name: theta_1
 #            family: LogNormal
 #            parameters_box_range:
@@ -213,45 +251,45 @@ ksd:
 #              nums:
 #                mu_log: 4
 #                sigma_log: 11
-          - name: theta_1
-            family: LogNormal
-            parameters_box_range:
-              ranges:
-                mu_log:   [ 0.85, 1.95 ]
-                sigma_log: [ 0.40, 0.90 ]
-              nums:
-                mu_log: 4
-                sigma_log: 11
-
-          - name: theta_2
-            family: LogNormal
-            parameters_box_range:
-              ranges:
-                mu_log:   [ 0.95, 1.75 ]
-                sigma_log: [ 0.45, 0.80 ]
-              nums:
-                mu_log: 4
-                sigma_log: 11
-
-          - name: theta_3
-            family: LogNormal
-            parameters_box_range:
-              ranges:
-                mu_log:   [ 2.90, 3.70 ]
-                sigma_log: [ 1.20, 1.90 ]
-              nums:
-                mu_log: 4
-                sigma_log: 11
-
-          - name: theta_4
-            family: LogNormal
-            parameters_box_range:
-              ranges:
-                mu_log:   [ 0.95, 1.75 ]
-                sigma_log: [ 0.45, 0.80 ]
-              nums:
-                mu_log: 4
-                sigma_log: 11
+#          - name: theta_1
+#            family: LogNormal
+#            parameters_box_range:
+#              ranges:
+#                mu_log:   [ 0.85, 1.95 ]
+#                sigma_log: [ 0.40, 0.90 ]
+#              nums:
+#                mu_log: 4
+#                sigma_log: 11
+#
+#          - name: theta_2
+#            family: LogNormal
+#            parameters_box_range:
+#              ranges:
+#                mu_log:   [ 0.95, 1.75 ]
+#                sigma_log: [ 0.45, 0.80 ]
+#              nums:
+#                mu_log: 4
+#                sigma_log: 11
+#
+#          - name: theta_3
+#            family: LogNormal
+#            parameters_box_range:
+#              ranges:
+#                mu_log:   [ 2.90, 3.70 ]
+#                sigma_log: [ 1.20, 1.90 ]
+#              nums:
+#                mu_log: 4
+#                sigma_log: 11
+#
+#          - name: theta_4
+#            family: LogNormal
+#            parameters_box_range:
+#              ranges:
+#                mu_log:   [ 0.95, 1.75 ]
+#                sigma_log: [ 0.45, 0.80 ]
+#              nums:
+#                mu_log: 4
+#                sigma_log: 11
 
       nonparametric:
         basis_funcs_type:  MaternBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim  # RBFBasisFunctionMultidim

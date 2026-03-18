@@ -13,8 +13,8 @@ from src.utils.files_operations import load_plot_config
 from src.optimization.corner_points_fisher import *
 from src.bayesian_model.base import BayesianModel
 from src.discrepancies.posterior_fisher import PosteriorFDBase
-from src.discrepancies.prior_fisher import PriorFDBase, PriorFDNonParametric
-from src.discrepancies.posterior_fisher import PosteriorFDBase, PosteriorFDNonParametric
+from src.discrepancies.prior_fisher import PriorFDNonParametric
+from src.discrepancies.posterior_fisher import PosteriorFDNonParametric
 from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
 from src.plots.paper.toy_paper_fisher_funcs import *
 from src.basis_functions.basis_functions import *
@@ -123,6 +123,7 @@ def rank_blocks(per_block: Dict[str, BlockDecomposition], key: str = "total_with
     """Return a list of (name, value) sorted descending by chosen key."""
     pairs = [(nm, getattr(obj, key)) for nm, obj in per_block.items()]
     return sorted(pairs, key=lambda x: x[1], reverse=True)
+
 
 def sample_trunc_normal_loc1(x, a, b, n, rng):
     out = np.empty((n, 1), dtype=float)
@@ -489,10 +490,10 @@ def plot_comparison_plots_wim(cfg: DictConfig):
     plot_prior_range_comparison_split(
         wim_cauchy_scales_beta=[2.5, 5, 10],
         wim_cauchy_scales_alpha=[10],
-        eta_1_alpha_range = [-0.12, 0.12],
-        eta_2_alpha_range = [-0.02, -0.00125],
-        eta_1_beta_range  = [-5.12, 5.12],
-        eta_2_beta_range  = [-1.28, -0.005],
+        eta_1_alpha_range=[-0.12, 0.12],
+        eta_2_alpha_range=[-0.02, -0.00125],
+        eta_1_beta_range=[-5.12, 5.12],
+        eta_2_beta_range=[-1.28, -0.005],
         plot_cfg=plot_cfg,
         output_dir=output_dir,
         filenames=(
@@ -591,6 +592,7 @@ def sample_ecmo(
 
     return samples
 
+
 def sample_ecmo_prior(
     nsamp=2000,
     gamma_loc=0.0, gamma_scale=0.419,
@@ -674,6 +676,7 @@ def prob_delta_positive_under_eta(
     w = np.exp(logw)
     ind = (posterior_samples[:, 1] > 0).astype(float)
     return float(np.sum(w * ind) / np.sum(w))
+
 
 def compute_interpretability(cfg, model, result_sdp, fd_estimates_list, radii):
     posterior_samples = model.posterior_samples_init
@@ -784,6 +787,6 @@ if __name__ == "__main__":
     # run_nonconjugate_reference_prior_mcmc_1_4_berger()
     # plot_comparison_plots_1_4_berger()
     # run_normals_comparison_section_3_3_berger()
-    # run_bioassay()
+    run_bioassay()
     # plot_comparison_plots_wim()
-    run_ecmo()
+    # run_ecmo()

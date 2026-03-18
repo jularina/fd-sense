@@ -130,7 +130,7 @@ class OptimisationNonparametricBase:
 
         objective = cp.Maximize(cp.trace(self.A @ Psi) + self.b @ psi + self.c)
         constraint1 = (
-                cp.trace(self.A_c @ Psi) + self.b_c @ psi + self.c_c <= self.r
+            cp.trace(self.A_c @ Psi) + self.b_c @ psi + self.c_c <= self.r
         )
         schur_matrix = cp.bmat([
             [Psi, cp.reshape(psi, (self.d, 1), order='C')],
@@ -550,8 +550,8 @@ class OptimisationNonparametricBase:
 
     def optimize_dual_sdp_lambda_t(
         self,
-        solver =  None,
-        solver_opts = None,
+        solver=None,
+        solver_opts=None,
         tol: float = 1e-8,
     ):
         """
@@ -643,5 +643,5 @@ class OptimisationNonparametricBase:
             "dual_value": dual_value,
             "eta_star": eta_star,
             "primal_value": primal_value,
-            "lambda_star":lambda_star,
+            "lambda_star": lambda_star,
         }

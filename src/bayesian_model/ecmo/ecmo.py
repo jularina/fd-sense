@@ -14,7 +14,6 @@ from src.utils.files_operations import instantiate_from_target_str
 from src.utils.distributions import is_basedistribution_like
 
 
-
 class ECMOModel(BayesianModel):
     """
     ECMO model (Moreno 2000 / Kass-Greenhouse):

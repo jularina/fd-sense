@@ -422,20 +422,22 @@ def plot_three_panel_priors(
 
 def plot_three_panel_priors_all_betas_one_plot_explicit(
     # -------- explicit reference priors (no cfg) --------
-    alpha_ref: Dict,   # {"family": "Normal", "params": {"mu": 0.0, "sigma": 10.0}}
-    betas_ref: Dict,   # {"family": "Normal", "params": {"mu": 0.0, "sigma": 10.0}}
-    sigma_ref: Dict,   # e.g. {"family": "HalfCauchy", "params": {"scale": 2.5}}
-    # -------- explicit most-sensitive candidate priors --------
-    alpha_ms: Dict,                  # e.g. {"family": "Normal", "params": {"mu": 20.0, "sigma": 10/3}}
-    betas_ms: Dict[str, Dict],       # {"beta1": {...}, ..., "beta5": {...}}
-    sigma_ms: Dict,                  # e.g. {"family": "Gamma", "params": {"a": 4.0, "b": 24/5}}
-    # -------- candidate neighbourhood clouds (box ranges) --------
-    alpha_box_ranges: Dict,          # ranges dict used by your _sample_param_sets
-    betas_box_ranges: Dict[str, Dict],  # {"beta1": ranges, ..., "beta5": ranges}
-    sigma_box_ranges: Dict,          # ranges dict for sigma candidates
+    alpha_ref: Dict,   # {"family": "Gaussian", "params": {"mu": 0.0, "sigma": 10.0}}
+    betas_ref: Dict,   # {"family": "Gaussian", "params": {"mu": 0.0, "sigma": 10.0}}
+    sigma_ref: Dict,   # e.g. {"family": "HalfCauchy", "params": {"gamma": 2.5}}
+
+    # -------- explicit candidate priors --------
+    alpha_ms: Dict,                  # most-sensitive alpha (sup)
+    betas_ms: Dict[str, Dict],       # most-sensitive betas (sup), {"beta1": {...}, ..., "beta5": {...}}
+    sigma_ms: Dict,                  # most-sensitive sigma (sup)
+    alpha_box_ranges: Dict,
+    betas_box_ranges: Dict[str, Dict],
+    sigma_box_ranges: Dict,
+    sigma_inf: Dict = None,          # OPTIONAL: infimum-optimal sigma (argmin), plotted as dashed red
     alpha_cand_family: str = "Gaussian",
     betas_cand_family: str = "Gaussian",
     sigma_cand_family: str = "Gamma",
+
     # -------- plotting --------
     plot_cfg=None,
     output_dir: str = ".",
@@ -444,19 +446,26 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     sample_n_sigma: int = 30,
     sample_n_beta_total: int = 150,   # total cloud draws pooled across betas
     seed: int = 123,
-    filename = None,
+    filename=None,
     x_alpha=None,
     x_sigma=None,
     x_beta=None,
+
     # -------- hooks to your existing utilities --------
-    make_pdf = None,          # if None, uses global _make_pdf
-    sample_param_sets = None, # if None, uses global _sample_param_sets
-    save_fig = None,          # if None, uses global _save_fig
-    apply_plot_rc = None,     # if None, uses global _apply_plot_rc
+    make_pdf=None,          # if None, uses global _make_pdf
+    sample_param_sets=None,  # if None, uses global _sample_param_sets
+    save_fig=None,          # if None, uses global _save_fig
+    apply_plot_rc=None,     # if None, uses global _apply_plot_rc
 ):
     """
-    3-panel figure in one row:
-      [alpha | sigma | betas (β1..β5 overlaid on a single axis)]
+    3-panel figure in one row (ORDER: alpha | betas | sigma):
+      [alpha | betas (β1..β5 overlaid on a single axis) | sigma]
+
+    Curves:
+      - reference: black dashed
+      - box neighbourhood cloud: faint colored
+      - sup / most-sensitive: solid red
+      - OPTIONAL sigma infimum: dashed red (sigma panel only)
     """
     # ---------- resolve helper hooks ----------
     if make_pdf is None:
@@ -499,11 +508,13 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
 
     def _auto_x_range_from_prior(family: str, params: Dict) -> Tuple[float, float]:
         fam = family.lower()
+
         # Normal(mu, sigma)
         if fam in {"normal", "gaussian"}:
             mu = float(params.get("mu", 0.0))
             sig = float(params.get("sigma", params.get("std", 1.0)))
             return mu - 5.0 * sig, mu + 5.0 * sig
+
         # HalfCauchy(scale) / Cauchy(loc=0, scale)
         if fam in {"halfcauchy", "half-cauchy"}:
             scale = float(params.get("scale", params.get("gamma", 1.0)))
@@ -512,15 +523,23 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
             loc = float(params.get("loc", 0.0))
             scale = float(params.get("scale", 1.0))
             return loc - 20.0 * scale, loc + 20.0 * scale
-        # Gamma(a,b) with rate b, or (shape, rate)
+
+        # Gamma: supports either (alpha, theta) (scale) or (a, b) (rate)
         if fam in {"gamma"}:
-            a = float(params.get("a", params.get("shape", 1.0)))
-            b = float(params.get("b", params.get("rate", 1.0)))
-            mean = a / b
-            std = np.sqrt(a) / b
+            if "theta" in params:  # scale
+                a = float(params.get("alpha", params.get("shape", 1.0)))
+                theta = float(params["theta"])
+                mean = a * theta
+                std = np.sqrt(a) * theta
+            else:  # rate
+                a = float(params.get("a", params.get("alpha", params.get("shape", 1.0))))
+                b = float(params.get("b", params.get("rate", 1.0)))
+                mean = a / b
+                std = np.sqrt(a) / b
             lo = max(0.0, mean - 5.0 * std)
             hi = mean + 8.0 * std
             return lo, hi
+
         # fallback
         return -10.0, 10.0
 
@@ -548,80 +567,104 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
 
     fig = plt.figure(figsize=figsize, dpi=dpi)
     plt.subplots_adjust(right=0.98, wspace=0.25)
-    gs = fig.add_gridspec(nrows=1, ncols=3, width_ratios=[25, 25, 50], wspace=0.25)
-    ax_alpha = fig.add_subplot(gs[0, 0])
+    gs = fig.add_gridspec(
+        nrows=1,
+        ncols=2,
+        width_ratios=[60, 40],  # sigma now much larger
+        wspace=0.2
+    )
+    ax_alpha_betas = fig.add_subplot(gs[0, 0])
     ax_sigma = fig.add_subplot(gs[0, 1])
-    ax_betas = fig.add_subplot(gs[0, 2])
 
     # ===================== ALPHA =====================
     famA_ref, refA_params = alpha_ref["family"], alpha_ref["params"]
     famA_ms, msA_params = alpha_ms["family"], alpha_ms["params"]
 
     xA_rng = _auto_x_range_from_prior(famA_ref, refA_params) if x_alpha is None else x_alpha
+    xA_rng = (-20, 20)
     xA = _linspace_pad(*xA_rng)
     pdf_ref_a = make_pdf(famA_ref, refA_params)
     pdf_ms_a = make_pdf(famA_ms, msA_params)
 
-    ax_alpha.plot(xA, pdf_ref_a(xA), linestyle="--", color=col_ref, linewidth=1.2)
-    for p, c in zip(sample_param_sets(alpha_box_ranges, sample_n_alpha, rng), _cloud_colors(sample_n_alpha)):
+    for p, ccol in zip(sample_param_sets(alpha_box_ranges, sample_n_alpha, rng), _cloud_colors(sample_n_alpha)):
         pdf_c = make_pdf(alpha_cand_family, p)
-        ax_alpha.plot(xA, pdf_c(xA), linewidth=0.9, alpha=alpha_cloud, color=c)
-    ax_alpha.plot(xA, pdf_ms_a(xA), color=col_red, linewidth=1.8)
+        ax_alpha_betas.plot(xA, pdf_c(xA), linewidth=0.9, alpha=alpha_cloud, color=ccol)
+    ax_alpha_betas.plot(xA, pdf_ref_a(xA), linestyle="--", color=col_ref, linewidth=1.2)
+    ax_alpha_betas.plot(xA, pdf_ms_a(xA), color=col_red, linestyle="-.", linewidth=1.5)
 
-    ax_alpha.set_title(r"$\alpha$")
-    ax_alpha.set_ylabel(r"$\pi$")
-    ax_alpha.spines["top"].set_visible(False)
-    ax_alpha.spines["right"].set_visible(False)
-
-    # ===================== SIGMA =====================
-    famS_ref, refS_params = sigma_ref["family"], sigma_ref["params"]
-    famS_ms, msS_params = sigma_ms["family"], sigma_ms["params"]
-
-    xS_rng = _auto_x_range_from_prior(famS_ref, refS_params) if x_sigma is None else x_sigma
-    xS = _linspace_pad(*xS_rng)
-    pdf_ref_s = make_pdf(famS_ref, refS_params)
-    pdf_ms_s = make_pdf(famS_ms, msS_params)
-
-    ax_sigma.plot(xS, pdf_ref_s(xS), linestyle="--", color=col_ref, linewidth=1.2)
-    for p, c in zip(sample_param_sets(sigma_box_ranges, sample_n_sigma, rng), _cloud_colors(sample_n_sigma)):
-        pdf_c = make_pdf(sigma_cand_family, p)
-        ax_sigma.plot(xS, pdf_c(xS), linewidth=0.9, alpha=alpha_cloud, color=c)
-    ax_sigma.plot(xS, pdf_ms_s(xS), color=col_red, linewidth=1.8)
-
-    ax_sigma.set_title(r"$\sigma$")
-    ax_sigma.spines["top"].set_visible(False)
-    ax_sigma.spines["right"].set_visible(False)
+    ax_alpha_betas.set_title(r"$\alpha, \beta_{1\cdots 5}$")
+    ax_alpha_betas.set_ylabel(r"$\pi$")
+    ax_alpha_betas.spines["top"].set_visible(False)
+    ax_alpha_betas.spines["right"].set_visible(False)
 
     # ===================== BETAS (ALL ON ONE AXIS) =====================
-    beta_names = ["beta1", "beta2", "beta3", "beta4", "beta5"]
+    # beta_names = ["beta1", "beta2", "beta3", "beta4", "beta5"]
     beta_group_styles = ["-", ":", "--", "-."]
 
     famB_ref, refB_params = betas_ref["family"], betas_ref["params"]
     xB_rng = _auto_x_range_from_prior(famB_ref, refB_params) if x_beta is None else x_beta
-    xB = _linspace_pad(*xB_rng)
-    pdf_ref_b = make_pdf(famB_ref, refB_params)
-    ax_betas.plot(xB, pdf_ref_b(xB), linestyle="--", color=col_ref, linewidth=1.2)
+    xB = _linspace_pad(*xA_rng)
+    # pdf_ref_b = make_pdf(famB_ref, refB_params)
+    # ax_betas.plot(xB, pdf_ref_b(xB), linestyle="--", color=col_ref, linewidth=1.2)
 
-    # pooled cloud budget across betas
-    counts = np.full(len(beta_names), sample_n_beta_total // len(beta_names), dtype=int)
-    counts[: (sample_n_beta_total - counts.sum())] += 1
-
-    for bname, n_draws in zip(beta_names, counts):
-        ranges_b = betas_box_ranges[bname]
-        for p, c in zip(sample_param_sets(ranges_b, n_draws, rng), _cloud_colors(n_draws)):
-            pdf_c = make_pdf(betas_cand_family, p)
-            ax_betas.plot(xB, pdf_c(xB), linewidth=0.75, alpha=alpha_cloud, color=c)
+    # # pooled cloud budget across betas
+    # counts = np.full(len(beta_names), sample_n_beta_total // len(beta_names), dtype=int)
+    # counts[: (sample_n_beta_total - counts.sum())] += 1
+    #
+    # for bname, n_draws in zip(beta_names, counts):
+    #     ranges_b = betas_box_ranges[bname]
+    #     for p, ccol in zip(sample_param_sets(ranges_b, n_draws, rng), _cloud_colors(n_draws)):
+    #         pdf_c = make_pdf(betas_cand_family, p)
+    #         ax_betas.plot(xB, pdf_c(xB), linewidth=0.75, alpha=alpha_cloud, color=ccol)
 
     # most-sensitive betas: group identical curves
     groups = _group_equal_ms_betas(betas_ms)
     for gi, (names, fam_g, params_g) in enumerate(groups):
         style = beta_group_styles[gi % len(beta_group_styles)]
         pdf_ms = make_pdf(fam_g, params_g)
-        ax_betas.plot(xB, pdf_ms(xB), color=col_red, linestyle=style, linewidth=1.8)
+        ax_alpha_betas.plot(xB, pdf_ms(xB), color=col_red, linestyle=style, linewidth=1.5)
 
-    ax_betas.set_title(r"$\beta_{1\cdots 5}$", pad=-9)
-    ax_betas.spines["top"].set_visible(False)
-    ax_betas.spines["right"].set_visible(False)
+    # ax_betas.set_title(r"$\beta_{1\cdots 5}$", pad=-9)
+    # ax_betas.spines["top"].set_visible(False)
+    # ax_betas.spines["right"].set_visible(False)
+
+    # ===================== SIGMA =====================
+    famS_ref, refS_params = sigma_ref["family"], sigma_ref["params"]
+    famS_ms, msS_params = sigma_ms["family"], sigma_ms["params"]
+
+    if x_sigma is None:
+        lo1, hi1 = _auto_x_range_from_prior(famS_ref, refS_params)
+        lo2, hi2 = _auto_x_range_from_prior(famS_ms, msS_params)
+        lo, hi = min(lo1, lo2), max(hi1, hi2)
+        if sigma_inf is not None:
+            lo3, hi3 = _auto_x_range_from_prior(sigma_inf["family"], sigma_inf["params"])
+            lo, hi = min(lo, lo3), max(hi, hi3)
+        xS_rng = (0.0, 7.0)
+    else:
+        xS_rng = (0.0, 40.0)
+
+    xS = _linspace_pad(*xS_rng, n=1200)
+    pdf_ref_s = make_pdf(famS_ref, refS_params)
+    pdf_ms_s = make_pdf(famS_ms, msS_params)
+
+    ax_sigma.plot(xS, pdf_ref_s(xS), linestyle="--", color=col_ref, linewidth=1.2)
+    for p, ccol in zip(sample_param_sets(sigma_box_ranges, sample_n_sigma, rng), _cloud_colors(sample_n_sigma)):
+        pdf_c = make_pdf(sigma_cand_family, p)
+        y = pdf_c(xS)
+        if np.max(y) > 10:
+            continue
+        ax_sigma.plot(xS, y, linewidth=0.9, alpha=alpha_cloud, color=ccol)
+
+    ax_sigma.plot(xS, pdf_ms_s(xS), color=col_red, linestyle="-", linewidth=1.8)
+
+    if sigma_inf is not None:
+        famS_inf, infS_params = sigma_inf["family"], sigma_inf["params"]
+        pdf_inf_s = make_pdf(famS_inf, infS_params)
+        ax_sigma.plot(xS, pdf_inf_s(xS), color="blue", linestyle="--", linewidth=1.8)
+
+    ax_sigma.set_title(r"$\sigma$")
+    ax_sigma.spines["top"].set_visible(False)
+    ax_sigma.spines["right"].set_visible(False)
 
     # ---------- legend ----------
     legend_handles = [
@@ -632,21 +675,16 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     ]
     legend_labels = [r"$\Pi_{\mathrm{ref}}$", r"$\Pi$ in box neighbourhood", r"$\Pi$ at $\eta^\star$"]
 
+    if sigma_inf is not None:
+        legend_handles.append(plt.Line2D([], [], color=col_red, linestyle="--", linewidth=1.8))
+        legend_labels.append(r"$\Pi$ at $\eta^{\inf}$ (sigma)")
+
     if len(groups) > 1:
         for gi, (names, _, _) in enumerate(groups):
             style = beta_group_styles[gi % len(beta_group_styles)]
             legend_handles.append(plt.Line2D([], [], color=col_red, linestyle=style, linewidth=1.8))
             idx = ",".join([n.replace("beta", "") for n in names])
             legend_labels.append(r"$\beta_{%s}$" % idx)
-
-    # fig.legend(
-    #     legend_handles,
-    #     legend_labels,
-    #     loc="lower center",
-    #     frameon=False,
-    #     ncol=min(len(legend_labels), 5),
-    #     bbox_to_anchor=(0.5, -0.23),
-    # )
 
     if plot_cfg is not None and getattr(plot_cfg.plot.figure, "tight_layout", True):
         plt.tight_layout()
@@ -795,15 +833,170 @@ def plot_ar_results(y, posterior_samples_init, K=5, plot_cfg=None, save=False, o
 def plot_complexity_bar(
     plot_cfg,
     output_dir: str,
-    mcmc_run_time: int,
-    posterior_evaluations_num: int,
-    fd_run_param: int,
-    fd_run_nonparam: int,
     prefix: str = "ark_param",
     filename: str | None = None,
     use_log10: bool = True,
-    include_nonparametric: bool = True,
-    show_nonparam_breakdown: bool = True,
+    qf_full_time_sec: float = 0.0,
+    qf_decomp_time_sec: float = 0.0,
+    black_box_time_sec: float = 0.0,
+):
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    if filename is None:
+        filename = f"{prefix}_complexity_bar.pdf"
+
+    labels = [
+        r"CO + $\Gamma_\text{box}$",
+        r"CO + $\prod_{j=1}^{d_\Theta}\Gamma_{\text{box}_j}$",
+        "BBO",
+    ]
+
+    values = np.array([
+        float(qf_full_time_sec),
+        float(qf_decomp_time_sec),
+        float(black_box_time_sec),
+    ])
+
+    if use_log10:
+        heights = np.maximum(values, 1e-12)
+        ylab = r"Time (sec.)"
+    else:
+        heights = values
+        ylab = r"Time (sec.)"
+
+    try:
+        palette = list(plot_cfg.plot.color_palette.colors)
+    except Exception:
+        palette = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    if len(palette) < len(labels):
+        reps = int(np.ceil(len(labels) / len(palette)))
+        palette = (palette * reps)[:len(labels)]
+
+    fig = plt.figure(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
+        if hasattr(plot_cfg, "plot") else (10, 5),
+        dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
+    )
+
+    ax = fig.add_subplot(1, 1, 1)
+
+    x = np.arange(len(labels))
+
+    if use_log10:
+        ax.set_yscale("log")
+        positive_heights = heights[heights > 0]
+        ymin = max(np.min(positive_heights) / 5.0, 1e-12)
+    else:
+        ymin = 0.0
+
+    # lollipop stems
+    for xi, yi, c in zip(x, heights, palette):
+        ax.vlines(xi, ymin, yi, colors=c, linewidth=2.0, alpha=0.9, zorder=2)
+
+    # lollipop heads
+    ax.scatter(
+        x,
+        heights,
+        c=palette[:len(labels)],
+        s=120,
+        alpha=0.95,
+        zorder=3,
+        edgecolors="none",
+    )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize="small")
+    ax.tick_params(axis="x", pad=25)
+
+    ax.set_ylabel(ylab)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax.grid(axis="y", linestyle=":", alpha=0.35)
+
+    if use_log10:
+        ymax = np.max(heights)
+        ax.set_ylim(ymin, ymax * 2.0 if ymax > 0 else 1.0)
+    else:
+        ymax = np.max(heights)
+        ax.set_ylim(0.0, ymax * 1.15 if ymax > 0 else 1.0)
+
+    fig.tight_layout()
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, bbox_inches="tight")
+
+
+def plot_posterior_predictive_bands(
+    plot_cfg,
+    output_dir: str,
+    y_obs: np.ndarray,
+    mean: np.ndarray,
+    lo: np.ndarray,
+    hi: np.ndarray,
+    filename: str | None = None,
+):
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+    y_obs = np.asarray(y_obs, dtype=float).reshape(-1)
+    t = np.arange(1, y_obs.shape[0] + 1)
+    colors = list(plot_cfg.plot.color_palette.colors)
+    obs_color = colors[0]
+    mean_color = colors[1]
+    ci_color = colors[1]
+
+    fig = plt.figure(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
+        if hasattr(plot_cfg, "plot") else (10, 4),
+        dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
+    )
+    ax = fig.add_subplot(1, 1, 1)
+
+    ax.plot(t, y_obs, linewidth=1.2, color=obs_color, label=r"$x$")
+    ax.fill_between(t, lo, hi, alpha=0.25, color=ci_color)
+    ax.plot(t, mean, linewidth=1.5, color=mean_color, label=r"$\tilde{x} \pm 95\%$ CI")
+
+    ax.set_xlabel(r"$t$")
+    ax.set_ylabel(r"$x$")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle=":", alpha=0.35)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, bbox_inches="tight")
+
+
+def plot_posterior_predictive_bands_compare(
+    plot_cfg,
+    output_dir: str,
+    prefix: str,
+    y_obs: np.ndarray,
+    ref_mean: np.ndarray,
+    ref_lo: np.ndarray,
+    ref_hi: np.ndarray,
+    corner_mean: np.ndarray,
+    corner_lo: np.ndarray,
+    corner_hi: np.ndarray,
+    filename: str | None = None,
 ):
     try:
         _apply_plot_rc(plot_cfg)
@@ -812,81 +1005,92 @@ def plot_complexity_bar(
 
     os.makedirs(output_dir, exist_ok=True)
     if filename is None:
-        filename = f"{prefix}_complexity_bar.pdf"
+        filename = f"{prefix}_posterior_predictive_ref_vs_corner.pdf"
 
-    labels = [
-        # r"$\mathcal{O}_{\text{MCMC}} + \mathcal{O}(m d_{\theta}^2) + \mathcal{O}(2^{d_H} d_{\theta}^2)$",
-        "Box-constrained (ours)",
-    ]
-    values = [fd_run_param]
+    y_obs = np.asarray(y_obs, dtype=float).reshape(-1)
+    t = np.arange(1, y_obs.shape[0] + 1)
 
-    # --- Nonparametric: add if requested
-    if include_nonparametric:
-        if show_nonparam_breakdown:
-            labels += [
-                r"$\mathcal{O}_{\text{MCMC}} + \mathcal{O}((m+l)K^2D) + \mathcal{O}_{\text{SDP}}$",
-            ]
-        else:
-            labels += ["nonparam: total"]
-
-        values += [fd_run_nonparam]
-
-    # --- Grid size ∏ G_h
-    labels += [
-        # r"$2^{d_H}\mathcal{O}_{\text{MCMC}}$",
-        "Informal brute-force",
-    ]
-
-    values += [posterior_evaluations_num*mcmc_run_time]
-
-    values = np.array(values, dtype=float)
-    heights = np.log10(values) if use_log10 else values
-    ylab = r"$\log_{10}(\text{sec.})$" if use_log10 else "cost"
-
-    # --- Colors
+    # palette from config (fallback to matplotlib)
     try:
-        palette = list(plot_cfg.plot.color_palette.colors)
+        colors = list(plot_cfg.plot.color_palette.colors)
     except Exception:
-        palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    if len(palette) < len(labels):
-        reps = int(np.ceil(len(labels) / len(palette)))
-        palette = (palette * reps)[:len(labels)]
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-    style = "lollipop"  # "lollipop", "float_rect", or "bar"
+    if len(colors) < 3:
+        reps = int(np.ceil(3 / len(colors)))
+        colors = (colors * reps)[:3]
+
+    ref_color = colors[1]
+    corner_color = colors[2]
+
     fig = plt.figure(
         figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
-        if hasattr(plot_cfg, "plot") else (10, 5),
+        if hasattr(plot_cfg, "plot") else (10, 4),
         dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
     )
     ax = fig.add_subplot(1, 1, 1)
-    x = np.arange(len(labels))
 
-    if style == "bar":
-        ax.bar(x, heights, color=palette[:len(labels)], width=0.55)
-    elif style == "lollipop":
-        for xi, yi, c in zip(x, heights, palette):
-            ax.vlines(xi, 0, yi, colors=c, linewidth=1.5, alpha=0.9)
-        rect_w = 0.28
-        rect_h = 0.25 if use_log10 else 0.02 * np.max(heights)
-        for xi, yi, c in zip(x, heights, palette):
-            ax.add_patch(plt.Rectangle((xi - rect_w/2, yi - rect_h/2),
-                                       rect_w, rect_h,
-                                       facecolor=c, edgecolor=c, alpha=0.9, linewidth=1.5))
-    elif style == "float_rect":
-        rect_w = 0.35
-        rect_h = 0.28 if use_log10 else 0.02 * np.max(heights)
-        for xi, yi, c in zip(x, heights, palette):
-            ax.add_patch(plt.Rectangle((xi - rect_w/2, yi - rect_h/2),
-                                       rect_w, rect_h,
-                                       facecolor=c, edgecolor=c, alpha=0.2, linewidth=1.8))
+    # ---- observations as black crosses
+    ax.plot(
+        t[::2],
+        y_obs[::2],
+        linestyle="None",
+        marker="x",
+        markersize=3.0,
+        markeredgewidth=1.0,
+        color="black",
+        label=r"$x$",
+        zorder=3,
+    )
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=0, ha='center', fontsize='small')
-    ax.tick_params(axis='x', pad=25)
-    ax.set_ylabel(ylab)
+    # # ---- reference posterior predictive
+    # ax.fill_between(
+    #     t,
+    #     ref_lo,
+    #     ref_hi,
+    #     color=ref_color,
+    #     alpha=0.18,
+    #     # label=r"Ref. $\tilde{x}$ 95\% CI",
+    #     zorder=1,
+    # )
+    ax.plot(
+        t,
+        ref_mean,
+        linewidth=1.0,
+        color=ref_color,
+        label=r"$\tilde{x}_\text{ref} \pm 95\% CI$",
+        zorder=2,
+    )
+
+    # ---- corner posterior predictive
+    ax.fill_between(
+        t,
+        corner_lo,
+        corner_hi,
+        color=corner_color,
+        alpha=0.18,
+        # label=r"Corner $\tilde{x}$ 95\% CI",
+        zorder=1,
+    )
+    ax.plot(
+        t,
+        corner_mean,
+        linewidth=1.0,
+        color=corner_color,
+        label=r"$\tilde{x} \pm 95\% CI$",
+        zorder=2,
+    )
+
+    ax.set_xlabel(r"$t$")
+    ax.set_ylabel(r"$x$")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.grid(axis='y', linestyle=':', alpha=0.35)
+    ax.grid(axis="y", linestyle=":", alpha=0.35)
+
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, frameon=False, ncol=1,
+              loc="upper right", bbox_to_anchor=(1, 1.2))
+
     fig.tight_layout()
 
     try:

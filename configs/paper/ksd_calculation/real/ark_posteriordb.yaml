@@ -77,6 +77,7 @@ data:
   prior_samples_num: null
   warmup: 0
   pdb_path: "/Users/arinaodv/Desktop/folder/study_phd/code/posteriordb/posterior_database"
+  posterior_draws_corner_prior: "/Users/arinaodv/Desktop/folder/study_phd/code/posteriordb/posterior_database/reference_posteriors/draws/draws/arK-arK-corner.json"
   pdb_model_name: arK-arK
 
 model:
@@ -156,40 +157,64 @@ fd:
               nums:
                 alpha: 15
                 theta: 26
+#        eta_components:
+#          - name: alpha
+#            eta_range:
+#              eta_1: [-18.75, 18.75]
+#              eta_2: [-3.125, -0.5]
+#          - name: beta1
+#            eta_range:
+#              eta_1: [-18.75, 18.75]
+#              eta_2: [-3.125, -0.5]
+#          - name: beta2
+#            eta_range:
+#              eta_1: [-18.75, 18.75]
+#              eta_2: [-3.125, -0.5]
+#          - name: beta3
+#            eta_range:
+#              eta_1: [-18.75, 18.75]
+#              eta_2: [-3.125, -0.5]
+#          - name: beta4
+#            eta_range:
+#              eta_1: [-18.75, 18.75]
+#              eta_2: [-3.125, -0.5]
+#          - name: beta5
+#            eta_range:
+#              eta_1: [-18.75, 18.75]
+#              eta_2: [-3.125, -0.5]
+#          - name: sigma
+#            eta_range:
+#              eta_1: [3.0, 10.11]
+#              eta_2: [-22.22, -2.0]
         eta_components:
           - name: alpha
             eta_range:
-              eta_1: [-1.8, 1.8]
-              eta_2: [-0.045, -0.0006]
+              eta_1: [-55.56, 55.56]
+              eta_2: [-5.56, -2.0]
           - name: beta1
             eta_range:
-              eta_1: [-1.8, 1.8]
-              eta_2: [-0.045, -0.0006]
+              eta_1: [-55.56, 55.56]
+              eta_2: [-5.56, -2.0]
           - name: beta2
             eta_range:
-              eta_1: [-1.8, 1.8]
-              eta_2: [-0.045, -0.0006]
+              eta_1: [-55.56, 55.56]
+              eta_2: [-5.56, -2.0]
           - name: beta3
             eta_range:
-              eta_1: [-1.8, 1.8]
-              eta_2: [-0.045, -0.0006]
+              eta_1: [-55.56, 55.56]
+              eta_2: [-5.56, -2.0]
           - name: beta4
             eta_range:
-              eta_1: [-1.8, 1.8]
-              eta_2: [-0.045, -0.0006]
+              eta_1: [-55.56, 55.56]
+              eta_2: [-5.56, -2.0]
           - name: beta5
             eta_range:
-              eta_1: [-1.8, 1.8]
-              eta_2: [-0.045, -0.0006]
+              eta_1: [-55.56, 55.56]
+              eta_2: [-5.56, -2.0]
           - name: sigma
             eta_range:
-              eta_1: [-0.56, 3.0]
-              eta_2: [-4.8, -0.06]
-      nonparametric:
-        basis_funcs_type: RBFBasisFunctionMultidim # PolynomialBasisFunctionMultidim # SigmoidBasisFunctionMultidim  # RBFBasisFunctionMultidim
-        basis_funcs_kwargs: { "num_basis_functions": 15, "method": "kmeans", "lengthscale": null, "scale_multiplier": 1, "metric": "full" } # polynomial {"degree":3}  # sigmoid { "num_basis_functions": 15, "method": "farthest", "scale":null, "scale_multiplier": 1, "metric": "full" }   # for rbf { "num_basis_functions": 15, "method": "farthest", "lengthscale": null, "scale_multiplier": 1, "metric": "full" }
-        radius_lower_bound: null
-        scale_samples: False
+              eta_1: [5.0, 10.11]
+              eta_2: [-22.22, -5.0]
 
     loss:
       GaussianARLogLikelihood:

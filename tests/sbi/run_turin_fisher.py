@@ -4,19 +4,18 @@ from typing import List
 import hydra
 from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
-from collections import defaultdict
 import time
 import json
 
-from src.bayesian_model.base import BayesianModel
 from src.utils.files_operations import load_plot_config
 from src.utils.files_operations import deepcopy_cfg
 from src.utils.choosers import pick_optimizer
-from src.optimization.nonparametric_fisher import OptimisationNonparametricBase
+from src.discrepancies.posterior_fisher import PosteriorFDBase
 from src.plots.paper.sbi_paper_funcs import *
-from src.discrepancies.posterior_fisher import PosteriorFDNonParametric
-from src.discrepancies.prior_fisher import PriorFDNonParametric
-from src.plots.paper.toy_paper_fisher_funcs import plot_runtime_nonparametric_with_ci
+from src.optimization.corner_points_fisher import (
+    OptimizationCornerPointsCompositePrior
+)
+from src.plots.paper.toy_paper_fisher_funcs import plot_runtime_nonparametric_with_ci, plot_gaussian_copula_grid
 
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 
@@ -41,7 +40,7 @@ def _eval_corners_with_cfg(ksd_est, cfg_like: DictConfig) -> Tuple:
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="sbi_nle_turin")
-def main(cfg: DictConfig) -> None:
+def main_old(cfg: DictConfig) -> None:
     # model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
     # estimator_posterior = PosteriorFDNonParametric(model=model)
     # print("FD: ", estimator_posterior.estimate_fisher_prior_only())
@@ -120,5 +119,109 @@ def main(cfg: DictConfig) -> None:
         filename="runtime_nonparametric_qcqp_sbi.pdf"
     )
 
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="sbi_nle_turin")
+def main(cfg: DictConfig) -> None:
+    prefix = cfg.playground.get("output_prefix", "sbi")
+    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    plot_cfg = load_plot_config(plot_config_path)
+
+    print("=== FD for PosteriorDB model ===")
+    model = instantiate(cfg.model, data_config=cfg.data)
+    fisher_estimator = PosteriorFDBase(model=model)
+    print(f"Initial Fisher for prior: {fisher_estimator.estimate_fisher_prior_only():.4f}")
+
+    print("Starting optimisation of all parameters at once.")
+    start = time.perf_counter()
+    optimizer = OptimizationCornerPointsCompositePrior(fisher_estimator,
+                                                       cfg.fd.optimize.prior.Composite,
+                                                       cfg.fd.optimize.loss.GaussianLogLikelihoodWithGivenGrads,
+                                                       )
+    qf_corners, eta_star = optimizer.evaluate_all_prior_corners()
+    elapsed = time.perf_counter() - start
+    print(f"Corner eta^star is {eta_star}.")
+    print(f"Time for optimisation of all parameters at once: {elapsed:.3f} sec.")
+
+    # print("Starting black-box optimisation.")
+    # start = time.perf_counter()
+    # bb = optimizer.black_box_optimize_prior_box_global(
+    #     seed=0,
+    #     maxiter=150,
+    #     popsize=20,
+    #     workers=1,
+    #     updating="deferred",
+    # )
+    # elapsed = time.perf_counter() - start
+    # print("Black-box sup:", bb.val_sup)
+    # print("Black-box inf:", bb.val_inf)
+    # print("Black-box S_hat:", bb.S_hat)
+    # print(f"Time for black-box optimisation of all parameters at once: {elapsed:.3f} sec.")
+
+    print("Starting per component optimisation.")
+    names = ["theta_1", "theta_2", "theta_3", "theta_4"]
+    start = time.perf_counter()
+    sup_res, eta_sup_blocks = optimizer.evaluate_all_prior_corners_per_component(component_names=names)
+    eta_inf_blocks, values_inf = optimizer.minimize_prior_per_component_qp(names)
+    print("Per-component argmax corners:")
+    for k in names:
+        print(k, eta_sup_blocks[k], sup_res[k][0][1])
+
+    print("Per-component infimum:")
+    for n in names:
+        print(n, eta_inf_blocks[n], values_inf[n])
+    elapsed = time.perf_counter() - start
+    print(f"Time for per-component optimisation: {elapsed/len(names):.3f} sec.")
+
+    print("Starting Gaussian copula black-box optimisation.")
+    start = time.perf_counter()
+    copula_res = optimizer.black_box_optimize_gaussian_copula(
+        lambda_range=(-0.5, 0.5),
+        seed=0,
+        maxiter=100,
+        popsize=15,
+        tol=1e-6,
+        polish=True,
+        workers=1,
+        updating="deferred",
+    )
+    elapsed = time.perf_counter() - start
+
+    print(f"Copula lambda_sup: {copula_res.lambda_sup}")
+    print(f"Copula val_sup: {copula_res.val_sup}")
+    print(f"Copula lambda_inf: {copula_res.lambda_inf}")
+    print(f"Copula val_inf: {copula_res.val_inf}")
+    print(f"Copula S_hat: {copula_res.S_hat}")
+    print(f"Copula nfev_sup: {copula_res.nfev_sup}")
+    print(f"Copula nfev_inf: {copula_res.nfev_inf}")
+    print(f"Time for Gaussian copula optimisation: {elapsed:.3f} sec.")
+
+    print("Starting Gaussian copula grid evaluation.")
+    start = time.perf_counter()
+    copula_grid, lambda_grid_star, val_grid_star = optimizer.evaluate_gaussian_copula_grid_and_argmax(
+        lambda_range=(-0.5, 0.5),
+        n_grid=101,
+    )
+    elapsed = time.perf_counter() - start
+    print(f"Grid lambda^star: {lambda_grid_star}")
+    print(f"Grid FD(lambda^star): {val_grid_star}")
+    print(f"Time for Gaussian copula grid evaluation: {elapsed:.3f} sec.")
+    print("First few grid evaluations:")
+    plot_gaussian_copula_grid(
+        copula_grid=copula_grid,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        prefix=prefix,
+        logy=True,
+    )
+
+    for lam in [-0.25, -0.5, -0.75, -0.95]:
+        diag = fisher_estimator.diagnose_gaussian_copula_l2(lam, eps=0.0)
+        print(f"\nDiagnostics for lambda={lam}")
+        for k, v in diag.items():
+            print(f"{k}: {v}")
+
+
 if __name__ == "__main__":
+    # main_old()
     main()
