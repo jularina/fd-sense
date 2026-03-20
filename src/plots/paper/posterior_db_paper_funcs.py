@@ -581,7 +581,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     famA_ms, msA_params = alpha_ms["family"], alpha_ms["params"]
 
     xA_rng = _auto_x_range_from_prior(famA_ref, refA_params) if x_alpha is None else x_alpha
-    xA_rng = (-20, 20)
+    xA_rng = (-15, 15)
     xA = _linspace_pad(*xA_rng)
     pdf_ref_a = make_pdf(famA_ref, refA_params)
     pdf_ms_a = make_pdf(famA_ms, msA_params)
@@ -589,8 +589,8 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     for p, ccol in zip(sample_param_sets(alpha_box_ranges, sample_n_alpha, rng), _cloud_colors(sample_n_alpha)):
         pdf_c = make_pdf(alpha_cand_family, p)
         ax_alpha_betas.plot(xA, pdf_c(xA), linewidth=0.9, alpha=alpha_cloud, color=ccol)
-    ax_alpha_betas.plot(xA, pdf_ref_a(xA), linestyle="--", color=col_ref, linewidth=1.2)
-    ax_alpha_betas.plot(xA, pdf_ms_a(xA), color=col_red, linestyle="-.", linewidth=1.5)
+    ax_alpha_betas.plot(xA, pdf_ref_a(xA), linestyle="--", color=col_ref, linewidth=1.0)
+    ax_alpha_betas.plot(xA, pdf_ms_a(xA), color=col_red, linestyle="-.", linewidth=1.0)
 
     ax_alpha_betas.set_title(r"$\alpha, \beta_{1\cdots 5}$")
     ax_alpha_betas.set_ylabel(r"$\pi$")
@@ -622,7 +622,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     for gi, (names, fam_g, params_g) in enumerate(groups):
         style = beta_group_styles[gi % len(beta_group_styles)]
         pdf_ms = make_pdf(fam_g, params_g)
-        ax_alpha_betas.plot(xB, pdf_ms(xB), color=col_red, linestyle=style, linewidth=1.5)
+        ax_alpha_betas.plot(xB, pdf_ms(xB), color=col_red, linestyle=style, linewidth=1.0)
 
     # ax_betas.set_title(r"$\beta_{1\cdots 5}$", pad=-9)
     # ax_betas.spines["top"].set_visible(False)
@@ -639,7 +639,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
         if sigma_inf is not None:
             lo3, hi3 = _auto_x_range_from_prior(sigma_inf["family"], sigma_inf["params"])
             lo, hi = min(lo, lo3), max(hi, hi3)
-        xS_rng = (0.0, 7.0)
+        xS_rng = (0.0, 2.5)
     else:
         xS_rng = (0.0, 40.0)
 
@@ -647,7 +647,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     pdf_ref_s = make_pdf(famS_ref, refS_params)
     pdf_ms_s = make_pdf(famS_ms, msS_params)
 
-    ax_sigma.plot(xS, pdf_ref_s(xS), linestyle="--", color=col_ref, linewidth=1.2)
+    ax_sigma.plot(xS, pdf_ref_s(xS), linestyle="--", color=col_ref, linewidth=1.0)
     for p, ccol in zip(sample_param_sets(sigma_box_ranges, sample_n_sigma, rng), _cloud_colors(sample_n_sigma)):
         pdf_c = make_pdf(sigma_cand_family, p)
         y = pdf_c(xS)
@@ -655,7 +655,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
             continue
         ax_sigma.plot(xS, y, linewidth=0.9, alpha=alpha_cloud, color=ccol)
 
-    ax_sigma.plot(xS, pdf_ms_s(xS), color=col_red, linestyle="-", linewidth=1.8)
+    ax_sigma.plot(xS, pdf_ms_s(xS), color=col_red, linestyle="-", linewidth=1.0)
 
     if sigma_inf is not None:
         famS_inf, infS_params = sigma_inf["family"], sigma_inf["params"]
@@ -836,9 +836,9 @@ def plot_complexity_bar(
     prefix: str = "ark_param",
     filename: str | None = None,
     use_log10: bool = True,
-    qf_full_time_sec: float = 0.0,
-    qf_decomp_time_sec: float = 0.0,
-    black_box_time_sec: float = 0.0,
+    qf_full_time_sec=0.0,
+    qf_decomp_time_sec=0.0,
+    black_box_time_sec=0.0,
 ):
     try:
         _apply_plot_rc(plot_cfg)
@@ -856,18 +856,14 @@ def plot_complexity_bar(
         "BBO",
     ]
 
-    values = np.array([
-        float(qf_full_time_sec),
-        float(qf_decomp_time_sec),
-        float(black_box_time_sec),
-    ])
+    def _to_array(v):
+        if np.isscalar(v):
+            return np.array([float(v)])
+        return np.maximum(np.asarray(v, dtype=float), 1e-12)
 
-    if use_log10:
-        heights = np.maximum(values, 1e-12)
-        ylab = r"Time (sec.)"
-    else:
-        heights = values
-        ylab = r"Time (sec.)"
+    data = [_to_array(qf_full_time_sec), _to_array(qf_decomp_time_sec), _to_array(black_box_time_sec)]
+
+    ylab = r"Time (sec.)"
 
     try:
         palette = list(plot_cfg.plot.color_palette.colors)
@@ -886,31 +882,23 @@ def plot_complexity_bar(
 
     ax = fig.add_subplot(1, 1, 1)
 
-    x = np.arange(len(labels))
-
     if use_log10:
         ax.set_yscale("log")
-        positive_heights = heights[heights > 0]
-        ymin = max(np.min(positive_heights) / 5.0, 1e-12)
-    else:
-        ymin = 0.0
 
-    # lollipop stems
-    for xi, yi, c in zip(x, heights, palette):
-        ax.vlines(xi, ymin, yi, colors=c, linewidth=2.0, alpha=0.9, zorder=2)
+    for i, (d, color) in enumerate(zip(data, palette)):
+        ax.boxplot(
+            d,
+            positions=[i + 1],
+            patch_artist=True,
+            widths=0.5,
+            boxprops=dict(facecolor=color, edgecolor=color, alpha=0.75),
+            medianprops=dict(color=color, linewidth=1.0, linestyle="--"),
+            whiskerprops=dict(color=color, alpha=0.8),
+            capprops=dict(color=color, alpha=0.8),
+            flierprops=dict(markerfacecolor=color, markeredgecolor=color, alpha=0.6),
+        )
 
-    # lollipop heads
-    ax.scatter(
-        x,
-        heights,
-        c=palette[:len(labels)],
-        s=120,
-        alpha=0.95,
-        zorder=3,
-        edgecolors="none",
-    )
-
-    ax.set_xticks(x)
+    ax.set_xticks(np.arange(1, len(labels) + 1))
     ax.set_xticklabels(labels, fontsize="small")
     ax.tick_params(axis="x", pad=25)
 
@@ -920,13 +908,6 @@ def plot_complexity_bar(
     ax.spines["right"].set_visible(False)
 
     ax.grid(axis="y", linestyle=":", alpha=0.35)
-
-    if use_log10:
-        ymax = np.max(heights)
-        ax.set_ylim(ymin, ymax * 2.0 if ymax > 0 else 1.0)
-    else:
-        ymax = np.max(heights)
-        ax.set_ylim(0.0, ymax * 1.15 if ymax > 0 else 1.0)
 
     fig.tight_layout()
 

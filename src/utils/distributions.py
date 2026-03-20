@@ -7,6 +7,7 @@ from src.distributions.gamma import Gamma
 from src.distributions.laplace import Laplace
 from src.distributions.chi_squared import ChiSquared
 from src.distributions.beta import Beta
+from src.distributions.inverse_gamma import InverseGamma
 
 DISTRIBUTION_MAP = {
     "Gaussian": Gaussian,
@@ -20,6 +21,7 @@ DISTRIBUTION_MAP = {
     "Laplace": Laplace,
     "ChiSquared": ChiSquared,
     "Beta": Beta,
+    "InverseGamma": InverseGamma,
 }
 
 

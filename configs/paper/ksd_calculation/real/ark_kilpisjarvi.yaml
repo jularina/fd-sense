@@ -1,0 +1,199 @@
+data:
+  base_prior:
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 5
+      beta1:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 5
+      beta2:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 5
+      beta3:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 5
+      beta4:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 5
+      beta5:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 0
+        sigma: 5
+      sigma:
+        _target_: src.distributions.cauchy.HalfCauchy
+        gamma: 1
+  candidate_prior:
+    _target_: src.distributions.composite.CompositeProduct
+    distributions:
+      alpha:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: -2
+        sigma: 1
+      beta1:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 2
+        sigma: 1
+      beta2:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 2
+        sigma: 1
+      beta3:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 2
+        sigma: 1
+      beta4:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: -2
+        sigma: 1
+      beta5:
+        _target_: src.distributions.gaussian.Gaussian
+        mu: 2
+        sigma: 1
+      sigma:
+        _target_: src.distributions.inverse_gamma.InverseGamma
+        alpha: 3.0
+        beta: 1.0
+  true_dgp: null
+  loss:
+    _target_: src.losses.gaussian_log_likelihood.GaussianARLogLikelihood
+  loss_lr: 1
+  observations_path: null
+  posterior_samples_path: null
+  prior_samples_path: null
+  observations_num: null
+  posterior_samples_num: null
+  prior_samples_num: null
+  warmup: 1000
+  posterior_draws_path: "/Users/arinaodv/Desktop/folder/study_phd/code/posteriordb/posterior_database/reference_posteriors/draws/draws/kilpisjarvi-reference-draws.json"
+  posterior_draws_corner_prior: "/Users/arinaodv/Desktop/folder/study_phd/code/posteriordb/posterior_database/reference_posteriors/draws/draws/kilpisjarvi-reference-draws-corner.json"
+
+model:
+  _target_: src.bayesian_model.posteriordb.kilpisjarvi.KilpisjarviBayesianModel
+
+fd:
+  optimize:
+    prior:
+      Composite:
+        combine_rule: product
+        components:
+          - name: alpha
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [ -2, 2 ]
+                sigma: [ 0.25, 1 ]
+              nums:
+                mu: 26
+                sigma: 11
+          - name: beta1
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [ -2, 2 ]
+                sigma: [ 0.25, 1 ]
+              nums:
+                mu: 26
+                sigma: 11
+          - name: beta2
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [ -2, 2 ]
+                sigma: [ 0.25, 1 ]
+              nums:
+                mu: 26
+                sigma: 11
+          - name: beta3
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [ -2, 2 ]
+                sigma: [ 0.25, 1 ]
+              nums:
+                mu: 26
+                sigma: 11
+          - name: beta4
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [ -2, 2 ]
+                sigma: [ 0.25, 1 ]
+              nums:
+                mu: 26
+                sigma: 11
+          - name: beta5
+            family: Gaussian
+            parameters_box_range:
+              ranges:
+                mu: [ -2, 2 ]
+                sigma: [ 0.25, 1 ]
+              nums:
+                mu: 26
+                sigma: 11
+          - name: sigma
+            family: InverseGamma
+            parameters_box_range:
+              ranges:
+                alpha: [ 2.5, 7 ]
+                beta: [ 0.1667, 2 ]
+              nums:
+                alpha: 15
+                beta: 26
+        eta_components:
+          - name: alpha
+            eta_range:
+              eta_1: [-8, 8]
+              eta_2: [-8, -0.5]
+          - name: beta1
+            eta_range:
+              eta_1: [-8, 8]
+              eta_2: [-8, -0.5]
+          - name: beta2
+            eta_range:
+              eta_1: [-8, 8]
+              eta_2: [-8, -0.5]
+          - name: beta3
+            eta_range:
+              eta_1: [-8, 8]
+              eta_2: [-8, -0.5]
+          - name: beta4
+            eta_range:
+              eta_1: [-8, 8]
+              eta_2: [-8, -0.5]
+          - name: beta5
+            eta_range:
+              eta_1: [-8, 8]
+              eta_2: [-8, -0.5]
+          - name: sigma
+            eta_range:
+              eta_1: [-8, -3.5]
+              eta_2: [-2, -0.1667]
+
+    loss:
+      GaussianARLogLikelihood:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.05, 2.5 ]
+          nums:
+            lr: 21
+
+flags:
+  plots:
+    generate_plots:
+      heatmap: false
+      line_plot: false
+      density_plot: true
+    output_dir: outputs/paper/plots/fisher/kilpisjarvi
+
+playground:
+  output_prefix: kilpisjarvi_param
+  save_json: true
+  save_csv: true
+  n_timing_runs: 500

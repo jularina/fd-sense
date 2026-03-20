@@ -387,7 +387,7 @@ def plot_multi_line_plots(
 
         save_path = os.path.join(
             output_dir,
-            f"{filename_prefix}_{varying_param_name}_vs_{fixed_param_name}.pdf"
+            "toy_gaussian_model_a.pdf"
         )
         fig.savefig(save_path, format="pdf", bbox_inches='tight')
         plt.close(fig)
@@ -561,8 +561,10 @@ def plot_eta_surface(
     ax = fig.add_subplot(111, projection="3d")
     ax.plot_trisurf(x, y, z, cmap=cmap, edgecolor="none", linewidth=0.2, antialiased=True)
 
-    ax.set_xlabel(r"$\lambda_0=\frac{\mu_0}{\sigma_0^2}$")
-    ax.set_ylabel(r"$\lambda_1=\frac{-0.5}{\sigma_0^2}$", fontsize=y_label_fs)  # <-- larger y-label
+    # ax.set_xlabel(r"$\lambda_0=\frac{\mu_0}{\sigma_0^2}$")
+    # ax.set_ylabel(r"$\lambda_1=\frac{-0.5}{\sigma_0^2}$", fontsize=y_label_fs)
+    ax.set_xlabel(r"$\lambda_0$")
+    ax.set_ylabel(r"$\lambda_1$", fontsize=y_label_fs)
 
     if plot_cfg.plot.figure.tight_layout:
         plt.tight_layout()
@@ -629,6 +631,8 @@ def plot_eta_surface(
     #     legend_ax.text(0.0, float(yv), line, fontsize=legend_line_fs, ha="left", va="center")
 
     # ---------- ticks: exactly 3 on x, y, z ----------
+    ax.set_xlim(x.min(), x.max())
+    ax.set_ylim(y.min(), y.max())
     ax.xaxis.set_major_locator(LinearLocator(4))
     ax.yaxis.set_major_locator(LinearLocator(4))
     # ax.zaxis.set_major_locator(LinearLocator(4))
@@ -671,6 +675,132 @@ def plot_eta_surface(
     plt.close(fig)
     print(
         f"Saved 3D eta surface with straight path, smaller black corner points, 3 ticks/axis, and legend to: {save_path}")
+
+
+def plot_mu_sigma_contour(
+    results: List[Tuple[Dict[str, float], np.ndarray, float]],
+    corner_points: List[Dict[str, float]],
+    plot_cfg: DictConfig,
+    output_dir: str,
+) -> None:
+    """
+    2D filled contour plot of the quadratic form over (mu, sigma) space.
+    Non-elliptic contour shapes reveal the non-convexity of the objective
+    in the original parametrisation.
+    """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    from scipy.interpolate import griddata
+    os.makedirs(output_dir, exist_ok=True)
+    latex_param_names = plot_cfg.plot.param_latex_names
+
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+    })
+
+    def _key_from_params(p: Dict[str, float]) -> FrozenSet[Tuple[str, float]]:
+        return frozenset({(k, float(f"{v:.8f}")) for k, v in p.items()})
+
+    def _get_mu_sigma(p: Dict[str, float]):
+        def _first(d, keys):
+            for k in keys:
+                if k in d:
+                    return d[k]
+            return None
+        mu = _first(p, ["mu_0", "mu0", "mu"])
+        sg = _first(p, ["sigma_0", "sigma0", "sigma", "std", "sd"])
+        return mu, sg
+
+    # ---------- gather data ----------
+    x, y, z = [], [], []
+    coords_by_key: Dict[FrozenSet[Tuple[str, float]], Tuple[float, float, float]] = {}
+
+    corner_points_dicts = [cp[0] for cp in corner_points]
+    corner_keys = [_key_from_params(cp) for cp in corner_points_dicts]
+
+    for prior_params, _eta, ksd_est in results:
+        mu_val, sg_val = _get_mu_sigma(prior_params)
+        if mu_val is None or sg_val is None:
+            continue
+        mu_f, sg_f = float(mu_val), float(sg_val)
+        z_val = float(np.log10(ksd_est) if plot_cfg.plot.y_axis.log_scale else ksd_est)
+        x.append(mu_f)
+        y.append(sg_f)
+        z.append(z_val)
+        coords_by_key[_key_from_params(prior_params)] = (mu_f, sg_f, z_val)
+
+    x = np.array(x)
+    y = np.array(y)
+    z = np.array(z)
+
+    # interpolate onto a regular grid for smooth contours
+    grid_res = 200
+    xi = np.linspace(x.min(), x.max(), grid_res)
+    yi = np.linspace(y.min(), y.max(), grid_res)
+    Xi, Yi = np.meshgrid(xi, yi)
+    Zi = griddata((x, y), z, (Xi, Yi), method="cubic")
+
+    palette_colors = plot_cfg.plot.color_palette.colors[::-1]
+    cmap = LinearSegmentedColormap.from_list("custom_cmap", palette_colors)
+
+    base_fs = int(plot_cfg.plot.font.size)
+    corner_num_fs = max(7, int(base_fs * 1.25))
+    corner_dot_size = max(10, int(base_fs * 1.4))
+
+    fig, ax = plt.subplots(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    cf = ax.contourf(Xi, Yi, Zi, levels=20, cmap=cmap)
+    ct = ax.contour(Xi, Yi, Zi, levels=20, colors="white", linewidths=0.4, alpha=0.5)
+    cbar = fig.colorbar(cf, ax=ax, label=getattr(latex_param_names, "estimatedFDposteriorsQuadraticForm", "KSD"))
+    from matplotlib.ticker import MaxNLocator
+    cbar.locator = MaxNLocator(integer=True)
+    cbar.update_ticks()
+
+    # axis labels
+    mu_label = r"$\mu$"
+    sigma_label = r"$\sigma$"
+
+    ax.set_xlabel(mu_label if "$" in mu_label else f"${mu_label}$", fontsize=base_fs)
+    ax.set_ylabel(sigma_label if "$" in sigma_label else f"${sigma_label}$", fontsize=base_fs)
+
+    # ---------- max marker ----------
+    max_idx = int(np.argmax(z))
+    ax.scatter(x[max_idx], y[max_idx], color="red", marker="*", s=80,
+               zorder=20, clip_on=False, label="max")
+
+    # ---------- corners ----------
+    corner_coords_ordered = []
+    for idx, (cp, ck) in enumerate(zip(corner_points_dicts, corner_keys), start=1):
+        if ck not in coords_by_key:
+            continue
+        cx, cy, _ = coords_by_key[ck]
+        corner_coords_ordered.append((cx, cy))
+        ax.text(cx, cy, f"{idx}", fontsize=corner_num_fs, color="black",
+                ha="center", va="bottom", zorder=15, weight="bold", clip_on=False)
+        is_max = (abs(cx - x[max_idx]) < 1e-9 and abs(cy - y[max_idx]) < 1e-9)
+        if not is_max:
+            ax.scatter(cx, cy, color="black", s=corner_dot_size, zorder=11, clip_on=False)
+
+    if len(corner_coords_ordered) >= 2:
+        traj = np.array(corner_coords_ordered, dtype=float)
+        ax.plot(traj[:, 0], traj[:, 1], color="black", linestyle="-",
+                linewidth=1.1, alpha=0.7, zorder=9)
+
+    if plot_cfg.plot.figure.tight_layout:
+        plt.tight_layout()
+
+    filename = "hyperparams_contour_from_corners.pdf"
+    save_path = os.path.join(output_dir, filename)
+    fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved 2D mu/sigma contour plot to: {save_path}")
 
 
 def plot_sdp_densities_and_logprior(
@@ -1208,8 +1338,8 @@ def plot_multivariate_joint_prior_densities_by_fd(results, output_dir, plot_cfg,
             print("[WARN] Skipping true density overlay due to invalid covariance.")
 
     # Labels and appearance
-    ax.set_xlabel("$\\mu_{01}$")
-    ax.set_ylabel("$\\mu_{02}$")
+    ax.set_xlabel("$\\theta_1$")
+    ax.set_ylabel("$\\theta_2$")
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
@@ -1220,7 +1350,7 @@ def plot_multivariate_joint_prior_densities_by_fd(results, output_dir, plot_cfg,
     cbar.set_label(plot_cfg.plot.param_latex_names.estimatedFDposteriorsQuadraticForm)
 
     # Save
-    output_path = os.path.join(output_dir, "joint_prior_fd_contours.pdf")
+    output_path = os.path.join(output_dir, "toy_gaussian_model_multivariate.pdf")
     fig.tight_layout()
     fig.savefig(output_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -1231,11 +1361,13 @@ def plot_existing_methods_comparison_gaussians(
     plot_cfg,
     mu_ref: np.ndarray,
     mu_cand_1: np.ndarray,
-    mu_cand_2: np.ndarray,
     Sigma_ref: np.ndarray,
     Sigma_cand_1: np.ndarray,
-    Sigma_cand_2: np.ndarray,
+    mu_cand_2: np.ndarray = None,
+    Sigma_cand_2: np.ndarray = None,
     filename: str = "comparison_existing_methods_gaussians.pdf",
+    annotation_text: str = None,
+    annotation_fontsize: int = 12,
 ) -> None:
     """
     Plot 2D Gaussian posterior contours:.
@@ -1275,13 +1407,17 @@ def plot_existing_methods_comparison_gaussians(
         r = k * np.sqrt(np.max(w))
         return r
 
-    r = max(
-        extent_from_cov(Sigma_ref),
-        extent_from_cov(Sigma_cand_1),
-        extent_from_cov(Sigma_cand_2),
-    )
-    x_min, x_max = mu_ref[0] - r, mu_ref[0] + r
-    y_min, y_max = mu_ref[1] - r, mu_ref[1] + r
+    extents = [extent_from_cov(Sigma_ref), extent_from_cov(Sigma_cand_1)]
+    if Sigma_cand_2 is not None:
+        extents.append(extent_from_cov(Sigma_cand_2))
+    r = max(extents)
+    all_mus = [mu_ref, mu_cand_1]
+    if mu_cand_2 is not None:
+        all_mus.append(mu_cand_2)
+    x_min = min(m[0] for m in all_mus) - r
+    x_max = max(m[0] for m in all_mus) + r
+    y_min = min(m[1] for m in all_mus) - r
+    y_max = max(m[1] for m in all_mus) + r
 
     xs = np.linspace(x_min, x_max, 220)
     ys = np.linspace(y_min, y_max, 220)
@@ -1289,7 +1425,7 @@ def plot_existing_methods_comparison_gaussians(
 
     Z_ref = gaussian_pdf_grid(mu_ref, Sigma_ref, X, Y)
     Z_1 = gaussian_pdf_grid(mu_cand_1, Sigma_cand_1, X, Y)
-    Z_2 = gaussian_pdf_grid(mu_cand_2, Sigma_cand_2, X, Y)
+    Z_2 = gaussian_pdf_grid(mu_cand_2, Sigma_cand_2, X, Y) if mu_cand_2 is not None else None
 
     # Choose contour levels relative to each max so shapes are comparable
     def levels_from_Z(Z: np.ndarray):
@@ -1318,12 +1454,13 @@ def plot_existing_methods_comparison_gaussians(
     )
 
     # Candidate 2
-    ax.contourf(
-        X, Y, Z_2,
-        levels=[Z_2.max() * 0.05, Z_2.max()],
-        colors=[col_2],
-        alpha=0.25
-    )
+    if Z_2 is not None:
+        ax.contourf(
+            X, Y, Z_2,
+            levels=[Z_2.max() * 0.05, Z_2.max()],
+            colors=[col_2],
+            alpha=0.25
+        )
     from scipy.stats import chi2
 
     prob_levels = [0.5, 0.95]
@@ -1336,10 +1473,11 @@ def plot_existing_methods_comparison_gaussians(
 
     levels_ref = np.sort(gaussian_density_levels(mu_ref, Sigma_ref, chi_levels))
     levels_1 = np.sort(gaussian_density_levels(mu_cand_1, Sigma_cand_1, chi_levels))
-    levels_2 = np.sort(gaussian_density_levels(mu_cand_2, Sigma_cand_2, chi_levels))
     ax.contour(X, Y, Z_ref, levels=levels_ref, colors=[col_ref], linewidths=1.5)
     ax.contour(X, Y, Z_1, levels=levels_1, colors=[col_1], linewidths=1.2, linestyles="--")
-    ax.contour(X, Y, Z_2, levels=levels_2, colors=[col_2], linewidths=1.2, linestyles=":")
+    if Z_2 is not None:
+        levels_2 = np.sort(gaussian_density_levels(mu_cand_2, Sigma_cand_2, chi_levels))
+        ax.contour(X, Y, Z_2, levels=levels_2, colors=[col_2], linewidths=1.2, linestyles=":")
 
     # Mark the common mean
     ax.plot(mu_ref[0], mu_ref[1], marker="o", markersize=4.5, color="black")
@@ -1354,23 +1492,21 @@ def plot_existing_methods_comparison_gaussians(
     # Legend
     handles = [
         Line2D([0], [0], color=col_ref, lw=1.6, label=plot_cfg.plot.param_latex_names.referenceposterior),
-        Line2D([0], [0], color=col_1, lw=1.2, ls="--", label=r"$\Pi^{\lambda_1}$"),
-        Line2D([0], [0], color=col_2, lw=1.2, ls=":", label=r"$\Pi^{\lambda_2}$"),
+        Line2D([0], [0], color=col_1, lw=1.2, ls="--", label=r"$\tilde{\Pi}^{\lambda_1}$"),
     ]
+    if Z_2 is not None:
+        handles.append(Line2D([0], [0], color=col_2, lw=1.2, ls=":", label=r"$\tilde{\Pi}^{\lambda_2}$"))
     ax.legend(handles=handles, frameon=False, bbox_to_anchor=(1.0, 1.08), loc="upper right")
 
     # Annotation box (the point of the figure)
-    text = (
-        # r"$S^{\varphi}(\Gamma)=0$" "\n"
-        r"$S^{\mathrm{cov}}(\Gamma)=0$" "\n"
-        r"$S^{\mathrm{FD}}(\Gamma)>0$"
-    )
-    ax.text(
-        0.02, 0.03, text,
-        transform=ax.transAxes,
-        ha="left", va="bottom",
-        bbox=dict(boxstyle="round", facecolor="white", edgecolor="none", alpha=0.85),
-    )
+    if annotation_text is not None:
+        ax.text(
+            0.02, 0.03, annotation_text,
+            transform=ax.transAxes,
+            ha="left", va="bottom",
+            fontsize=annotation_fontsize,
+            bbox=dict(boxstyle="round", facecolor="white", edgecolor="none", alpha=0.85),
+        )
 
     fig.tight_layout()
     outpath = os.path.join(output_dir, filename)
@@ -1657,12 +1793,17 @@ def estimate_kl_from_ref_samples_kde(
     return float(np.mean(logp_ref - logp_cand))
 
 
+_METHOD_COLORS = {
+    "wim":  "#450314",
+    "kl":   "#7c397d",
+    "mean": "#3F3FFF",
+    "fd":   "#5b9bd5",
+}
+
+
 def _method_color(plot_cfg, method: str) -> str:
-    """Map each method to a fixed palette color."""
-    cols = plot_cfg.plot.color_palette.colors
-    method_order = ["wim", "kl", "mean", "fd"]  # you choose the order
-    idx = method_order.index(method)
-    return cols[idx % len(cols)]
+    """Map each method to a fixed color."""
+    return _METHOD_COLORS[method]
 
 
 def _alpha_for_dim(dims, d, alpha_min=0.25, alpha_max=0.95) -> float:
@@ -1693,11 +1834,70 @@ def _linestyle_for_dim(dims, d):
     return linestyles[idx % len(linestyles)]
 
 
+def compute_global_ylim_error(results: Dict[str, Any], logy: bool = False) -> Tuple[float, float]:
+    error_mean = results["error_mean"]
+    error_ci = results["error_ci"]
+    dims = results["dims"]
+    ymin, ymax = np.inf, -np.inf
+    for method in error_mean:
+        for d in dims:
+            y = np.array(error_mean[method][d], dtype=float)
+            h = np.array(error_ci[method][d], dtype=float)
+            lower, upper = y - h, y + h
+            if logy:
+                lower_pos = lower[lower > 0]
+                if lower_pos.size > 0:
+                    ymin = min(ymin, np.min(lower_pos))
+            else:
+                ymin = min(ymin, np.min(lower))
+            ymax = max(ymax, np.max(upper))
+    if not np.isfinite(ymin) or not np.isfinite(ymax):
+        raise ValueError("Could not determine global y-limits.")
+    if logy:
+        ymin *= 0.95
+        ymax *= 1.05
+    else:
+        yrange = ymax - ymin or max(abs(ymax), 1.0)
+        ymin -= 0.05 * yrange
+        ymax += 0.05 * yrange
+    return ymin, ymax
+
+
+def compute_global_ylim_time(results: Dict[str, Any], logy: bool = False) -> Tuple[float, float]:
+    time_mean = results["time_mean"]
+    time_ci = results["time_ci"]
+    dims = results["dims"]
+    ymin, ymax = np.inf, -np.inf
+    for method in time_mean:
+        for d in dims:
+            y = np.array(time_mean[method][d], dtype=float)
+            h = np.array(time_ci[method][d], dtype=float)
+            lower, upper = y - h, y + h
+            if logy:
+                lower_pos = lower[lower > 0]
+                if lower_pos.size > 0:
+                    ymin = min(ymin, np.min(lower_pos))
+            else:
+                ymin = min(ymin, np.min(lower))
+            ymax = max(ymax, np.max(upper))
+    if not np.isfinite(ymin) or not np.isfinite(ymax):
+        raise ValueError("Could not determine global y-limits.")
+    if logy:
+        ymin *= 0.95
+        ymax *= 1.05
+    else:
+        yrange = ymax - ymin or max(abs(ymax), 1.0)
+        ymin -= 0.05 * yrange
+        ymax += 0.05 * yrange
+    return ymin, ymax
+
+
 def compute_gaussian_complexity_results(
     ms: List[int],
     dims: List[int],
     n_rep: int = 30,
     seed: int = 0,
+    divergence: str = None,
 ) -> Dict[str, Any]:
     """
     Compute both finite-sample estimation errors and runtimes
@@ -1705,7 +1905,7 @@ def compute_gaussian_complexity_results(
     """
     rng = np.random.default_rng(seed)
 
-    methods = ["fd", "mean", "wim", "kl"]
+    methods = [divergence] if divergence is not None else ["fd", "mean", "wim", "kl"]
 
     error_mean = {method: {d: [] for d in dims} for method in methods}
     error_ci = {method: {d: [] for d in dims} for method in methods}
@@ -1867,6 +2067,10 @@ def plot_runtime_complexity_gaussians(
     seed: int = 0,
     logy: bool = False,
     results: Dict[str, Any] | None = None,
+    divergence: str = None,
+    ylim: Tuple[float, float] = None,
+    xlim: Tuple[float, float] = None,
+    show_ci: bool = False,
 ) -> Dict[str, Any]:
     """
     Plot runtime of estimating FD, mean, KL, and WIM.
@@ -1892,7 +2096,7 @@ def plot_runtime_complexity_gaussians(
 
     time_mean = results["time_mean"]
     time_ci = results["time_ci"]
-    methods = ["fd", "mean", "kl", "wim"]
+    methods = [divergence] if divergence is not None else ["fd", "mean", "kl", "wim"]
 
     def compute_global_ylim() -> Tuple[float, float]:
         ymin = np.inf
@@ -1930,7 +2134,7 @@ def plot_runtime_complexity_gaussians(
 
         return ymin, ymax
 
-    ylim_global = compute_global_ylim()
+    ylim_global = ylim if ylim is not None else compute_global_ylim()
 
     def plot_method(method: str, ylim: Tuple[float, float], show_axes_labels: bool) -> None:
         fig, ax = _make_figure(plot_cfg)
@@ -1959,7 +2163,8 @@ def plot_runtime_complexity_gaussians(
                 linewidth=2.0,
                 linestyle=ls,
             )
-            ax.fill_between(ms, lower, upper, color=fill_c, linewidth=0)
+            if show_ci:
+                ax.fill_between(ms, lower, upper, color=fill_c, linewidth=0)
 
         _apply_common_plot_style(
             ax,
@@ -1969,6 +2174,7 @@ def plot_runtime_complexity_gaussians(
             xlabel=r"$m$",
             logy=logy,
             ylim=ylim,
+            xlim=xlim,
         )
 
         # if method == "wim":
@@ -1998,6 +2204,7 @@ def _apply_common_plot_style(
     xlabel: str = r"$m$",
     logy: bool = False,
     ylim: Tuple[float, float] | None = None,
+    xlim: Tuple[float, float] | None = None,
 ) -> None:
     """
     Apply a common axis style while preserving identical axes size across figures.
@@ -2013,8 +2220,15 @@ def _apply_common_plot_style(
     if ylim is not None:
         ax.set_ylim(*ylim)
 
+    if xlim is not None:
+        ax.set_xlim(*xlim)
+
     if logy:
         ax.set_yscale("log")
+
+    ax.xaxis.set_major_formatter(
+        plt.FuncFormatter(lambda x, _: f"{int(x // 1000)}k" if x >= 10000 else str(int(x)))
+    )
 
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -2046,6 +2260,10 @@ def plot_finite_sample_complexity_gaussians(
     seed: int = 0,
     logy: bool = False,
     results: Dict[str, Any] | None = None,
+    divergence: str = None,
+    ylim: Tuple[float, float] = None,
+    xlim: Tuple[float, float] = None,
+    show_ci: bool = False,
 ) -> Dict[str, Any]:
     """
     Plot finite-sample error curves and return the computed results.
@@ -2108,7 +2326,16 @@ def plot_finite_sample_complexity_gaussians(
 
         return ymin, ymax
 
-    ylim_global = compute_global_ylim(logy=logy)
+    ylim_global = ylim if ylim is not None else compute_global_ylim(logy=logy)
+
+    all_plot_specs = [
+        ("fd",   r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$", "comparison_measure_sample_complexity_fd.pdf",   False, False),
+        ("mean", r"$\left\|\rho^{\mathrm{mean}}-\hat{\rho}^{\mathrm{mean}}_m\right\|_2$",       "comparison_measure_sample_complexity_mean.pdf", False, False),
+        ("wim",  r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$", "comparison_measure_sample_complexity_wim.pdf",  True,  True),
+        ("kl",   r"$\left|\rho^{\mathrm{KL}}-\hat{\rho}^{\mathrm{KL}}_m\right|$",              "comparison_measure_sample_complexity_kl.pdf",   False, False),
+    ]
+    plot_specs = [(m, yl, f, xe, ye) for m, yl, f, xe, ye in all_plot_specs
+                  if divergence is None or m == divergence]
 
     def plot_one(
         method: str,
@@ -2144,7 +2371,8 @@ def plot_finite_sample_complexity_gaussians(
                 linewidth=2.0,
                 linestyle=ls,
             )
-            ax.fill_between(ms, lower, upper, color=fill_c, linewidth=0)
+            if show_ci:
+                ax.fill_between(ms, lower, upper, color=fill_c, linewidth=0)
 
         _apply_common_plot_style(
             ax,
@@ -2154,6 +2382,7 @@ def plot_finite_sample_complexity_gaussians(
             xlabel=r"$m$",
             logy=logy,
             ylim=ylim,
+            xlim=xlim,
         )
 
         if method == "fd":
@@ -2164,38 +2393,9 @@ def plot_finite_sample_complexity_gaussians(
         plt.close(fig)
         print(f"[Saved] {outpath}")
 
-    plot_one(
-        method="fd",
-        ylabel=r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$",
-        filename="comparison_measure_sample_complexity_fd.pdf",
-        ylim=ylim_global,
-        show_xlabel=False,
-        show_ylabel=False,
-    )
-    plot_one(
-        method="mean",
-        ylabel=r"$\left\|\rho^{\mathrm{mean}}-\hat{\rho}^{\mathrm{mean}}_m\right\|_2$",
-        filename="comparison_measure_sample_complexity_mean.pdf",
-        ylim=ylim_global,
-        show_xlabel=False,
-        show_ylabel=False,
-    )
-    plot_one(
-        method="wim",
-        ylabel=r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$",
-        filename="comparison_measure_sample_complexity_wim.pdf",
-        ylim=ylim_global,
-        show_xlabel=True,
-        show_ylabel=True,
-    )
-    plot_one(
-        method="kl",
-        ylabel=r"$\left|\rho^{\mathrm{KL}}-\hat{\rho}^{\mathrm{KL}}_m\right|$",
-        filename="comparison_measure_sample_complexity_kl.pdf",
-        ylim=ylim_global,
-        show_xlabel=False,
-        show_ylabel=False,
-    )
+    for method, ylabel, filename, show_xlabel, show_ylabel in plot_specs:
+        plot_one(method=method, ylabel=ylabel, filename=filename,
+                 ylim=ylim_global, show_xlabel=show_xlabel, show_ylabel=show_ylabel)
 
     return results
 
@@ -2743,6 +2943,90 @@ def plot_gaussian_copula_grid(
     handles, labels = ax.get_legend_handles_labels()
     if len(handles) > 0:
         ax.legend(handles, labels, frameon=False, ncol=1, loc="best")
+
+    fig.tight_layout()
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+
+
+def plot_gaussian_copula_grid_pair(
+    copula_grid_0,
+    copula_grid_1,
+    plot_cfg,
+    output_dir: str,
+    prefix: str,
+    filename: str | None = None,
+    xlabel: str = r"$\lambda_c$",
+    ylabel: str = r"$\hat{\rho}_m^{\mathrm{FD}}(\tilde{\Pi}^{\lambda})$",
+    label_0: str = r"$(G'_0, \nu')$",
+    label_1: str = r"$(T'_0, \nu')$",
+    mark_argmax: bool = True,
+    logy: bool = False,
+):
+    """
+    Plot two Gaussian-copula FD grids (e.g. idx_g0=0 and idx_g0=1) as two
+    lines on a single axes.
+    """
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+    if filename is None:
+        filename = f"{prefix}_gaussian_copula_fd_grid.pdf"
+
+    try:
+        colors = list(plot_cfg.plot.color_palette.colors)
+    except Exception:
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    while len(colors) < 4:
+        colors = colors * 2
+
+    fig = plt.figure(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
+        dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
+    )
+    ax = fig.add_subplot(1, 1, 1)
+
+    for grid, label, line_color, point_color in (
+        (copula_grid_0, label_0, colors[0], colors[1]),
+        (copula_grid_1, label_1, colors[2], colors[3]),
+    ):
+        lambdas = np.asarray([x[0] for x in grid], dtype=float)
+        values = np.asarray([x[1] for x in grid], dtype=float)
+        order = np.argsort(lambdas)
+        lambdas, values = lambdas[order], values[order]
+
+        ax.plot(lambdas, values, linewidth=1.5, color=line_color, label=label, zorder=2)
+
+        if mark_argmax:
+            idx_star = int(np.argmax(values))
+            ax.scatter(
+                [lambdas[idx_star]], [values[idx_star]],
+                s=27, color="red", zorder=3, marker="*",
+            )
+            ax.axvline(
+                lambdas[idx_star],
+                linestyle=":", linewidth=1.0, color=point_color, alpha=0.8, zorder=1,
+            )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle=":", alpha=0.35)
+
+    if logy:
+        ax.set_yscale("log")
+
+    ax.legend(frameon=False, ncol=1, loc="best")
 
     fig.tight_layout()
 

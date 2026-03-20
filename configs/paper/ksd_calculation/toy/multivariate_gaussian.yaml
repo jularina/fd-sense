@@ -18,6 +18,7 @@ data:
     cov: [[4.0, 0.0], [0.0, 4.0]]
 
   loss_lr: 1
+  loss_lr_init: 1
   observations_path: null
   posterior_samples_path: null
   prior_samples_path: null

@@ -16,6 +16,7 @@ data:
     mu: 3
     sigma: 2
   loss_lr: 1.0
+  loss_lr_init: 1.0
   observations_num: 100
   observations_path: null # data/observations.npy
   posterior_samples_path: null # data/posterior_samples.npy

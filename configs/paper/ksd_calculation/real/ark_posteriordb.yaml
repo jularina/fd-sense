@@ -236,3 +236,4 @@ playground:
   output_prefix: ark_param
   save_json: true
   save_csv: true
+  n_timing_runs: 500

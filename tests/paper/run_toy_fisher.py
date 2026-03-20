@@ -56,7 +56,6 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
-    param_names = [name+"_0" for name in param_names]
     plot_multi_line_plots(results, param_names, plot_cfg, output_dir)
 
 
@@ -105,6 +104,18 @@ def plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, eta_results
     plot_eta_surface(eta_results, corner_points, plot_cfg, output_dir)
 
 
+def plots_across_gaussian_parameters_ranges_mu_sigma_quadratic_form(cfg, prior_combinations, prior_corners):
+    """
+    Same grid as plots_across_gaussian_parameters_ranges_etas_quadratic_form but
+    visualises the (non-convex) quadratic form surface over the original
+    (mu, sigma) parametrisation instead of the natural parameters.
+    """
+    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
+    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
+    plot_cfg = load_plot_config(plot_config_path)
+    plot_mu_sigma_contour(prior_combinations, prior_corners, plot_cfg, output_dir)
+
+
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
             config_name="univariate_gaussian")
 def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
@@ -133,8 +144,9 @@ def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
     prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
     prior_combinations = optimizer.evaluate_all_prior_combinations()
 
-    plots_across_gaussian_prior_parameters_ranges(cfg, model)
+    # plots_across_gaussian_prior_parameters_ranges(cfg, model)
     plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, prior_combinations, prior_corners)
+    plots_across_gaussian_parameters_ranges_mu_sigma_quadratic_form(cfg, prior_combinations, prior_corners)
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
@@ -229,6 +241,20 @@ def run_multivariate_gaussian_priors(cfg, save_samples: bool = True) -> None:
         cfg.ksd.optimize.loss.MultivariateGaussianLogLikelihood)
     qf_priors_all_combinations = optimizer.evaluate_all_prior_combinations()
 
+    prior_params, _, qf_val = qf_priors_all_combinations[0]
+    mu0 = np.array(prior_params['mu'])
+    Sigma0 = np.array(prior_params['cov'])
+    Sigma_obs = model.loss.cov
+    n = model.observations_num
+    x_bar = model.x_bar
+    Sigma_obs_inv = np.linalg.inv(Sigma_obs)
+    Sigma0_inv = np.linalg.inv(Sigma0)
+    Sigma_n_inv = n * Sigma_obs_inv + Sigma0_inv
+    Sigma_n = np.linalg.inv(Sigma_n_inv)
+    mu_n = Sigma_n @ (n * Sigma_obs_inv @ x_bar + Sigma0_inv @ mu0)
+    print(f"  Posterior mu_n:    {mu_n}")
+    print(f"  Posterior Sigma_n:\n{Sigma_n}")
+
     density_plot_across_multivariate_prior_parameter_sets(
         cfg, model, qf_priors_all_combinations=qf_priors_all_combinations)
 
@@ -239,77 +265,148 @@ def comparison_plot_existing_methods(cfg):
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
 
-    mu_ref = np.array([2.0, 3.0])
-    mu_cand_1 = np.array([2.0, 3.0])
-    mu_cand_2 = np.array([2.0, 3.0])
-    Sigma_ref = np.array([[1.5, 0.5],
-                          [0.5, 0.3]])
-    Sigma_1 = np.array([[0.70, 0.25],
-                        [0.1, 0.15]])
-    Sigma_2 = np.array([[0.90, -0.20],
-                        [-0.20, 0.25]])
-
-    plot_existing_methods_comparison_gaussians(
-        output_dir=output_dir,
-        plot_cfg=plot_cfg,
-        mu_ref=mu_ref,
-        mu_cand_1=mu_cand_1,
-        mu_cand_2=mu_cand_2,
-        Sigma_ref=Sigma_ref,
-        Sigma_cand_1=Sigma_1,
-        Sigma_cand_2=Sigma_2,
-        filename="comparison_same_mean_diff_cov.pdf",
-    )
-
-    mu_ref = np.array([2.0, 3.0])
-    mu_cand_1 = np.array([0.0, 5.0])
-    mu_cand_2 = np.array([3.5, 1.5])
-    Sigma_ref = np.array([[1.5, 0.5],
-                          [0.5, 0.3]])
-    Sigma_1 = np.array([[1.5, 0.5],
-                        [0.5, 0.3]])
-    Sigma_2 = np.array([[1.5, 0.5],
-                        [0.5, 0.3]])
-
-    plot_existing_methods_comparison_gaussians(
-        output_dir=output_dir,
-        plot_cfg=plot_cfg,
-        mu_ref=mu_ref,
-        mu_cand_1=mu_cand_1,
-        mu_cand_2=mu_cand_2,
-        Sigma_ref=Sigma_ref,
-        Sigma_cand_1=Sigma_1,
-        Sigma_cand_2=Sigma_2,
-        filename="comparison_same_cov_diff_mean.pdf",
-    )
-
-    ms = list(range(1000, 10001, 1000))
-    dims = [1]
-    results = load_results_json(
-        "/Users/arinaodv/Desktop/folder/study_phd/code/stein-sense/data/multivariate_gaussian/comparison/finite_sample_results.json")
-    results = convert_dim_keys_to_int(results)
-    results = plot_finite_sample_complexity_gaussians(
-        output_dir=output_dir,
-        plot_cfg=plot_cfg,
-        ms=ms,
-        dims=dims,
-        n_rep=500,
-        seed=27,
-        logy=False,
-        # results=results
-    )
-    # save_to_serializable_json(results, "/Users/arinaodv/Desktop/folder/study_phd/code/stein-sense/data/multivariate_gaussian/comparison/finite_sample_results.json")
-
-    # plot_runtime_complexity_gaussians(
+    # mu_ref = np.array([3.06293078, 3.05897246])
+    # mu_cand_1 = np.array([3.06293078, 3.05897246])
+    # mu_cand_2 = np.array([3.06293078, 3.05897246])
+    # Sigma_ref = np.array([[7.95761567e-03, 2.11077339e-05],
+    #                       [2.11077339e-05, 7.95761567e-03]])
+    # Sigma_1 = np.array([[2.00e-02, 4.00e-03],
+    #                     [4.00e-03, 6.00e-03]])
+    # Sigma_2 = np.array([[5.00e-03, -3.00e-03],
+    #                     [-3.00e-03, 2.00e-02]])
+    #
+    # plot_existing_methods_comparison_gaussians(
     #     output_dir=output_dir,
     #     plot_cfg=plot_cfg,
-    #     ms=ms,
-    #     dims=dims,
-    #     n_rep=500,
-    #     seed=27,
-    #     logy=True,
-    #     results=results,
+    #     mu_ref=mu_ref,
+    #     mu_cand_1=mu_cand_2,
+    #     mu_cand_2=mu_cand_2,
+    #     Sigma_ref=Sigma_ref,
+    #     Sigma_cand_1=Sigma_1,
+    #     Sigma_cand_2=Sigma_2,
+    #     filename="comparison_same_mean_diff_cov.pdf",
+    #     annotation_fontsize=10,
+    #     annotation_text=(
+    #         r"$\rho_i^{\varphi}(\tilde{\Pi}^{\lambda_1}) = \rho_i^{\varphi}(\tilde{\Pi}^{\lambda_2})$" "\n"
+    #         r"$\rho^{\mathrm{mean}}(\tilde{\Pi}^{\lambda_j})=0$" "\n"
+    #         r"$\rho^{\mathrm{FD}}(\tilde{\Pi}^{\lambda_j})>0$"
+    #     ),
     # )
+    #
+    # mu_ref = np.array([3.06293078, 3.05897246])
+    # mu_cand_1 = np.array([3.4, 2.5])
+    # mu_cand_2 = np.array([3.5, 2.7])
+    # Sigma_ref = np.array([[7.95761567e-03, 2.11077339e-05],
+    #                       [2.11077339e-05, 7.95761567e-03]])
+    # Sigma_1 = np.array([[7.95761567e-03, 2.11077339e-05],
+    #                     [2.11077339e-05, 7.95761567e-03]])
+    # Sigma_2 = np.array([[7.95761567e-03, 2.11077339e-05],
+    #                     [2.11077339e-05, 7.95761567e-03]])
+    #
+    # plot_existing_methods_comparison_gaussians(
+    #     output_dir=output_dir,
+    #     plot_cfg=plot_cfg,
+    #     mu_ref=mu_ref,
+    #     mu_cand_1=mu_cand_1,
+    #     mu_cand_2=mu_cand_2,
+    #     Sigma_ref=Sigma_ref,
+    #     Sigma_cand_1=Sigma_1,
+    #     Sigma_cand_2=Sigma_2,
+    #     filename="comparison_same_cov_diff_mean.pdf",
+    #     annotation_text=(
+    #         r"$\rho^{\mathrm{cov}}(\tilde{\Pi}^{\lambda_j})=0$" "\n"
+    #         r"$\rho^{\mathrm{FD}}(\tilde{\Pi}^{\lambda_j})>0$"
+    #     ),
+    # )
+
+    comparison_dir = "/Users/arinaodv/Desktop/folder/study_phd/code/stein-sense/data/multivariate_gaussian/comparison/"
+
+    combined_results_path = os.path.join(comparison_dir, "finite_sample_results.json")
+    if os.path.exists(combined_results_path):
+        combined_results = load_results_json(combined_results_path)
+        combined_results = convert_dim_keys_to_int(combined_results)
+        error_ylim = compute_global_ylim_error(combined_results, logy=True)
+        time_ylim = compute_global_ylim_time(combined_results, logy=True)
+        for div in ["wim", "kl"]:
+            div_path = os.path.join(comparison_dir, f"finite_sample_results_{div}.json")
+            if not os.path.exists(div_path):
+                div_results = {
+                    "ms": combined_results["ms"],
+                    "dims": combined_results["dims"],
+                    "error_mean": {div: combined_results["error_mean"][div]},
+                    "error_ci":   {div: combined_results["error_ci"][div]},
+                    "time_mean":  {div: combined_results["time_mean"][div]},
+                    "time_ci":    {div: combined_results["time_ci"][div]},
+                }
+                save_to_serializable_json(div_results, div_path)
+                print(f"[Saved] {div_path}")
+    else:
+        error_ylim = None
+        time_ylim = None
+
+    divergence_configs = {
+        "fd": {
+            "ms": list(range(500, 10001, 500)),
+            "dims": [5, 25, 100],
+        },
+        "mean": {
+            "ms": list(range(500, 10001, 500)),
+            "dims": [5, 25, 100],
+        },
+        "wim": {
+            "ms": list(range(1000, 5001, 500)),
+            "dims": [5, 25, 100],
+        },
+        "kl": {
+            "ms": list(range(1000, 5001, 500)),
+            "dims": [5, 25, 100],
+        },
+    }
+
+    all_ms = [m for cfg in divergence_configs.values() for m in cfg["ms"]]
+    xlim = (min(all_ms), max(all_ms)+1000)
+
+    for divergence, config in divergence_configs.items():
+        ms = config["ms"]
+        dims = config["dims"]
+        results_path = os.path.join(comparison_dir, f"finite_sample_results_{divergence}.json")
+
+        if os.path.exists(results_path):
+            results = load_results_json(results_path)
+            results = convert_dim_keys_to_int(results)
+        else:
+            results = compute_gaussian_complexity_results(
+                ms=ms,
+                dims=dims,
+                n_rep=500,
+                seed=27,
+                divergence=divergence,
+            )
+            save_to_serializable_json(results, results_path)
+
+        plot_finite_sample_complexity_gaussians(
+            output_dir=output_dir,
+            plot_cfg=plot_cfg,
+            divergence=divergence,
+            ms=ms,
+            dims=dims,
+            logy=True,
+            results=results,
+            ylim=error_ylim,
+            xlim=xlim,
+        )
+
+        plot_runtime_complexity_gaussians(
+            output_dir=output_dir,
+            plot_cfg=plot_cfg,
+            divergence=divergence,
+            ms=ms,
+            dims=dims,
+            logy=True,
+            results=results,
+            ylim=time_ylim,
+            xlim=xlim,
+        )
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")

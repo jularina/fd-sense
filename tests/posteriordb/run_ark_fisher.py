@@ -132,42 +132,60 @@ def main(cfg: DictConfig) -> None:
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
 
+    n_runs = cfg.playground.get("n_timing_runs", 500)
+    n_runs_bb = cfg.playground.get("n_timing_runs_bb", 100)
+    timing_output_dir = os.path.join(get_original_cwd(), "data/ark")
+    os.makedirs(timing_output_dir, exist_ok=True)
+
     print("=== FD for PosteriorDB model ===")
     model = instantiate(cfg.model, data_config=cfg.data)
     fisher_estimator = PosteriorFDBase(model=model)
     print(f"Initial Fisher for prior: {fisher_estimator.estimate_fisher_prior_only():.4f}")
     print(f"Initial Fisher for lr: {fisher_estimator.estimate_fisher_lr_only():.4f}")
 
-    print("Starting optimisation of all parameters at once.")
-    start = time.perf_counter()
-    optimizer = OptimizationCornerPointsCompositePrior(fisher_estimator,
-                                                       cfg.fd.optimize.prior.Composite,
-                                                       cfg.fd.optimize.loss.GaussianARLogLikelihood,
-                                                       )
-    qf_corners, eta_star = optimizer.evaluate_all_prior_corners()
-    # elapsed = time.perf_counter() - start
-    # print(f"Time for optimisation of all parameters at once: {elapsed:.3f} sec.")
-    #
-    # print("Starting black-box optimisation.")
-    # start = time.perf_counter()
-    # bb = optimizer.black_box_optimize_prior_box_global(
-    #     seed=0,
-    #     maxiter=150,
-    #     popsize=20,
-    #     workers=1,
-    #     updating="deferred",
-    # )
-    # elapsed = time.perf_counter() - start
-    # print("Black-box sup:", bb.val_sup)
-    # print("Black-box inf:", bb.val_inf)
-    # print("Black-box S_hat:", bb.S_hat)
-    # print(f"Time for black-box optimisation of all parameters at once: {elapsed:.3f} sec.")
-    #
-    # print("Starting per component optimisation.")
-    # names = ["alpha", "beta1", "beta2", "beta3", "beta4", "beta5", "sigma"]
-    # start = time.perf_counter()
-    # sup_res, eta_sup_blocks = optimizer.evaluate_all_prior_corners_per_component(component_names=names)
-    # eta_inf_blocks, values_inf = optimizer.minimize_prior_per_component_qp(names)
+    optimizer = OptimizationCornerPointsCompositePrior(
+        fisher_estimator,
+        cfg.fd.optimize.prior.Composite,
+        cfg.fd.optimize.loss.GaussianARLogLikelihood,
+    )
+    names = ["alpha", "beta1", "beta2", "beta3", "beta4", "beta5", "sigma"]
+
+    print(f"Starting optimisation of all parameters at once ({n_runs} runs).")
+    times_full = np.empty(n_runs)
+    for i in range(n_runs):
+        start = time.perf_counter()
+        qf_corners, eta_star = optimizer.evaluate_all_prior_corners()
+        eta_inf, val_inf = optimizer.minimize_prior_full_qp()
+        times_full[i] = time.perf_counter() - start
+        print(f"  Run {i + 1}/{n_runs}: {times_full[i]:.3f} sec.")
+    np.savez(os.path.join(timing_output_dir, "timing_qf_full.npz"), times=times_full)
+
+    print(f"Starting per component optimisation ({n_runs} runs).")
+    times_decomp = np.empty(n_runs)
+    for i in range(n_runs):
+        start = time.perf_counter()
+        sup_res, eta_sup_blocks = optimizer.evaluate_all_prior_corners_per_component(component_names=names)
+        eta_inf_blocks, values_inf = optimizer.minimize_prior_per_component_qp(names)
+        times_decomp[i] = time.perf_counter() - start
+        print(f"  Run {i + 1}/{n_runs}: {times_decomp[i]:.3f} sec.")
+    np.savez(os.path.join(timing_output_dir, "timing_qf_decomp.npz"), times=times_decomp)
+
+    print(f"Starting black-box optimisation ({n_runs_bb} runs).")
+    times_bb = np.empty(n_runs_bb)
+    for i in range(n_runs_bb):
+        start = time.perf_counter()
+        bb = optimizer.black_box_optimize_prior_box_global(
+            method="dual_annealing",
+            seed=i,
+            maxiter=150,
+            n_restarts=5,
+        )
+        times_bb[i] = time.perf_counter() - start
+        print(f"  Run {i + 1}/{n_runs_bb}: {times_bb[i]:.3f} sec.")
+
+    np.savez(os.path.join(timing_output_dir, "timing_bb.npz"), times=times_bb)
+    print(f"Saved timing results to {timing_output_dir}")
+
     # print("Per-component argmax corners:")
     # for k in names:
     #     print(k, eta_sup_blocks[k], sup_res[k][0][1])
@@ -270,10 +288,10 @@ def compare_complexities(cfg: DictConfig) -> None:
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
     plot_cfg = load_plot_config(plot_config_path)
 
-    # Replace with the measured times (seconds)
-    qf_full_time_sec = 0.093
-    qf_decomp_time_sec = 0.008
-    black_box_time_sec = 154.0
+    timing_dir = os.path.join(get_original_cwd(), "data/ark")
+    qf_full_time_sec = np.load(os.path.join(timing_dir, "timing_qf_full.npz"))["times"]
+    qf_decomp_time_sec = np.load(os.path.join(timing_dir, "timing_qf_decomp.npz"))["times"]
+    black_box_time_sec = np.load(os.path.join(timing_dir, "timing_bb.npz"))["times"]
 
     plot_complexity_bar(
         plot_cfg=plot_cfg,
@@ -541,6 +559,6 @@ def plot_posterior_predictive(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    # main()
-    # plot_posterior_predictive()
-    compare_complexities()
+    main()
+    plot_posterior_predictive()
+    # compare_complexities()

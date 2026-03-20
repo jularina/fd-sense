@@ -4,7 +4,7 @@ import numpy as np
 import cvxpy as cp
 from scipy.spatial import ConvexHull
 from tqdm import tqdm
-from scipy.optimize import differential_evolution
+from scipy.optimize import differential_evolution, dual_annealing
 from dataclasses import dataclass
 
 from distributions.inverse_wishart import InverseWishart
@@ -450,6 +450,37 @@ class OptimizationCornerPointsCompositePrior:
 
         return np.array(x.value).reshape(-1)
 
+    def minimize_prior_full_qp(self) -> Tuple[np.ndarray, float]:
+        """
+        Solve:
+            min_{eta in box} eta^T A_prior eta + b_prior^T eta + c_prior
+        over the full eta box (all components jointly) using a single QP.
+
+        Returns
+        -------
+        eta_inf : np.ndarray
+            Minimising eta vector.
+        val_inf : float
+            Minimum QF value.
+        """
+        dim = len(self.eta_components_cfg) * 2
+        lo = np.empty(dim)
+        hi = np.empty(dim)
+        for j, cfg in enumerate(self.eta_components_cfg):
+            lo[2 * j]     = float(cfg["eta_range"]["eta_1"][0])
+            hi[2 * j]     = float(cfg["eta_range"]["eta_1"][1])
+            lo[2 * j + 1] = float(cfg["eta_range"]["eta_2"][0])
+            hi[2 * j + 1] = float(cfg["eta_range"]["eta_2"][1])
+
+        x = cp.Variable(dim)
+        obj = cp.Minimize(cp.quad_form(x, self.A_prior) + self.b_prior @ x)
+        prob = cp.Problem(obj, [x >= lo, x <= hi])
+        prob.solve(solver=cp.OSQP, verbose=False)
+
+        eta_inf = np.array(x.value, dtype=float).reshape(-1)
+        val_inf = float(eta_inf @ self.A_prior @ eta_inf + self.b_prior @ eta_inf + self.c_prior)
+        return eta_inf, val_inf
+
     def minimize_prior_per_component_qp(self, component_names: List[str] = None):
 
         if component_names is None:
@@ -496,9 +527,61 @@ class OptimizationCornerPointsCompositePrior:
         eta = np.asarray(eta, dtype=float).reshape(-1)
         return float(self.posterior_estimator.fd_prior_only_given_eta(eta))
 
+    def _run_optimizer(
+        self,
+        func,
+        bounds,
+        method: str,
+        seed: int,
+        maxiter: int,
+        popsize: int,
+        tol: float,
+        polish: bool,
+        workers: int,
+        updating: str,
+        n_restarts: int,
+    ):
+        """Run sup/inf optimizer with the chosen method, optionally with restarts."""
+        _METHODS = ("differential_evolution", "dual_annealing")
+        if method not in _METHODS:
+            raise ValueError(f"method must be one of {_METHODS}, got '{method}'.")
+
+        best_res = None
+        best_val = None
+
+        for r in range(max(1, n_restarts)):
+            s = seed + r
+            if method == "differential_evolution":
+                res = differential_evolution(
+                    func=func,
+                    bounds=bounds,
+                    seed=s,
+                    maxiter=maxiter,
+                    popsize=popsize,
+                    tol=tol,
+                    polish=polish,
+                    workers=workers,
+                    updating=updating,
+                    disp=False,
+                )
+            else:  # dual_annealing
+                res = dual_annealing(
+                    func=func,
+                    bounds=bounds,
+                    seed=s,
+                    maxiter=maxiter,
+                )
+
+            if best_val is None or res.fun < best_val:
+                best_val = res.fun
+                best_res = res
+
+        return best_res
+
     def black_box_optimize_prior_box_global(
         self,
         *,
+        method: str = "differential_evolution",
         seed: int = 0,
         maxiter: int = 200,
         popsize: int = 15,
@@ -506,50 +589,38 @@ class OptimizationCornerPointsCompositePrior:
         polish: bool = True,
         workers: int = 1,
         updating: str = "immediate",
+        n_restarts: int = 1,
     ) -> BlackBoxOptResult:
         """
         Solve:
             sup_{eta in Gamma_box} FD(eta)
             inf_{eta in Gamma_box} FD(eta)
-        using a global black-box solver (differential evolution).
+        using a global black-box solver.
 
-        This is the "complete black-box" baseline you described.
+        Parameters
+        ----------
+        method : str
+            "differential_evolution" or "dual_annealing".
+        n_restarts : int
+            Number of independent restarts; best result is kept.
         """
-        if differential_evolution is None:
-            raise ImportError("scipy is required for differential_evolution black-box optimisation.")
-
         bounds = self._eta_bounds_full_box()
-        # Maximise via minimise negative
-        res_sup = differential_evolution(
-            func=lambda x: -self._evaluate_prior_fd_black_box(x),
-            bounds=bounds,
-            seed=seed,
-            maxiter=maxiter,
-            popsize=popsize,
-            tol=tol,
-            polish=polish,
-            workers=workers,
-            updating=updating,
-            disp=False,
+
+        kwargs = dict(
+            method=method, seed=seed, maxiter=maxiter,
+            popsize=popsize, tol=tol, polish=polish,
+            workers=workers, updating=updating, n_restarts=n_restarts,
         )
+
+        res_sup = self._run_optimizer(func=lambda x: -self._evaluate_prior_fd_black_box(x), bounds=bounds, **kwargs)
         eta_sup = np.asarray(res_sup.x, dtype=float)
         val_sup = float(self._evaluate_prior_fd_black_box(eta_sup))
 
-        # Minimise directly
-        res_inf = differential_evolution(
-            func=lambda x: self._evaluate_prior_fd_black_box(x),
-            bounds=bounds,
-            seed=seed + 1,
-            maxiter=maxiter,
-            popsize=popsize,
-            tol=tol,
-            polish=polish,
-            workers=workers,
-            updating=updating,
-            disp=False,
-        )
+        res_inf = self._run_optimizer(func=self._evaluate_prior_fd_black_box, bounds=bounds,
+                                      **{**kwargs, "seed": seed + n_restarts})
         eta_inf = np.asarray(res_inf.x, dtype=float)
         val_inf = float(self._evaluate_prior_fd_black_box(eta_inf))
+
         return BlackBoxOptResult(
             eta_sup=eta_sup,
             val_sup=val_sup,
@@ -560,7 +631,12 @@ class OptimizationCornerPointsCompositePrior:
             nfev_inf=int(getattr(res_inf, "nfev", -1)),
         )
 
-    def _evaluate_copula_fd_black_box(self, x: np.ndarray) -> float:
+    def _evaluate_copula_fd_black_box(
+        self,
+        x: np.ndarray,
+        idx_g0: int = 0,
+        idx_nu: int = 2,
+    ) -> float:
         """
         True black-box evaluation of the FD objective for Gaussian copula sensitivity.
 
@@ -568,6 +644,10 @@ class OptimizationCornerPointsCompositePrior:
         ----------
         x : np.ndarray
             1D array containing the Gaussian copula correlation parameter.
+        idx_g0 : int
+            Index of the first component.
+        idx_nu : int
+            Index of the second component.
 
         Returns
         -------
@@ -578,8 +658,8 @@ class OptimizationCornerPointsCompositePrior:
         return float(
             self.posterior_estimator.fd_gaussian_copula_given_lambda(
                 lam,
-                idx_g0=0,
-                idx_nu=2,
+                idx_g0=idx_g0,
+                idx_nu=idx_nu,
             )
         )
 
@@ -660,6 +740,8 @@ class OptimizationCornerPointsCompositePrior:
         *,
         lambda_range=(-0.95, 0.0),
         n_grid: int = 101,
+        idx_g0: int = 0,
+        idx_nu: int = 2,
     ) -> List[Tuple[float, float]]:
         """
         Evaluate the Gaussian copula FD objective on a 1D grid.
@@ -670,6 +752,10 @@ class OptimizationCornerPointsCompositePrior:
             Range of Gaussian copula correlation parameter.
         n_grid : int
             Number of grid points.
+        idx_g0 : int
+            Index of the first component.
+        idx_nu : int
+            Index of the second component.
 
         Returns
         -------
@@ -681,7 +767,11 @@ class OptimizationCornerPointsCompositePrior:
 
         results = []
         for lam in grid:
-            val = self._evaluate_copula_fd_black_box(np.array([lam], dtype=float))
+            val = self._evaluate_copula_fd_black_box(
+                np.array([lam], dtype=float),
+                idx_g0=idx_g0,
+                idx_nu=idx_nu,
+            )
             results.append((float(lam), float(val)))
 
         return results
@@ -691,10 +781,23 @@ class OptimizationCornerPointsCompositePrior:
         *,
         lambda_range=(-0.95, 0.0),
         n_grid: int = 101,
+        idx_g0: int = 0,
+        idx_nu: int = 2,
     ) -> Tuple[List[Tuple[float, float]], float, float]:
         """
         Evaluate the Gaussian copula FD objective on a grid and return
         the maximiser on that grid.
+
+        Parameters
+        ----------
+        lambda_range : tuple[float, float]
+            Range of Gaussian copula correlation parameter.
+        n_grid : int
+            Number of grid points.
+        idx_g0 : int
+            Index of the first component.
+        idx_nu : int
+            Index of the second component.
 
         Returns
         -------
@@ -707,6 +810,8 @@ class OptimizationCornerPointsCompositePrior:
         results = self.evaluate_gaussian_copula_grid(
             lambda_range=lambda_range,
             n_grid=n_grid,
+            idx_g0=idx_g0,
+            idx_nu=idx_nu,
         )
         lambda_star, val_star = max(results, key=lambda x: x[1])
         return results, float(lambda_star), float(val_star)

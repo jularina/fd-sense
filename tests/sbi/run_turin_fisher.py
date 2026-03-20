@@ -15,7 +15,7 @@ from src.plots.paper.sbi_paper_funcs import *
 from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior
 )
-from src.plots.paper.toy_paper_fisher_funcs import plot_runtime_nonparametric_with_ci, plot_gaussian_copula_grid
+from src.plots.paper.toy_paper_fisher_funcs import plot_runtime_nonparametric_with_ci, plot_gaussian_copula_grid, plot_gaussian_copula_grid_pair
 
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 
@@ -198,17 +198,25 @@ def main(cfg: DictConfig) -> None:
 
     print("Starting Gaussian copula grid evaluation.")
     start = time.perf_counter()
-    copula_grid, lambda_grid_star, val_grid_star = optimizer.evaluate_gaussian_copula_grid_and_argmax(
+    copula_grid_g0, lambda_star_g0, val_star_g0 = optimizer.evaluate_gaussian_copula_grid_and_argmax(
         lambda_range=(-0.5, 0.5),
-        n_grid=101,
+        n_grid=200,
+        idx_g0=0,
+        idx_nu=2,
+    )
+    copula_grid_T, lambda_star_T, val_star_T = optimizer.evaluate_gaussian_copula_grid_and_argmax(
+        lambda_range=(-0.5, 0.5),
+        n_grid=200,
+        idx_g0=1,
+        idx_nu=2,
     )
     elapsed = time.perf_counter() - start
-    print(f"Grid lambda^star: {lambda_grid_star}")
-    print(f"Grid FD(lambda^star): {val_grid_star}")
+    print(f"Grid lambda^star (g0): {lambda_star_g0}, FD={val_star_g0}")
+    print(f"Grid lambda^star (T):  {lambda_star_T}, FD={val_star_T}")
     print(f"Time for Gaussian copula grid evaluation: {elapsed:.3f} sec.")
-    print("First few grid evaluations:")
-    plot_gaussian_copula_grid(
-        copula_grid=copula_grid,
+    plot_gaussian_copula_grid_pair(
+        copula_grid_0=copula_grid_g0,
+        copula_grid_1=copula_grid_T,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
         prefix=prefix,
