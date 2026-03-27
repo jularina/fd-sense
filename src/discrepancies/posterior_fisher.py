@@ -60,6 +60,54 @@ class PosteriorFDBase:
         diff = self._delta_score_prior_only(self.eta)
         return float(np.mean(np.sum(diff * diff, axis=1)))
 
+    def estimate_fisher_for_gaussians(self) -> float:
+        """
+        Exact closed-form FD for Gaussian prior perturbations w.r.t. a Gaussian posterior.
+
+        Requires both model.prior_init and model.prior_candidate to be Gaussian
+        (univariate) or MultivariateGaussian, and the model to have exact posterior
+        parameters (mu_n, sigma_n2 for univariate; mu_n, Sigma_n for multivariate).
+
+        Univariate derivation
+        ---------------------
+        Score difference:  s_ref(θ) - s_cand(θ) = a·θ + b
+          a = 1/σ_cand² - 1/σ_ref²
+          b = μ_ref/σ_ref² - μ_cand/σ_cand²
+        FD = E[( aθ + b )²] = a²(σ_n² + μ_n²) + 2ab·μ_n + b²
+
+        Multivariate derivation
+        -----------------------
+        Score difference:  δ(θ) = A·θ + b_vec
+          A     = Σ_cand⁻¹ - Σ_ref⁻¹
+          b_vec = Σ_ref⁻¹ μ_ref - Σ_cand⁻¹ μ_cand
+        FD = tr(AᵀA (Σ_n + μ_n μ_nᵀ)) + 2 b_vec·A μ_n + ‖b_vec‖²
+        """
+        from src.distributions.gaussian import Gaussian, MultivariateGaussian
+
+        pi_ref = self.model.prior_init
+        pi_cand = self.model.prior_candidate
+
+        if isinstance(pi_ref, Gaussian) and isinstance(pi_cand, Gaussian):
+            a = 1.0 / pi_cand.var - 1.0 / pi_ref.var
+            b = pi_ref.mu / pi_ref.var - pi_cand.mu / pi_cand.var
+            mu_n = float(self.model.mu_n)
+            sigma_n2 = float(self.model.sigma_n2)
+            return float(a ** 2 * (sigma_n2 + mu_n ** 2) + 2.0 * a * b * mu_n + b ** 2)
+
+        if isinstance(pi_ref, MultivariateGaussian) and isinstance(pi_cand, MultivariateGaussian):
+            A = pi_cand.cov_inv - pi_ref.cov_inv
+            b_vec = pi_ref.cov_inv @ pi_ref.mu - pi_cand.cov_inv @ pi_cand.mu
+            mu_n = np.asarray(self.model.mu_n)
+            Sigma_n = np.asarray(self.model.Sigma_n)
+            AtA = A.T @ A
+            second_moment = Sigma_n + np.outer(mu_n, mu_n)
+            return float(np.trace(AtA @ second_moment) + 2.0 * b_vec @ A @ mu_n + b_vec @ b_vec)
+
+        raise TypeError(
+            "estimate_fisher_for_gaussians requires both prior_init and prior_candidate "
+            "to be Gaussian or MultivariateGaussian instances."
+        )
+
     def fd_prior_only_given_eta(self, eta: np.ndarray) -> float:
         """
         Black-box objective: compute \hat{rho}^FD_m for prior-only perturbations,

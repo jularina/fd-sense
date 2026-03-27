@@ -34,7 +34,7 @@ def density_plot_across_multivariate_prior_parameter_sets(
     )
 
 
-def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel):
+def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel, use_conjugate_fd: bool = False):
     """
     Recalculates Fisher along all the possible hyperparameters combination across the ranges
     """
@@ -49,7 +49,8 @@ def plots_across_gaussian_prior_parameters_ranges(cfg, model: BayesianModel):
     for values in np.array(np.meshgrid(*param_ranges)).T.reshape(-1, len(param_names)):
         prior_params = dict(zip(param_names, values))
         model.set_candidate_prior_parameters(prior_params, distribution_cls=distribution_cls)
-        fisher = PosteriorFDBase(model=model).estimate_fisher_prior_only()
+        estimator = PosteriorFDBase(model=model)
+        fisher = estimator.estimate_fisher_for_gaussians() if use_conjugate_fd else estimator.estimate_fisher_prior_only()
         results[tuple(values)] = fisher
         print(f"Prior: {prior_params}. Fisher Divergence: {fisher:.4f}")
 
@@ -144,7 +145,39 @@ def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
     prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
     prior_combinations = optimizer.evaluate_all_prior_combinations()
 
-    # plots_across_gaussian_prior_parameters_ranges(cfg, model)
+    plots_across_gaussian_prior_parameters_ranges(cfg, model)
+    plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, prior_combinations, prior_corners)
+    plots_across_gaussian_parameters_ranges_mu_sigma_quadratic_form(cfg, prior_combinations, prior_corners)
+
+
+@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+            config_name="univariate_gaussian")
+def run_gaussian_priors_for_conjugate_fd(cfg, save_samples: bool = True) -> None:
+    """
+    Same as run_gaussian_priors but uses the exact conjugate-Gaussian closed-form FD
+    (estimate_fisher_for_gaussians) in place of the quadratic-form approximation
+    (_evaluate_prior_qf) when evaluating prior_combinations and prior_corners.
+    """
+    model = instantiate(cfg.model, data_config=cfg.data)
+    output_dir = os.path.join(get_original_cwd(), "data/univariate_gaussian")
+
+    if save_samples:
+        os.makedirs(output_dir, exist_ok=True)
+        np.save(output_dir + "/posterior_samples.npy", model.posterior_samples_init)
+        np.save(output_dir + "/observations.npy", model.observations)
+
+    fisher_estimator = PosteriorFDBase(model=model)
+    print(f"Initial Fisher: {fisher_estimator.estimate_fisher_prior_only():.4f}")
+
+    optimizer = OptimizationCornerPointsUnivariateGaussianConjugate(
+        fisher_estimator,
+        cfg.ksd.optimize.prior.Gaussian,
+        cfg.ksd.optimize.loss.GaussianLogLikelihood
+    )
+    prior_corners, worst_corner = optimizer.evaluate_all_prior_corners()
+    prior_combinations = optimizer.evaluate_all_prior_combinations()
+
+    plots_across_gaussian_prior_parameters_ranges(cfg, model, use_conjugate_fd=True)
     plots_across_gaussian_parameters_ranges_etas_quadratic_form(cfg, prior_combinations, prior_corners)
     plots_across_gaussian_parameters_ranges_mu_sigma_quadratic_form(cfg, prior_combinations, prior_corners)
 
@@ -876,10 +909,11 @@ def run_priors_optimisation_runtimes(cfg):
 
 
 if __name__ == "__main__":
-    # run_gaussian_priors()
+    run_gaussian_priors()
+    # run_gaussian_priors_for_conjugate_fd()
     # run_gaussian_lr()
     # run_multivariate_gaussian_priors()
-    comparison_plot_existing_methods()
+    # comparison_plot_existing_methods()
     # run_gaussian_priors_qcqp()
     # run_inverse_wishart_priors()
     # run_gaussian_priors_nonparametric_diff_radii()

@@ -6,8 +6,8 @@ plot:
 
   figure:
     size:
-      width: 3.5  # 4 in inches, 2.5 for 4-col
-      height: 2.0 # 3.2 in inches, 1.67 for 4-col
+      width: 4.0  # 4 in inches, 2.5 for 4-col
+      height: 2.5 # 3.2 in inches, 1.67 for 4-col
     dpi: 300
     tight_layout: true
 
@@ -81,6 +81,7 @@ plot:
     numPriorPosteriorSamples: "m+l"
     estimatedFDposteriorsShort: "$\\mathrm{FD}_{\\mathrm{post}}$"
     estimatedFDposteriorsQuadraticForm: "$\\hat{\\rho}_m^{FD}(\\tilde{\\Pi})$"
+    fDposteriorsQuadraticForm: "$\\rho^{FD}(\\tilde{\\Pi})$"
     estimatedFDposteriorsQuadraticFormWithK: "$\\hat{\\rho}_m^{FD}(\\tilde{\\Pi}_K)$"
     estimatedSensitivityMeasureWithK: "$\\widehat{S}_{\\mathrm{FD}}(\\tilde{\\Gamma}_{K,l})$"
 

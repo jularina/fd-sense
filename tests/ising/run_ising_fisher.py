@@ -138,29 +138,29 @@ def create_combined_plots(cfg: DictConfig):
         "lyddon": "Lyddon et.al.",
     }
 
-    for method in ["matsubara", "syring", "lyddon"]:
-        lr_grids = []
-        for loss in losses:
-            arr = np.load(
-                os.path.join(
-                    data_path,
-                    f"{loss_to_file_name[loss]}_size=6_theta=5.0_dnum=1000_pnum=2000_data_{loss}_lr_optimisation_{method}.npy"
-                )
-            )
-            lr_grids.append(arr)
-        plot_lr_vs_loss_multi(
-            lr_grids=lr_grids,
-            losses=[r"$L^\mathrm{PL}$", r"$L^\mathrm{DFD}$", r"$L^\mathrm{KSD}$"],
-            beta_refs=beta_refs_by_method[method],
-            plot_cfg=plot_cfg,
-            output_dir=output_dir,
-            filename=f"ising-lr-comparison-{method}.pdf",
-            xlabel=r"$\beta$",
-            legend=False,
-            ylbl="estimatedFDposteriorsQuadraticForm",
-            logy=True,
-            method=method,
-        )
+    # for method in ["matsubara", "syring", "lyddon"]:
+    #     lr_grids = []
+    #     for loss in losses:
+    #         arr = np.load(
+    #             os.path.join(
+    #                 data_path,
+    #                 f"{loss_to_file_name[loss]}_size=6_theta=5.0_dnum=1000_pnum=2000_data_{loss}_lr_optimisation_{method}.npy"
+    #             )
+    #         )
+    #         lr_grids.append(arr)
+    #     plot_lr_vs_loss_multi(
+    #         lr_grids=lr_grids,
+    #         losses=[r"$L^\mathrm{PL}$", r"$L^\mathrm{DFD}$", r"$L^\mathrm{KSD}$"],
+    #         beta_refs=beta_refs_by_method[method],
+    #         plot_cfg=plot_cfg,
+    #         output_dir=output_dir,
+    #         filename=f"ising-lr-comparison-{method}.pdf",
+    #         xlabel=r"$\beta$",
+    #         legend=False,
+    #         ylbl="estimatedFDposteriorsQuadraticForm",
+    #         logy=True,
+    #         method=method,
+    #     )
 
     loss_labels = {
         "pseudolikelihood": r"$L^\mathrm{PL}$",
@@ -168,11 +168,10 @@ def create_combined_plots(cfg: DictConfig):
         "ksd": r"$L^\mathrm{KSD}$",
     }
 
+    # Pre-load all grids and compute global y limits across all losses and methods
+    all_grids = {}
     for loss_idx, loss in enumerate(losses):
-        lr_grids = []
-        beta_refs = []
-        labels = []
-
+        all_grids[loss] = {}
         for method in methods:
             arr = np.load(
                 os.path.join(
@@ -180,7 +179,29 @@ def create_combined_plots(cfg: DictConfig):
                     f"{loss_to_file_name[loss]}_size=6_theta=5.0_dnum=1000_pnum=2000_data_{loss}_lr_optimisation_{method}.npy"
                 )
             )
-            lr_grids.append(arr)
+            all_grids[loss][method] = arr
+
+    all_values = []
+    for loss_idx, loss in enumerate(losses):
+        for method in methods:
+            arr = all_grids[loss][method]
+            xs = np.array(arr[:, 0], dtype=float)
+            ys = np.array(arr[:, 1], dtype=float)
+            beta_ref = beta_refs_by_method[method][loss_idx]
+            left = max(beta_ref - 0.3, 0.01)
+            right = beta_ref + 0.3
+            mask = (xs >= left) & (xs <= right)
+            all_values.extend(ys[mask].tolist())
+
+    global_ylim = (min(all_values), max(all_values))
+
+    for loss_idx, loss in enumerate(losses):
+        lr_grids = []
+        beta_refs = []
+        labels = []
+
+        for method in methods:
+            lr_grids.append(all_grids[loss][method])
             beta_refs.append(beta_refs_by_method[method][loss_idx])
             labels.append(method_labels[method])
 
@@ -196,6 +217,7 @@ def create_combined_plots(cfg: DictConfig):
             ylbl="estimatedFDposteriorsQuadraticForm",
             logy=True,
             loss=loss,
+            ylim=global_ylim,
         )
 
 

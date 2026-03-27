@@ -581,7 +581,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     famA_ms, msA_params = alpha_ms["family"], alpha_ms["params"]
 
     xA_rng = _auto_x_range_from_prior(famA_ref, refA_params) if x_alpha is None else x_alpha
-    xA_rng = (-15, 15)
+    xA_rng = (-11, 11)
     xA = _linspace_pad(*xA_rng)
     pdf_ref_a = make_pdf(famA_ref, refA_params)
     pdf_ms_a = make_pdf(famA_ms, msA_params)
@@ -639,7 +639,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
         if sigma_inf is not None:
             lo3, hi3 = _auto_x_range_from_prior(sigma_inf["family"], sigma_inf["params"])
             lo, hi = min(lo, lo3), max(hi, hi3)
-        xS_rng = (0.0, 2.5)
+        xS_rng = (0.0, 1.1)
     else:
         xS_rng = (0.0, 40.0)
 
@@ -1073,6 +1073,76 @@ def plot_posterior_predictive_bands_compare(
               loc="upper right", bbox_to_anchor=(1, 1.2))
 
     fig.tight_layout()
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, bbox_inches="tight")
+
+
+def plot_posterior_predictive_with_data(
+    plot_cfg,
+    output_dir: str,
+    x_years: np.ndarray,
+    y_uncentered: np.ndarray,
+    x_pred_years: np.ndarray,
+    pred_mean: np.ndarray,
+    pred_lo: np.ndarray,
+    pred_hi: np.ndarray,
+    pred_label: str,
+    filename: str,
+    pred_color: str | None = None,
+    ylim=None,
+    show_ylabel: bool = True,
+):
+    """Plot uncentered observations (line + scatter, real years) with one set of
+    posterior predictive bands overlaid."""
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    x_years = np.asarray(x_years, dtype=float)
+    y_uncentered = np.asarray(y_uncentered, dtype=float)
+    x_pred_years = np.asarray(x_pred_years, dtype=float)
+
+    try:
+        colors = list(plot_cfg.plot.color_palette.colors)
+    except Exception:
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    obs_color = colors[0]
+    if pred_color is None:
+        pred_color = colors[1]
+
+    fig, ax = plt.subplots(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    ax.plot(
+        x_years, y_uncentered,
+        linestyle="None", marker="x", markersize=3.0, markeredgewidth=1.0,
+        color="black", zorder=1,
+    )
+
+    ax.fill_between(x_pred_years, pred_lo, pred_hi, color=pred_color, alpha=0.25, zorder=2)
+    ax.plot(x_pred_years, pred_mean, linewidth=1.5, color=pred_color, label=pred_label, zorder=3)
+
+    ax.set_xlabel("Year")
+    if show_ylabel:
+        ax.set_ylabel("Temperature (°C)")
+    else:
+        ax.set_ylabel("Temperature (°C)", color="none")
+        ax.tick_params(axis="y", labelcolor="none")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    ax.legend(frameon=False, loc="upper right")
 
     try:
         _save_fig(fig, output_dir, filename, plot_cfg)

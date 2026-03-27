@@ -205,6 +205,32 @@ class OptimizationCornerPointsUnivariateGaussian(OptimizationCornerPointsBase):
         return parameter_grid
 
 
+class OptimizationCornerPointsUnivariateGaussianConjugate(OptimizationCornerPointsUnivariateGaussian):
+    def __init__(
+        self,
+        posterior_estimator,
+        prior_config: Dict,
+        loss_config: Dict,
+        distribution_cls=Gaussian,
+    ):
+        """
+        Same grid/corner structure as OptimizationCornerPointsUnivariateGaussian but
+        evaluates the prior objective using the exact conjugate-Gaussian closed-form FD
+        instead of the quadratic-form approximation.
+        """
+        super().__init__(
+            posterior_estimator=posterior_estimator,
+            prior_config=prior_config,
+            loss_config=loss_config,
+            distribution_cls=distribution_cls,
+        )
+
+    def _evaluate_prior_qf(self, eta_tilde: np.ndarray) -> float:
+        # model.prior has already been set via set_prior_parameters; align prior_candidate
+        self.model.prior_candidate = self.model.prior
+        return self.posterior_estimator.estimate_fisher_for_gaussians()
+
+
 class OptimizationCornerPointsMultivariateGaussian(OptimizationCornerPointsBase):
     def __init__(
         self,
@@ -467,8 +493,8 @@ class OptimizationCornerPointsCompositePrior:
         lo = np.empty(dim)
         hi = np.empty(dim)
         for j, cfg in enumerate(self.eta_components_cfg):
-            lo[2 * j]     = float(cfg["eta_range"]["eta_1"][0])
-            hi[2 * j]     = float(cfg["eta_range"]["eta_1"][1])
+            lo[2 * j] = float(cfg["eta_range"]["eta_1"][0])
+            hi[2 * j] = float(cfg["eta_range"]["eta_1"][1])
             lo[2 * j + 1] = float(cfg["eta_range"]["eta_2"][0])
             hi[2 * j + 1] = float(cfg["eta_range"]["eta_2"][1])
 

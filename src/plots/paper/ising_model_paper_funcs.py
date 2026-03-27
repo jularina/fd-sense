@@ -434,7 +434,8 @@ def plot_lr_vs_method_multi(
     legend: bool = True,
     ylbl: str = "estimatedFDposteriorsQuadraticForm",
     logy: bool = False,
-        loss: str = "",
+    loss: str = "",
+    ylim=None,
 ):
     _apply_plot_rc(plot_cfg)
 
@@ -497,7 +498,9 @@ def plot_lr_vs_method_multi(
 
     if logy:
         ax.set_yscale("log")
-        ax.set_ylim(min(y_refs), 10 ** 7)
+
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     if loss == "ksd":
         ax.set_xlim(0.0, 1.0)

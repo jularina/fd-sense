@@ -27,6 +27,7 @@ class SimpleGaussianModel(BayesianModelExtended):
         mu_n = sigma_n2 * (self.observations_num * self.x_bar / self.loss.var + self.prior.mu / self.prior.var)
 
         self.mu_n = mu_n
+        self.sigma_n2 = sigma_n2
         sigma_n = np.sqrt(sigma_n2)
 
         return np.random.normal(mu_n, sigma_n, size=(n_samples, 1))

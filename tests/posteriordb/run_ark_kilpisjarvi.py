@@ -4,19 +4,12 @@ import matplotlib.pyplot as plt
 
 from src.utils.files_operations import load_plot_config
 from src.plots.paper.posterior_db_paper_funcs import _apply_plot_rc, _save_fig
-import numpy as np
-from typing import Dict, List, Tuple
-from dataclasses import dataclass
-import os
-import warnings
 import hydra
 from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
-import time
 import json
 
 from src.discrepancies.posterior_fisher import PosteriorFDBase
-from src.utils.files_operations import load_plot_config
 from src.plots.paper.posterior_db_paper_funcs import *
 from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior
@@ -91,7 +84,7 @@ def main(cfg: DictConfig) -> None:
     print(f"Initial Fisher for prior: {fisher_estimator.estimate_fisher_prior_only():.4f}")
     print(f"Initial Fisher for lr: {fisher_estimator.estimate_fisher_lr_only():.4f}")
 
-    print(f"Starting optimisation of all parameters at once.")
+    print("Starting optimisation of all parameters at once.")
     optimizer = OptimizationCornerPointsCompositePrior(
         fisher_estimator,
         cfg.fd.optimize.prior.Composite,
@@ -101,7 +94,7 @@ def main(cfg: DictConfig) -> None:
     qf_corners, eta_star = optimizer.evaluate_all_prior_corners()
     eta_inf, val_inf = optimizer.minimize_prior_full_qp()
 
-    print(f"Starting per component optimisation.")
+    print("Starting per component optimisation.")
     sup_res, eta_sup_blocks = optimizer.evaluate_all_prior_corners_per_component(component_names=names)
     eta_inf_blocks, values_inf = optimizer.minimize_prior_per_component_qp(names)
     print("Per-component argmax corners:")
@@ -134,12 +127,12 @@ def main(cfg: DictConfig) -> None:
         return {"alpha": float(-e1 - 1.0), "beta": float(-e2)}
 
     alpha_ms = {"family": "Gaussian",     "params": _gaussian_from_eta(*eta_star[0:2])}
-    betas_ms  = {
+    betas_ms = {
         f"beta{k+1}": {"family": "Gaussian", "params": _gaussian_from_eta(*eta_star[2*(k+1):2*(k+1)+2])}
         for k in range(5)
     }
-    sigma_ms         = {"family": "InverseGamma", "params": _inv_gamma_from_eta(*eta_star[12:14])}
-    sigma_inf_prior  = {"family": "InverseGamma", "params": _inv_gamma_from_eta(*eta_inf[12:14])}
+    sigma_ms = {"family": "InverseGamma", "params": _inv_gamma_from_eta(*eta_star[12:14])}
+    sigma_inf_prior = {"family": "InverseGamma", "params": _inv_gamma_from_eta(*eta_inf[12:14])}
 
     alpha_ref = {"family": "Gaussian",   "params": {"mu": 0.0, "sigma": 5.0}}
     betas_ref = {"family": "Gaussian",   "params": {"mu": 0.0, "sigma": 5.0}}
@@ -380,28 +373,58 @@ def plot_posterior_predictive(cfg: DictConfig) -> None:
     y_rep_ref = _ar_posterior_predictive(y_full=y_full, samples=ref_samples, K=K, mode=mode, seed=seed)
     ref_mean, ref_lo, ref_hi = _summarise_bands(y_rep_ref)
 
-    plot_posterior_predictive_bands_compare(
+    y_mean_offset = float(np.mean(y))
+    x_pred_years = x_years[K:]
+
+    all_values = (
+        list(y)
+        + list(ref_mean + y_mean_offset)
+        + list(ref_lo + y_mean_offset)
+        + list(ref_hi + y_mean_offset)
+        + list(corner_mean + y_mean_offset)
+        + list(corner_lo + y_mean_offset)
+        + list(corner_hi + y_mean_offset)
+    )
+    global_ylim = (min(all_values), max(all_values))
+
+    plot_posterior_predictive_with_data(
         plot_cfg=plot_cfg,
         output_dir=output_dir,
-        prefix=prefix,
-        y_obs=y_obs,
-        ref_mean=ref_mean,
-        ref_lo=ref_lo,
-        ref_hi=ref_hi,
-        corner_mean=corner_mean,
-        corner_lo=corner_lo,
-        corner_hi=corner_hi,
-        filename="kilpisjarvi-posterior-predictive.pdf",
+        x_years=x_years,
+        y_uncentered=y,
+        x_pred_years=x_pred_years,
+        pred_mean=ref_mean + y_mean_offset,
+        pred_lo=ref_lo + y_mean_offset,
+        pred_hi=ref_hi + y_mean_offset,
+        pred_label=r"$\tilde{x}_{\mathrm{ref}} \pm 95\%$ CI",
+        filename="kilpisjarvi-posterior-predictive-ref.pdf",
+        pred_color="#7c397d",
+        ylim=global_ylim,
+    )
+    plot_posterior_predictive_with_data(
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        x_years=x_years,
+        y_uncentered=y,
+        x_pred_years=x_pred_years,
+        pred_mean=corner_mean + y_mean_offset,
+        pred_lo=corner_lo + y_mean_offset,
+        pred_hi=corner_hi + y_mean_offset,
+        pred_label=r"$\tilde{x} \pm 95\%$ CI",
+        filename="kilpisjarvi-posterior-predictive-corner.pdf",
+        pred_color="#5b9bd5",
+        ylim=global_ylim,
+        show_ylabel=False,
     )
 
 
 if __name__ == "__main__":
-    # main()
-    plot_posterior_predictive()
+    main()
+    # plot_posterior_predictive()
 
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    plot_config_path = os.path.join(repo_root, "configs/plots/overleaf_plots_settings.yaml")
-    output_dir = os.path.join(repo_root, "outputs/paper/plots/fisher/kilpisjarvi")
-
-    plot_cfg = load_plot_config(plot_config_path)
-    plot_time_series(output_dir=output_dir, plot_cfg=plot_cfg)
+    # repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # plot_config_path = os.path.join(repo_root, "configs/plots/overleaf_plots_settings.yaml")
+    # output_dir = os.path.join(repo_root, "outputs/paper/plots/fisher/kilpisjarvi")
+    #
+    # plot_cfg = load_plot_config(plot_config_path)
+    # plot_time_series(output_dir=output_dir, plot_cfg=plot_cfg)

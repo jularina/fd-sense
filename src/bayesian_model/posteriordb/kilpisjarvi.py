@@ -1,11 +1,9 @@
-import copy
 import json
 import warnings
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-from src.distributions.composite import CompositeProduct
 from src.utils.typing import ArrayLike
 
 # ---------------------------------------------------------------------------
@@ -119,7 +117,7 @@ class KilpisjarviBayesianModel:
         return flat, cols
 
     def _prepare_posterior_draws(self, df: pd.DataFrame,
-                                  warmup=0, max_draws=None) -> Tuple[np.ndarray, List[str]]:
+                                 warmup=0, max_draws=None) -> Tuple[np.ndarray, List[str]]:
         per_param_mats, per_param_cols = [], []
         for param in df.columns:
             concatenated = self._concat_chains(df[param], warmup=warmup, max_draws=max_draws)
@@ -130,7 +128,7 @@ class KilpisjarviBayesianModel:
         return samples, per_param_cols
 
     def _reorder_to_prior_order(self, samples: np.ndarray,
-                                 colnames: List[str]) -> Tuple[np.ndarray, List[str]]:
+                                colnames: List[str]) -> Tuple[np.ndarray, List[str]]:
         """Reorder sample columns to [alpha, beta[1]..beta[K], sigma]."""
         name_to_idx = {n: i for i, n in enumerate(colnames)}
         # Detect number of beta components: try beta[1]..beta[K] first, then single beta

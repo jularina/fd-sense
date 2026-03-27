@@ -15,7 +15,7 @@ from src.plots.paper.sbi_paper_funcs import *
 from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior
 )
-from src.plots.paper.toy_paper_fisher_funcs import plot_runtime_nonparametric_with_ci, plot_gaussian_copula_grid, plot_gaussian_copula_grid_pair
+from src.plots.paper.toy_paper_fisher_funcs import plot_runtime_nonparametric_with_ci, plot_gaussian_copula_grid_pair
 
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 
@@ -199,13 +199,13 @@ def main(cfg: DictConfig) -> None:
     print("Starting Gaussian copula grid evaluation.")
     start = time.perf_counter()
     copula_grid_g0, lambda_star_g0, val_star_g0 = optimizer.evaluate_gaussian_copula_grid_and_argmax(
-        lambda_range=(-0.5, 0.5),
+        lambda_range=(-0.2, 0.2),
         n_grid=200,
         idx_g0=0,
         idx_nu=2,
     )
     copula_grid_T, lambda_star_T, val_star_T = optimizer.evaluate_gaussian_copula_grid_and_argmax(
-        lambda_range=(-0.5, 0.5),
+        lambda_range=(-0.2, 0.2),
         n_grid=200,
         idx_g0=1,
         idx_nu=2,
@@ -214,6 +214,34 @@ def main(cfg: DictConfig) -> None:
     print(f"Grid lambda^star (g0): {lambda_star_g0}, FD={val_star_g0}")
     print(f"Grid lambda^star (T):  {lambda_star_T}, FD={val_star_T}")
     print(f"Time for Gaussian copula grid evaluation: {elapsed:.3f} sec.")
+
+    print("Starting Gaussian copula grid evaluation (narrow range).")
+    start = time.perf_counter()
+    copula_grid_g0_narrow, lambda_star_g0_narrow, val_star_g0_narrow = optimizer.evaluate_gaussian_copula_grid_and_argmax(
+        lambda_range=(-0.105, 0.01),
+        n_grid=200,
+        idx_g0=0,
+        idx_nu=2,
+    )
+    copula_grid_T_narrow, lambda_star_T_narrow, val_star_T_narrow = optimizer.evaluate_gaussian_copula_grid_and_argmax(
+        lambda_range=(-0.01, 0.105),
+        n_grid=200,
+        idx_g0=1,
+        idx_nu=2,
+    )
+    elapsed = time.perf_counter() - start
+    print(f"Grid lambda^star narrow (g0): {lambda_star_g0_narrow}, FD={val_star_g0_narrow}")
+    print(f"Grid lambda^star narrow (T):  {lambda_star_T_narrow}, FD={val_star_T_narrow}")
+    print(f"Time for narrow Gaussian copula grid evaluation: {elapsed:.3f} sec.")
+
+    all_values = (
+        [x[1] for x in copula_grid_g0]
+        + [x[1] for x in copula_grid_T]
+        + [x[1] for x in copula_grid_g0_narrow]
+        + [x[1] for x in copula_grid_T_narrow]
+    )
+    global_ylim = (min(all_values), max(all_values))
+
     plot_gaussian_copula_grid_pair(
         copula_grid_0=copula_grid_g0,
         copula_grid_1=copula_grid_T,
@@ -221,6 +249,20 @@ def main(cfg: DictConfig) -> None:
         output_dir=output_dir,
         prefix=prefix,
         logy=True,
+        ylim=global_ylim,
+    )
+    plot_gaussian_copula_grid_pair(
+        copula_grid_0=copula_grid_g0_narrow,
+        copula_grid_1=copula_grid_T_narrow,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        prefix=prefix,
+        filename=f"{prefix}_gaussian_copula_fd_grid_narrow.pdf",
+        logy=True,
+        mark_max_point=False,
+        mark_corner_point=True,
+        ylim=global_ylim,
+        show_ylabel=False,
     )
 
     for lam in [-0.25, -0.5, -0.75, -0.95]:

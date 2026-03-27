@@ -758,7 +758,7 @@ def plot_mu_sigma_contour(
 
     cf = ax.contourf(Xi, Yi, Zi, levels=20, cmap=cmap)
     ct = ax.contour(Xi, Yi, Zi, levels=20, colors="white", linewidths=0.4, alpha=0.5)
-    cbar = fig.colorbar(cf, ax=ax, label=getattr(latex_param_names, "estimatedFDposteriorsQuadraticForm", "KSD"))
+    cbar = fig.colorbar(cf, ax=ax, label=getattr(latex_param_names, "fDposteriorsQuadraticForm", "KSD"))
     from matplotlib.ticker import MaxNLocator
     cbar.locator = MaxNLocator(integer=True)
     cbar.update_ticks()
@@ -2329,10 +2329,14 @@ def plot_finite_sample_complexity_gaussians(
     ylim_global = ylim if ylim is not None else compute_global_ylim(logy=logy)
 
     all_plot_specs = [
-        ("fd",   r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$", "comparison_measure_sample_complexity_fd.pdf",   False, False),
-        ("mean", r"$\left\|\rho^{\mathrm{mean}}-\hat{\rho}^{\mathrm{mean}}_m\right\|_2$",       "comparison_measure_sample_complexity_mean.pdf", False, False),
-        ("wim",  r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$", "comparison_measure_sample_complexity_wim.pdf",  True,  True),
-        ("kl",   r"$\left|\rho^{\mathrm{KL}}-\hat{\rho}^{\mathrm{KL}}_m\right|$",              "comparison_measure_sample_complexity_kl.pdf",   False, False),
+        ("fd",   r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$",
+         "comparison_measure_sample_complexity_fd.pdf",   True, True),
+        ("mean", r"$\left\|\rho^{\mathrm{mean}}-\hat{\rho}^{\mathrm{mean}}_m\right\|_2$",
+         "comparison_measure_sample_complexity_mean.pdf", False, False),
+        ("wim",  r"$\left|\rho(\tilde{\Pi}^\lambda)-\hat{\rho}_m(\tilde{\Pi}^\lambda)\right|$",
+         "comparison_measure_sample_complexity_wim.pdf",  False,  False),
+        ("kl",   r"$\left|\rho^{\mathrm{KL}}-\hat{\rho}^{\mathrm{KL}}_m\right|$",
+         "comparison_measure_sample_complexity_kl.pdf",   False, False),
     ]
     plot_specs = [(m, yl, f, xe, ye) for m, yl, f, xe, ye in all_plot_specs
                   if divergence is None or m == divergence]
@@ -2385,7 +2389,7 @@ def plot_finite_sample_complexity_gaussians(
             xlim=xlim,
         )
 
-        if method == "fd":
+        if method == "wim":
             ax.legend(frameon=False, loc="upper right")
 
         outpath = os.path.join(output_dir, filename)
@@ -2964,9 +2968,12 @@ def plot_gaussian_copula_grid_pair(
     xlabel: str = r"$\lambda_c$",
     ylabel: str = r"$\hat{\rho}_m^{\mathrm{FD}}(\tilde{\Pi}^{\lambda})$",
     label_0: str = r"$(G'_0, \nu')$",
-    label_1: str = r"$(T'_0, \nu')$",
-    mark_argmax: bool = True,
+    label_1: str = r"$(T', \nu')$",
+    mark_max_point: bool = True,
+    mark_corner_point: bool = False,
     logy: bool = False,
+    ylim=None,
+    show_ylabel: bool = True,
 ):
     """
     Plot two Gaussian-copula FD grids (e.g. idx_g0=0 and idx_g0=1) as two
@@ -2986,18 +2993,11 @@ def plot_gaussian_copula_grid_pair(
     except Exception:
         colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-    while len(colors) < 4:
-        colors = colors * 2
-
-    fig = plt.figure(
-        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
-        dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
-    )
-    ax = fig.add_subplot(1, 1, 1)
+    fig, ax = _make_figure(plot_cfg)
 
     for grid, label, line_color, point_color in (
-        (copula_grid_0, label_0, colors[0], colors[1]),
-        (copula_grid_1, label_1, colors[2], colors[3]),
+        (copula_grid_0, label_0, colors[0], colors[0]),
+        (copula_grid_1, label_1, colors[1], colors[1]),
     ):
         lambdas = np.asarray([x[0] for x in grid], dtype=float)
         values = np.asarray([x[1] for x in grid], dtype=float)
@@ -3006,8 +3006,15 @@ def plot_gaussian_copula_grid_pair(
 
         ax.plot(lambdas, values, linewidth=1.5, color=line_color, label=label, zorder=2)
 
-        if mark_argmax:
+        if mark_max_point:
             idx_star = int(np.argmax(values))
+        elif mark_corner_point:
+            # mark the endpoint (corner) with the largest value
+            idx_star = 0 if values[0] >= values[-1] else len(values) - 1
+        else:
+            idx_star = None
+
+        if idx_star is not None:
             ax.scatter(
                 [lambdas[idx_star]], [values[idx_star]],
                 s=27, color="red", zorder=3, marker="*",
@@ -3018,7 +3025,11 @@ def plot_gaussian_copula_grid_pair(
             )
 
     ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
+    if show_ylabel:
+        ax.set_ylabel(ylabel)
+    else:
+        ax.set_ylabel(ylabel, color="none")
+        ax.tick_params(axis="y", labelcolor="none")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", linestyle=":", alpha=0.35)
@@ -3026,9 +3037,10 @@ def plot_gaussian_copula_grid_pair(
     if logy:
         ax.set_yscale("log")
 
-    ax.legend(frameon=False, ncol=1, loc="best")
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
-    fig.tight_layout()
+    ax.legend(frameon=False, ncol=1, loc="best")
 
     try:
         _save_fig(fig, output_dir, filename, plot_cfg)
