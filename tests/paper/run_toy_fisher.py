@@ -909,11 +909,11 @@ def run_priors_optimisation_runtimes(cfg):
 
 
 if __name__ == "__main__":
-    run_gaussian_priors()
+    # run_gaussian_priors()
     # run_gaussian_priors_for_conjugate_fd()
     # run_gaussian_lr()
     # run_multivariate_gaussian_priors()
-    # comparison_plot_existing_methods()
+    comparison_plot_existing_methods()
     # run_gaussian_priors_qcqp()
     # run_inverse_wishart_priors()
     # run_gaussian_priors_nonparametric_diff_radii()

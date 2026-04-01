@@ -2189,7 +2189,7 @@ def plot_runtime_complexity_gaussians(
         plot_method(
             method,
             ylim_global,
-            show_axes_labels=(method == "wim"),
+            show_axes_labels=(method == "fd"),
         )
 
     return results
