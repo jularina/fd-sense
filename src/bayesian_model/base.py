@@ -1,23 +1,226 @@
-from __future__ import annotations
-from typing import Callable
+import copy
+from abc import ABC
+from typing import Any, Dict, Type
+import numpy as np
+import os
+import warnings
+from hydra.utils import get_original_cwd
+from typing import Optional
 
-from utils.utils import ArrayLike
+from src.utils.typing import ArrayLike
+from src.utils.files_operations import load_numpy_array
 
-class BayesianModel:
-    def __init__(
-        self,
-        prior_score: Callable[[ArrayLike], ArrayLike],
-        loss_score: Callable[[ArrayLike], ArrayLike],
-    ):
+
+class BayesianModel(ABC):
+    def __init__(self, data_config: Any):
         """
-        Bayesian model with score functions for prior and loss.
+        Base class for Bayesian models.
+        """
+        self.true_dgp = data_config.true_dgp
+        self.loss_lr: float = data_config.loss_lr
+        self.loss: Any = data_config.loss
+        self.prior: Any = data_config.candidate_prior
+        self.prior_init: Any = data_config.base_prior
+        self.prior_candidate: Any = data_config.candidate_prior
+        self.loss_lr_init: float = data_config.loss_lr_init
+        self.m: int = data_config.posterior_samples_num
+        self.m_prior: int = data_config.prior_samples_num
+
+    def back_to_prior_init(self, *, deep: bool = True):
+        """
+        Reset the current prior to the initial/base prior.
 
         Args:
-            prior_score: Function s_pi(theta): R^D -> R^D
-            loss_score: Function s_l,beta(theta): R^D -> R^D
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.prior` do not affect `self.prior_init`.
+        Returns:
+            self (for chaining)
         """
-        self.prior_score = prior_score
-        self.loss_score = loss_score
+        self.prior = copy.deepcopy(self.prior_init) if deep else self.prior_init
+        return self
 
-    def posterior_score(self, theta: ArrayLike) -> ArrayLike:
-        return self.prior_score(theta) + self.loss_score(theta)
+    def back_to_lr_init(self, *, deep: bool = True):
+        """
+        Reset the current lr to the initial/base prior.
+
+        Args:
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.loss_lr` do not affect `self.loss_lr_init`.
+        Returns:
+            self (for chaining)
+        """
+        self.loss_lr = copy.deepcopy(self.loss_lr_init) if deep else self.loss_lr_init
+        return self
+
+    def back_to_prior_candidate(self, *, deep: bool = True):
+        """
+        Reset the current prior to the candidate prior.
+
+        Args:
+            deep: If True (default), use a deep copy so future mutations of
+                  `self.prior` do not affect `self.prior_candidate`.
+        Returns:
+            self (for chaining)
+        """
+        self.prior = copy.deepcopy(self.prior_candidate) if deep else self.prior_candidate
+        return self
+
+    def sample_posterior(self, n_samples: int = 1000) -> np.ndarray:
+        """
+        Draw samples from the posterior distribution.
+        """
+        pass
+
+    def sample_from_base_prior(self, n_samples: int = 1000) -> np.ndarray:
+        """
+        Draw samples from the posterior distribution.
+        """
+        return self.prior_init.sample(n_samples)
+
+    def set_prior_parameters(self, params: Dict[str, Any], distribution_cls: Type) -> None:
+        """
+        Set or update the prior distribution.
+
+        Args:
+            params: Dictionary of prior parameters.
+            distribution_cls: Distribution class to instantiate the prior.
+        """
+        self.prior = distribution_cls(**params)
+
+    def set_candidate_prior_parameters(self, params: Dict[str, Any], distribution_cls: Type) -> None:
+        """
+        Set or update candidate prior distribution.
+
+        Args:
+            params: Dictionary of prior parameters.
+            distribution_cls: Distribution class to instantiate the prior.
+        """
+        self.prior_candidate = distribution_cls(**params)
+
+    def set_lr_parameter(self, lr: float) -> None:
+        """
+        Set or update the loss function parameters.
+
+        Args:
+            lr: Learning rate for the loss term.
+        """
+        self.loss_lr = lr
+
+    def prior_score(self, x: ArrayLike) -> np.ndarray:
+        """Compute gradient of log prior."""
+        return self.prior.grad_log_pdf(x)
+
+    def reference_prior_score(self, x: ArrayLike) -> np.ndarray:
+        """Compute gradient of reference log prior."""
+        return self.prior_init.grad_log_pdf(x)
+
+    def reference_loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
+        """Compute gradient of reference log loss."""
+        grad = self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
+        return self.loss_lr_init * grad if multiply_by_lr else grad
+
+    def loss_score(self, x: ArrayLike, multiply_by_lr: bool = True) -> np.ndarray:
+        """Compute gradient of log likelihood (scaled by learning rate)."""
+        grad = self.loss.grad_log_pdf(x, self.x_bar, self.observations_num)
+        return self.loss_lr * grad if multiply_by_lr else grad
+
+    def posterior_score(self, x: ArrayLike) -> np.ndarray:
+        """Compute posterior score (prior + likelihood)."""
+        prior_grad = self.prior_score(x)
+        loss_grad = self.loss_score(x)
+        return prior_grad + loss_grad
+
+    def jacobian_sufficient_statistics(self, x: np.ndarray) -> np.ndarray:
+        """Return Jacobian of sufficient statistics."""
+        return self.prior.grad_sufficient_statistics(x)
+
+    def grad_log_base_measure(self, x: np.ndarray) -> np.ndarray:
+        """Gradient of log base measure."""
+        return self.prior.grad_log_base_measure(x)
+
+
+class BayesianModelExtended(BayesianModel):
+    def __init__(self, data_config: Any):
+        """
+        Base class for Extended Bayesian models.
+        """
+        super().__init__(data_config)
+        # Prepare observations
+        self.observations = self._prepare_observations(data_config)
+        self.observations_num = self.observations.shape[0]
+        self.x_bar: np.ndarray = np.mean(self.observations, axis=0)
+        self.posterior_samples_init = self._prepare_array_from_presaved_samples(
+            getattr(data_config, "posterior_samples_path", None),
+            name="posterior"
+        )
+        self.m = len(self.posterior_samples_init)
+        self.prior_samples_init = self._prepare_array_from_presaved_samples(
+            getattr(data_config, "prior_samples_path", None),
+            name="prior"
+        )
+        try:
+            self.m_prior = len(self.prior_samples_init)
+        except:
+            self.m_prior = None
+
+    def _prepare_observations(self, data_config: Any) -> np.ndarray:
+        """
+        Prepare observations: either provided directly, loaded from file, or sampled from true_dgp.
+        """
+        obs = getattr(data_config, "observations", None)
+        obs_path = getattr(data_config, "observations_path", None)
+
+        if obs is not None and obs_path is not None:
+            warnings.warn("Both observations and observations_path provided; using observations.")
+
+        # Load from path if given
+        if obs is None and obs_path is not None:
+            path = obs_path
+            if not os.path.isabs(path):
+                path = os.path.join(get_original_cwd(), path)
+            obs = load_numpy_array(path)
+
+        # Sample from true_dgp if no data provided
+        if obs is None:
+            if self.true_dgp is None:
+                raise ValueError("Provide data.observations(_path) or set data.true_dgp to sample from.")
+            observations_num = int(getattr(data_config, "observations_num", 0))
+            if observations_num <= 0:
+                raise ValueError("data.observations_num must be > 0 when sampling from true_dgp.")
+            obs = self.true_dgp.sample(observations_num)
+
+        obs = np.asarray(obs)
+        if obs.ndim == 1:
+            obs = obs.reshape(-1, 1)  # enforce (n, d) shape
+        return obs
+
+    def _prepare_array_from_presaved_samples(self, path: Optional[str], name: str) -> Optional[np.ndarray]:
+        """
+        Generic helper to load an array from a given path in config.
+        Returns None if no path is given.
+        """
+        if path is None and name == "posterior":
+            try:
+                print("Posterior samples path not provided. Trying to sample from posterior.")
+                arr = self.sample_posterior()
+                return arr
+            except:
+                raise Exception("Was not able to sample from posterior.")
+        elif path is None and name == "prior":
+            try:
+                print("Prior samples path not provided. Trying to sample from prior.")
+                arr = self.sample_from_base_prior()
+                return arr
+            except:
+                raise Exception("Was not able to sample from prior.")
+
+        if not os.path.isabs(path):
+            path = os.path.join(get_original_cwd(), path)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"{name.capitalize()} samples file not found: {path}")
+
+        arr = load_numpy_array(path)
+        arr = np.asarray(arr)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        return arr

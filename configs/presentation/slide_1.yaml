@@ -1,0 +1,6 @@
+flags:
+  plots:
+    output_dir: outputs/presentation/slide_1
+
+playground:
+  output_prefix: slide_1

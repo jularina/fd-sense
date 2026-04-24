@@ -1,32 +1,40 @@
 from abc import ABC, abstractmethod
 import numpy as np
+from numpy.typing import ArrayLike
+
 
 class BaseDistribution(ABC):
     """
-    Abstract base class for probability distributions in the exponential family.
+    Abstract base class for distributions.
     """
 
     @abstractmethod
     def sample(self, n_samples: int = 1) -> np.ndarray:
-        """Draw samples from the distribution."""
         pass
 
     @abstractmethod
-    def pdf(self, x: np.ndarray) -> float:
-        """Compute the probability density function at point x."""
+    def pdf(self, x: ArrayLike) -> np.ndarray:
         pass
 
     @abstractmethod
-    def grad_pdf(self, x: np.ndarray) -> np.ndarray:
-        """Compute gradient of the PDF at point x."""
+    def log_pdf(self, x: ArrayLike) -> np.ndarray:
         pass
 
     @abstractmethod
-    def log_pdf(self, x: np.ndarray) -> float:
-        """Compute the log PDF at point x."""
+    def grad_log_pdf(self, x: ArrayLike) -> np.ndarray:
         pass
 
     @abstractmethod
-    def grad_log_pdf(self, x: np.ndarray) -> np.ndarray:
-        """Compute gradient of the log PDF at point x."""
+    def grad_log_base_measure(self, x: ArrayLike) -> np.ndarray:
         pass
+
+    @abstractmethod
+    def natural_parameters(self) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def grad_sufficient_statistics(self, x: ArrayLike) -> np.ndarray:
+        pass
+
+    def augmented_natural_parameters(self) -> np.ndarray:
+        return np.append(self.natural_parameters(), 1.0)

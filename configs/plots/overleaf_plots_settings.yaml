@@ -1,0 +1,93 @@
+plot:
+  font:
+    size: 12 # 12 match Overleaf 10pt font
+    family: serif  # for LaTeX compatibility
+    use_tex: true  # render text with LaTeX
+
+  figure:
+    size:
+      width: 4.0  # 4 in inches, 2.5 for 4-col
+      height: 2.5 # 3.2 in inches, 1.67 for 4-col
+    dpi: 300
+    tight_layout: true
+
+  color_palette:
+    colors:
+      - "#450314" # dark cherry
+#      - "#5A051A"  # cherry
+      - "#7c397d" # purple
+#      - "#D20A2E"  # red
+#      - "#EE1E52"  # pink
+#      - "#6E3D6F" # darker purple
+#      - "#3F3FFF"   # indigo
+#      - "#FF6B90"  # light-pink
+#      - "#1f77b4"  # blue
+#      - "#D20A2E"   # red
+#      - "#EE1E52"  # pink
+#      - "#F2BDCD"  # light-light-pink
+#      - "#00BFC4"   # blue-green
+      - "#5b9bd5"  # lighter blue
+#      - "#5A051A"  # cherry
+#      - "#009E73"   # forest green
+#      - "#E69F00"   # orange
+#      - "#F0E442"   # golden yellow
+#      - "#3F3FFF"   # indigo
+
+  seaborn:
+    style: "whitegrid"
+    context: "paper"
+
+  param_latex_names:
+    theta: "$\\theta$"
+    mu: "$\\mu$"
+    sigma: "$\\sigma$"
+    mu_0: "$\\mu_0$"
+    mu_01: "$\\mu_{01}$"
+    mu_02: "$\\mu_{02}$"
+    sigma_0: "$\\sigma_0$"
+    alpha: "$\\alpha$"
+    beta: "$\\beta$"
+    prior: "$\\pi(\\mu_0)$"
+    priorsimple: "$\\pi$"
+    posterior: "$\\tilde{\\pi}$"
+    referenceposterior: "$\\tilde{\\Pi}_{\\mathrm{ref}}$"
+    likelihood: "$p_{\\theta}(x)$"
+    log_prior: "$\\log\\pi$"
+    prior_beta1: "$\\pi(\\beta_1)$"
+    prior_beta3: "$\\pi(\\beta_3)$"
+    nonparametric_prior: "$\\pi$"
+    baseprior: "$\\Pi_{\\mathrm{ref}}$"
+    candidateprior: "$\\Pi$"
+    logbaseprior: "$\\log\\Pi_{\\mathrm{ref}}$"
+    estimatedKSD: "$\\widehat{\\mathrm{KSD}}^2$"
+    estimatedposterior: "$\\tilde{\\Pi}^m_{\\mathrm{ref}}$"
+    candidateposterior: "$\\tilde{\\Pi}$"
+    estimatedKSDposteriors: "$\\widehat{\\mathrm{KSD}}^2(\\tilde{\\Pi}^m_{\\mathrm{ref}},\\ \\tilde{\\Pi})$"
+    estimatedKSDposteriorsShort: "$\\mathrm{KSD}_{\\mathrm{post}}$"
+    estimatedKSDrelativeShort: "$\\mathrm{KSD}_{\\mathrm{rel}}$"
+    estimatedKSDposteriorsQuadraticForm: "$L_m(\\eta)$"
+#    argoptimisationProblemParam: "$\\mathrm{arg}\\sup_{ \\gamma \\in C_\\gamma} L_m(\\gamma)$"
+    argoptimisationProblemNonParam: "$\\mathrm{arg}\\sup_{\\widehat{\\mathrm{KSD}}^2(\\Pi^l_{\\mathrm{ref}},\\ \\Pi_K) \\leq r} \\: L_m(\\psi)$"
+    optimisationProblem: "$\\sup\\limits_{\\widehat{\\mathrm{KSD}}^2(\\Pi^l_{\\mathrm{ref}},\\ \\Pi_K) \\leq r} \\: L_m(\\psi)$"
+    optimisationProblemWoConstraint: "$L_m(\\eta^\\star)$"
+    logoptimisationProblemWoConstraint: "$\\log L_m(\\eta^\\star)$"
+    argoptimisationProblemParam: "$\\eta^\\star$"
+    logOptimisationProblem: "$\\sup_{ \\widehat{\\mathrm{KSD}}^2(\\Pi^l_{\\mathrm{ref}},\\ \\Pi_K) \\leq r} \\: \\log L_m(\\eta)$"
+    lr: "$\\lambda_\\beta$"
+    logK: "$\\log K$"
+    logr: "$\\log r$"
+    K: "K"
+    r: "r"
+    numPosteriorSamples: "m"
+    numPriorPosteriorSamples: "m+l"
+    estimatedFDposteriorsShort: "$\\mathrm{FD}_{\\mathrm{post}}$"
+    estimatedFDposteriorsQuadraticForm: "$\\hat{\\rho}_m^{FD}(\\tilde{\\Pi}^\\lambda)$"
+    fDposteriorsQuadraticForm: "$\\rho^{FD}(\\tilde{\\Pi})$"
+    estimatedFDposteriorsQuadraticFormWithK: "$\\hat{\\rho}_m^{FD}(\\tilde{\\Pi}_K)$"
+    estimatedSensitivityMeasureWithK: "$\\widehat{S}_{\\mathrm{FD}}(\\tilde{\\Gamma}_{K,l})$"
+
+  y_axis:
+    log_scale: false
+
+  show_min_point: true
+  show_max_point: true

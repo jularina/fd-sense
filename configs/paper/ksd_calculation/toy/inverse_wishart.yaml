@@ -1,0 +1,68 @@
+data:
+  base_prior:
+    _target_: src.distributions.inverse_wishart.InverseWishart
+    df: 4.0
+    scale: [[4.0, 0.0], [0.0, 4.0]]
+  candidate_prior:
+    _target_: src.distributions.inverse_wishart.InverseWishart
+    df: 4.0
+    scale: [[4.0, 0.0], [0.0, 4.0]]
+  true_dgp:
+    _target_: src.distributions.gaussian.MultivariateGaussian
+    mu: [2.0, 3.0]
+    cov: [[4.0, 0.0], [0.0, 4.0]]
+
+  loss:
+    _target_: src.losses.gaussian_log_likelihood.MultivariateGaussianLogLikelihood
+    mu: [2.0, 3.0]
+    cov: [[4.0, 0.0], [0.0, 4.0]]
+
+  loss_lr: 1
+  observations_num: 500
+  posterior_samples_num: 5000
+  prior_samples_num: 5000
+
+model:
+  _target_: src.bayesian_model.inverse_wishart.InverseWishartModel
+
+ksd:
+  kernel:
+    _target_: src.kernels.inverse_multiquadric.InverseMultivariateMultiquadricKernel
+    lengthscale: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+    alpha: 0.5
+    heuristic: False
+
+  optimize:
+    prior:
+      InverseWishart:
+        parameters_box_range:
+          ranges:
+            df: [5, 5]
+            scale:
+              "0_0": [2.0, 8.0]
+              "1_1": [2.0, 8.0]
+              "0_1": [0.0, 3.0]
+              "1_0": [0.0, 3.0]
+          nums:
+            df: 1
+            scale:
+              "0_0": 7
+              "1_1": 7
+              "0_1": 4
+              "1_0": 4
+
+    loss:
+      MultivariateGaussianLogLikelihood:
+        parameters_box_range:
+          ranges:
+            lr: [ 0.05, 2.5 ]
+          nums:
+            lr: 15
+
+flags:
+  plots:
+    generate_plots:
+      heatmap: True
+      line_plot: True
+      density_plot: True
+    output_dir: outputs/paper/plots/fisher/inverse_wishart
