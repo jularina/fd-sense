@@ -276,25 +276,31 @@ def plot_densities_2d(xx, yy, densities, labels, colors, ylabel_str, plot_cfg, o
     fig.subplots_adjust(wspace=0.4)
     xlim = (xx[0, 0], xx[0, -1])
     ylim = (yy[0, 0], yy[-1, 0])
-    for ax, Z, color, label in zip(axes, densities, colors, labels):
+    for i, (ax, Z, color, label) in enumerate(zip(axes, densities, colors, labels)):
         levels = np.linspace(Z.max() * 0.02, Z.max(), 14)
         if linestyle == "-":
             cmap = LinearSegmentedColormap.from_list("mono", ["#ffffff", color])
             ax.contourf(xx, yy, Z, levels=levels, cmap=cmap, extend="min")
             ax.contour(xx, yy, Z, levels=levels, colors=[color], linewidths=0.5, alpha=0.45, linestyles="-")
             if show_legend:
+                prior_label = rf"$\pi(\theta|\lambda_{i+1})$"
                 ax.legend(
-                    handles=[Line2D([0], [0], color=color, lw=0.5, ls="-", label=r"$\pi(\theta)$")],
+                    handles=[Line2D([0], [0], color=color, lw=0.5, ls="-", label=prior_label)],
                     frameon=False, loc="upper right",
                 )
         else:
             post_levels = np.linspace(Z.max() * 0.02, Z.max(), 7)
             ax.contour(xx, yy, Z, levels=post_levels, colors=[color], linewidths=1.0, linestyles=linestyle)
+            if show_legend:
+                post_label = rf"$\tilde{{\pi}}^{{\lambda^{i+1}}}(\theta|x_{{1:n}})$"
+                ax.legend(
+                    handles=[Line2D([0], [0], color=color, lw=1.0, ls=linestyle, label=post_label)],
+                    frameon=False, loc="upper right",
+                )
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
         ax.set_xlabel(r"$\theta_1$")
         ax.set_ylabel(r"$\theta_2$")
-        ax.set_title(label)
         ax.set_aspect("equal")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -330,7 +336,7 @@ def plot_prior_posterior_2d(xx, yy, priors, posteriors, colors, plot_cfg, output
         labels = [r"$A$", r"$B$", r"$C$"]
     xlim = (xx[0, 0], xx[0, -1])
     ylim = (yy[0, 0], yy[-1, 0])
-    for ax, prior, posterior, color, label in zip(axes, priors, posteriors, colors, labels):
+    for i, (ax, prior, posterior, color, label) in enumerate(zip(axes, priors, posteriors, colors, labels)):
         cmap = LinearSegmentedColormap.from_list("mono", ["#ffffff", color])
         prior_levels = np.linspace(prior.max() * 0.02, prior.max(), 14)
         post_levels  = np.linspace(posterior.max() * 0.02, posterior.max(), 7)
@@ -339,16 +345,17 @@ def plot_prior_posterior_2d(xx, yy, priors, posteriors, colors, plot_cfg, output
         ax.contour(xx, yy, posterior, levels=post_levels,  colors=[color], linewidths=1.0, linestyles="--")
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
+        lam = rf"$\lambda_{i+1}$"
         ax.legend(
             handles=[
-                Line2D([0], [0], color=color, lw=0.5, ls="-",  label=r"$\pi(\theta|\lambda_\pi)$"),
-                Line2D([0], [0], color=color, lw=1.0, ls="--", label=r"$\tilde{\pi}(\theta|x_{1:n})$"),
+                Line2D([0], [0], color=color, lw=0.5, ls="-",  label=rf"$\pi(\theta|\lambda_{i+1})$"),
+                Line2D([0], [0], color=color, lw=1.0, ls="--", label=rf"$\tilde{{\pi}}^{{\lambda_{i+1}}}(\theta|x_{{1:n}})$"),
             ],
             frameon=False, loc="upper right",
         )
         ax.set_xlabel(r"$\theta_1$")
         ax.set_ylabel(r"$\theta_2$")
-        ax.set_title(label)
+
         ax.set_aspect("equal")
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -422,7 +429,7 @@ def main_2d() -> None:
     post_B = post_B_un / (np.sum(post_B_un) * dx * dy)
     post_C = post_C_un / (np.sum(post_C_un) * dx * dy)
 
-    labels        = [r"$\lambda^1_\pi$", r"$\lambda^2_\pi$", r"$\lambda^3_\pi$"]
+    labels        = [r"$\lambda_1$", r"$\lambda_2$", r"$\lambda_3$"]
     priors_2d     = [prior_A, prior_B, prior_C]
     posteriors_2d = [post_A,  post_B,  post_C]
 
@@ -453,6 +460,6 @@ def main_2d() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # main()
     main_2d()
 

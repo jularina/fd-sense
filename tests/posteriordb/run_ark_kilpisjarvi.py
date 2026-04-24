@@ -416,11 +416,26 @@ def plot_posterior_predictive(cfg: DictConfig) -> None:
         ylim=global_ylim,
         show_ylabel=False,
     )
+    animate_posterior_predictive_with_data(
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        x_years=x_years,
+        y_uncentered=y,
+        x_pred_years=x_pred_years,
+        pred_mean=corner_mean + y_mean_offset,
+        pred_lo=corner_lo + y_mean_offset,
+        pred_hi=corner_hi + y_mean_offset,
+        pred_label=r"$\tilde{x} \pm 95\%$ CI",
+        filename="kilpisjarvi-posterior-predictive-corner.mp4",
+        pred_color="#5b9bd5",
+        ylim=global_ylim,
+        show_ylabel=False,
+    )
 
 
 if __name__ == "__main__":
-    main()
-    # plot_posterior_predictive()
+    # main()
+    plot_posterior_predictive()
 
     # repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     # plot_config_path = os.path.join(repo_root, "configs/plots/overleaf_plots_settings.yaml")

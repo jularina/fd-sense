@@ -843,6 +843,282 @@ class OptimizationCornerPointsCompositePrior:
         return results, float(lambda_star), float(val_star)
 
 
+    def _evaluate_fgm_copula_fd_black_box(
+            self,
+            x: np.ndarray,
+            idx_g0: int = 0,
+            idx_nu: int = 2,
+    ) -> float:
+        lam = float(np.asarray(x, dtype=float).reshape(-1)[0])
+        return float(
+            self.posterior_estimator.fd_fgm_copula_given_lambda(
+                lam,
+                idx_g0=idx_g0,
+                idx_nu=idx_nu,
+            )
+        )
+
+    def black_box_optimize_fgm_copula(
+        self,
+        lambda_range=(-1.0, 1.0),
+        seed: int = 0,
+        maxiter: int = 200,
+        popsize: int = 15,
+        tol: float = 1e-6,
+        polish: bool = True,
+        workers: int = 1,
+        updating: str = "immediate",
+    ) -> BlackBoxCopulaOptResult:
+        """
+        Solve:
+            sup_{lambda in Gamma} FD_fgm(lambda)
+            inf_{lambda in Gamma} FD_fgm(lambda)
+
+        using a black-box global optimiser (differential evolution).
+        """
+        lo, hi = map(float, lambda_range)
+        bounds = [(lo, hi)]
+
+        res_sup = differential_evolution(
+            func=lambda x: -self._evaluate_fgm_copula_fd_black_box(x),
+            bounds=bounds,
+            seed=seed,
+            maxiter=maxiter,
+            popsize=popsize,
+            tol=tol,
+            polish=polish,
+            workers=workers,
+            updating=updating,
+            disp=False,
+        )
+        lambda_sup = float(np.asarray(res_sup.x).reshape(-1)[0])
+        val_sup = float(self._evaluate_fgm_copula_fd_black_box(np.array([lambda_sup])))
+
+        res_inf = differential_evolution(
+            func=lambda x: self._evaluate_fgm_copula_fd_black_box(x),
+            bounds=bounds,
+            seed=seed + 1,
+            maxiter=maxiter,
+            popsize=popsize,
+            tol=tol,
+            polish=polish,
+            workers=workers,
+            updating=updating,
+            disp=False,
+        )
+        lambda_inf = float(np.asarray(res_inf.x).reshape(-1)[0])
+        val_inf = float(self._evaluate_fgm_copula_fd_black_box(np.array([lambda_inf])))
+
+        if lo <= 0.0 <= hi:
+            lambda_inf = 0.0
+            val_inf = 0.0
+
+        return BlackBoxCopulaOptResult(
+            lambda_sup=lambda_sup,
+            val_sup=val_sup,
+            lambda_inf=lambda_inf,
+            val_inf=val_inf,
+            S_hat=float(val_sup - val_inf),
+            nfev_sup=int(getattr(res_sup, "nfev", -1)),
+            nfev_inf=int(getattr(res_inf, "nfev", -1)),
+        )
+
+    def evaluate_fgm_copula_grid(
+        self,
+        *,
+        lambda_range=(-1.0, 1.0),
+        n_grid: int = 101,
+        idx_g0: int = 0,
+        idx_nu: int = 2,
+    ) -> List[Tuple[float, float]]:
+        """
+        Evaluate the FGM copula FD objective on a 1D grid.
+
+        Returns
+        -------
+        List[Tuple[float, float]]
+            Pairs (lambda, FD(lambda)), sorted by lambda.
+        """
+        lo, hi = map(float, lambda_range)
+        grid = np.linspace(lo, hi, int(n_grid))
+
+        results = []
+        for lam in grid:
+            val = self._evaluate_fgm_copula_fd_black_box(
+                np.array([lam], dtype=float),
+                idx_g0=idx_g0,
+                idx_nu=idx_nu,
+            )
+            results.append((float(lam), float(val)))
+
+        return results
+
+    def evaluate_fgm_copula_grid_and_argmax(
+        self,
+        *,
+        lambda_range=(-1.0, 1.0),
+        n_grid: int = 101,
+        idx_g0: int = 0,
+        idx_nu: int = 2,
+    ) -> Tuple[List[Tuple[float, float]], float, float]:
+        """
+        Evaluate the FGM copula FD objective on a grid and return the maximiser.
+
+        Returns
+        -------
+        results : list of (lambda, value)
+        lambda_star : float
+        val_star : float
+        """
+        results = self.evaluate_fgm_copula_grid(
+            lambda_range=lambda_range,
+            n_grid=n_grid,
+            idx_g0=idx_g0,
+            idx_nu=idx_nu,
+        )
+        lambda_star, val_star = max(results, key=lambda x: x[1])
+        return results, float(lambda_star), float(val_star)
+
+
+    def _evaluate_frank_copula_fd_black_box(
+            self,
+            x: np.ndarray,
+            idx_g0: int = 0,
+            idx_nu: int = 2,
+    ) -> float:
+        lam = float(np.asarray(x, dtype=float).reshape(-1)[0])
+        return float(
+            self.posterior_estimator.fd_frank_copula_given_lambda(
+                lam,
+                idx_g0=idx_g0,
+                idx_nu=idx_nu,
+            )
+        )
+
+    def black_box_optimize_frank_copula(
+        self,
+        lambda_range=(-0.1, 0.1),
+        seed: int = 0,
+        maxiter: int = 200,
+        popsize: int = 15,
+        tol: float = 1e-6,
+        polish: bool = True,
+        workers: int = 1,
+        updating: str = "immediate",
+    ) -> BlackBoxCopulaOptResult:
+        """
+        Solve:
+            sup_{theta in Gamma} FD_frank(theta)
+            inf_{theta in Gamma} FD_frank(theta)
+
+        using a black-box global optimiser (differential evolution).
+        FD is extended by continuity: FD(0) = 0.
+        """
+        lo, hi = map(float, lambda_range)
+        bounds = [(lo, hi)]
+
+        res_sup = differential_evolution(
+            func=lambda x: -self._evaluate_frank_copula_fd_black_box(x),
+            bounds=bounds,
+            seed=seed,
+            maxiter=maxiter,
+            popsize=popsize,
+            tol=tol,
+            polish=polish,
+            workers=workers,
+            updating=updating,
+            disp=False,
+        )
+        lambda_sup = float(np.asarray(res_sup.x).reshape(-1)[0])
+        val_sup = float(self._evaluate_frank_copula_fd_black_box(np.array([lambda_sup])))
+
+        res_inf = differential_evolution(
+            func=lambda x: self._evaluate_frank_copula_fd_black_box(x),
+            bounds=bounds,
+            seed=seed + 1,
+            maxiter=maxiter,
+            popsize=popsize,
+            tol=tol,
+            polish=polish,
+            workers=workers,
+            updating=updating,
+            disp=False,
+        )
+        lambda_inf = float(np.asarray(res_inf.x).reshape(-1)[0])
+        val_inf = float(self._evaluate_frank_copula_fd_black_box(np.array([lambda_inf])))
+
+        # θ=0 gives FD=0 (independence); enforce exact infimum if 0 is in range
+        if lo <= 0.0 <= hi:
+            lambda_inf = 0.0
+            val_inf = 0.0
+
+        return BlackBoxCopulaOptResult(
+            lambda_sup=lambda_sup,
+            val_sup=val_sup,
+            lambda_inf=lambda_inf,
+            val_inf=val_inf,
+            S_hat=float(val_sup - val_inf),
+            nfev_sup=int(getattr(res_sup, "nfev", -1)),
+            nfev_inf=int(getattr(res_inf, "nfev", -1)),
+        )
+
+    def evaluate_frank_copula_grid(
+        self,
+        *,
+        lambda_range=(-0.1, 0.1),
+        n_grid: int = 101,
+        idx_g0: int = 0,
+        idx_nu: int = 2,
+    ) -> List[Tuple[float, float]]:
+        """
+        Evaluate the Frank copula FD objective on a 1D grid.
+
+        Returns
+        -------
+        List[Tuple[float, float]]
+            Pairs (theta, FD(theta)), sorted by theta.
+        """
+        lo, hi = map(float, lambda_range)
+        grid = np.linspace(lo, hi, int(n_grid))
+
+        results = []
+        for lam in grid:
+            val = self._evaluate_frank_copula_fd_black_box(
+                np.array([lam], dtype=float),
+                idx_g0=idx_g0,
+                idx_nu=idx_nu,
+            )
+            results.append((float(lam), float(val)))
+
+        return results
+
+    def evaluate_frank_copula_grid_and_argmax(
+        self,
+        *,
+        lambda_range=(-0.1, 0.1),
+        n_grid: int = 101,
+        idx_g0: int = 0,
+        idx_nu: int = 2,
+    ) -> Tuple[List[Tuple[float, float]], float, float]:
+        """
+        Evaluate the Frank copula FD objective on a grid and return the maximiser.
+
+        Returns
+        -------
+        results : list of (theta, value)
+        lambda_star : float
+        val_star : float
+        """
+        results = self.evaluate_frank_copula_grid(
+            lambda_range=lambda_range,
+            n_grid=n_grid,
+            idx_g0=idx_g0,
+            idx_nu=idx_nu,
+        )
+        lambda_star, val_star = max(results, key=lambda x: x[1])
+        return results, float(lambda_star), float(val_star)
+
+
 class OptimizationCornerPointsGamma(OptimizationCornerPointsBase):
     def __init__(
         self,

@@ -1149,3 +1149,134 @@ def plot_posterior_predictive_with_data(
     except Exception:
         path = os.path.join(output_dir, filename)
         fig.savefig(path, bbox_inches="tight")
+
+
+def animate_posterior_predictive_with_data(
+    plot_cfg,
+    output_dir: str,
+    x_years: np.ndarray,
+    y_uncentered: np.ndarray,
+    x_pred_years: np.ndarray,
+    pred_mean: np.ndarray,
+    pred_lo: np.ndarray,
+    pred_hi: np.ndarray,
+    pred_label: str,
+    filename: str,
+    pred_color: str | None = None,
+    ylim=None,
+    show_ylabel: bool = True,
+    fps: int = 30,
+    draw_seconds: float = 4.0,
+    hold_seconds: float = 1.5,
+):
+    """Animated version of plot_posterior_predictive_with_data.
+
+    A single left-to-right sweep through time: at each frame everything
+    available up to the current time step is revealed simultaneously —
+    observation points, CI band, and mean line all advance together.
+    The final frame is held for hold_seconds.
+
+    Saves an MP4 to output_dir/filename.
+    """
+    import imageio.v3 as iio
+
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    x_years = np.asarray(x_years, dtype=float)
+    y_uncentered = np.asarray(y_uncentered, dtype=float)
+    x_pred_years = np.asarray(x_pred_years, dtype=float)
+    pred_mean = np.asarray(pred_mean, dtype=float)
+    pred_lo = np.asarray(pred_lo, dtype=float)
+    pred_hi = np.asarray(pred_hi, dtype=float)
+
+    try:
+        colors = list(plot_cfg.plot.color_palette.colors)
+    except Exception:
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    if pred_color is None:
+        pred_color = colors[1]
+
+    fig, ax = plt.subplots(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height),
+        dpi=plot_cfg.plot.figure.dpi,
+    )
+
+    all_x = np.concatenate([x_years, x_pred_years])
+    t_min, t_max = all_x.min(), all_x.max()
+    ax.set_xlim(t_min, t_max)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    else:
+        all_y = np.concatenate([y_uncentered, pred_lo, pred_hi])
+        margin = (all_y.max() - all_y.min()) * 0.05
+        ax.set_ylim(all_y.min() - margin, all_y.max() + margin)
+
+    ax.set_xlabel("Year")
+    if show_ylabel:
+        ax.set_ylabel("Temperature (°C)")
+    else:
+        ax.set_ylabel("Temperature (°C)", color="none")
+        ax.tick_params(axis="y", labelcolor="none")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    scatter = ax.scatter([], [], marker="x", s=9.0, linewidths=1.0, color="black", zorder=1)
+    fill_artist = [ax.fill_between([], [], [], color=pred_color, alpha=0.25, zorder=2)]
+    (mean_line,) = ax.plot([], [], linewidth=1.5, color=pred_color, label=pred_label, zorder=3)
+
+    # Apply the same layout the static plot uses via _save_fig
+    if getattr(plot_cfg.plot.figure, "tight_layout", True):
+        fig.tight_layout()
+
+    def _capture():
+        fig.canvas.draw()
+        buf = np.asarray(fig.canvas.buffer_rgba())
+        return buf[:, :, :3].copy()
+
+    frames = []
+    fig.canvas.draw()
+
+    # Sweep frames linearly from t_min to t_max
+    n_draw = max(2, int(fps * draw_seconds))
+    legend_drawn = False
+    for k in range(1, n_draw + 1):
+        t_now = t_min + (t_max - t_min) * k / n_draw
+
+        # Observations up to t_now
+        obs_mask = x_years <= t_now
+        if obs_mask.any():
+            scatter.set_offsets(np.column_stack([x_years[obs_mask], y_uncentered[obs_mask]]))
+
+        # CI band and mean line up to t_now
+        pred_mask = x_pred_years <= t_now
+        fill_artist[0].remove()
+        if pred_mask.sum() >= 2:
+            fill_artist[0] = ax.fill_between(
+                x_pred_years[pred_mask], pred_lo[pred_mask], pred_hi[pred_mask],
+                color=pred_color, alpha=0.25, zorder=2,
+            )
+            mean_line.set_data(x_pred_years[pred_mask], pred_mean[pred_mask])
+            if not legend_drawn:
+                ax.legend(frameon=False, loc="upper right")
+                legend_drawn = True
+        else:
+            fill_artist[0] = ax.fill_between([], [], [], color=pred_color, alpha=0.25, zorder=2)
+
+        frames.append(_capture())
+
+    # Hold final frame
+    n_hold = max(1, int(fps * hold_seconds))
+    hold_frame = _capture()
+    for _ in range(n_hold):
+        frames.append(hold_frame.copy())
+
+    path = os.path.join(output_dir, filename)
+    iio.imwrite(path, np.stack(frames), fps=fps, quality=9)
+    plt.close(fig)
+    print(f"Saved animation to {path}")

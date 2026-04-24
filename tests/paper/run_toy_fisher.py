@@ -429,17 +429,17 @@ def comparison_plot_existing_methods(cfg):
             xlim=xlim,
         )
 
-        plot_runtime_complexity_gaussians(
-            output_dir=output_dir,
-            plot_cfg=plot_cfg,
-            divergence=divergence,
-            ms=ms,
-            dims=dims,
-            logy=True,
-            results=results,
-            ylim=time_ylim,
-            xlim=xlim,
-        )
+        # plot_runtime_complexity_gaussians(
+        #     output_dir=output_dir,
+        #     plot_cfg=plot_cfg,
+        #     divergence=divergence,
+        #     ms=ms,
+        #     dims=dims,
+        #     logy=True,
+        #     results=results,
+        #     ylim=time_ylim,
+        #     xlim=xlim,
+        # )
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")

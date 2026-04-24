@@ -369,6 +369,115 @@ class PosteriorFDBase:
         }
 
 
+    def fd_fgm_copula_given_lambda(
+            self,
+            lam: float,
+            idx_g0: int = 0,
+            idx_nu: int = 2,
+            eps: float = 1e-10,
+    ) -> float:
+        """
+        Empirical Fisher divergence for FGM copula perturbation.
+
+        FGM copula density: c(u,v;θ) = 1 + θ(1-2u)(1-2v), θ ∈ [-1, 1].
+
+        Computes
+            E_{theta ~ Pi_ref} || ∇_theta log c_lam(u_G0, u_nu) ||^2.
+
+        Parameters
+        ----------
+        lam : float
+            FGM copula parameter. Must satisfy |lam| <= 1.
+        idx_g0 : int
+            Column index of the rescaled G0 coordinate in self.samples.
+        idx_nu : int
+            Column index of the rescaled nu coordinate in self.samples.
+        eps : float
+            Boundary clipping level for numerical stability.
+
+        Returns
+        -------
+        float
+            Monte-Carlo estimate of the Fisher divergence.
+        """
+        lam = float(lam)
+        if abs(lam) > 1.0:
+            return np.inf
+
+        u_g0 = np.asarray(self.samples[:, idx_g0], dtype=float)
+        u_nu = np.asarray(self.samples[:, idx_nu], dtype=float)
+
+        u_g0 = np.clip(u_g0, eps, 1.0 - eps)
+        u_nu = np.clip(u_nu, eps, 1.0 - eps)
+
+        c_val = 1.0 + lam * (1.0 - 2.0 * u_g0) * (1.0 - 2.0 * u_nu)
+        c_val = np.where(np.abs(c_val) < eps, eps, c_val)
+
+        dlogc_dg0 = -2.0 * lam * (1.0 - 2.0 * u_nu) / c_val
+        dlogc_dnu = -2.0 * lam * (1.0 - 2.0 * u_g0) / c_val
+
+        sq_norm = dlogc_dg0 ** 2 + dlogc_dnu ** 2
+
+        return float(np.mean(sq_norm))
+
+
+    def fd_frank_copula_given_lambda(
+            self,
+            lam: float,
+            idx_g0: int = 0,
+            idx_nu: int = 2,
+            eps: float = 1e-10,
+    ) -> float:
+        """
+        Empirical Fisher divergence for Frank copula perturbation.
+
+        Frank copula density:
+            c(u,v;θ) = -θ(e^{-θ}-1) e^{-θ(u+v)} / D^2,
+            D = (e^{-θ}-1) + (e^{-θu}-1)(e^{-θv}-1).
+
+        At θ=0 the copula extends by continuity to c=1 (independence),
+        so FD returns 0.0 for |θ| < eps.
+
+        Parameters
+        ----------
+        lam : float
+            Frank copula parameter θ ∈ ℝ.
+        idx_g0 : int
+            Column index of the rescaled G0 coordinate in self.samples.
+        idx_nu : int
+            Column index of the rescaled nu coordinate in self.samples.
+        eps : float
+            Boundary clipping level and zero-θ threshold.
+
+        Returns
+        -------
+        float
+            Monte-Carlo estimate of the Fisher divergence.
+        """
+        lam = float(lam)
+        if abs(lam) < eps:
+            return 0.0
+
+        u = np.clip(np.asarray(self.samples[:, idx_g0], dtype=float), eps, 1.0 - eps)
+        v = np.clip(np.asarray(self.samples[:, idx_nu], dtype=float), eps, 1.0 - eps)
+
+        # e^{-θ}-1, e^{-θu}-1, e^{-θv}-1  (numerically stable for small θ)
+        A = np.expm1(-lam)
+        B = np.expm1(-lam * u)
+        E = np.expm1(-lam * v)
+
+        denom = A + B * E
+        denom = np.where(np.abs(denom) < eps, np.sign(denom + eps) * eps, denom)
+
+        # ∂ log c / ∂u = θ(-1 + 2 e^{-θu} E / D)
+        dlogc_du = lam * (-1.0 + 2.0 * np.exp(-lam * u) * E / denom)
+        dlogc_dv = lam * (-1.0 + 2.0 * np.exp(-lam * v) * B / denom)
+
+        sq_norm = dlogc_du ** 2 + dlogc_dv ** 2
+
+        return float(np.mean(sq_norm))
+
+
 class PosteriorFDNonParametric(PosteriorFDBase):
     def __init__(self, model: BayesianModel):
         super().__init__(model=model)

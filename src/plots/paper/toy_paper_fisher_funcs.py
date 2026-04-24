@@ -350,7 +350,7 @@ def plot_multi_line_plots(
             )
 
             if getattr(plot_cfg.plot, "show_min_point",
-                       False) and fixed_param_latex == "$\\sigma_0$" and fixed_val == 3.0:
+                       False) and fixed_param_latex == "$\\sigma$" and fixed_val == 3.0:
                 min_idx = np.argmin(y)
                 ax.scatter(
                     x[min_idx], y[min_idx],
@@ -360,8 +360,7 @@ def plot_multi_line_plots(
                     s=50,
                 )
 
-            if getattr(plot_cfg.plot, "show_max_point",
-                       False) and fixed_param_latex == "$\\sigma_0$" and fixed_val == 2.0:
+            if fixed_param_latex == "$\\sigma$" and fixed_val == 2.0:
                 max_idx = np.argmax(y)
                 ax.scatter(
                     x[max_idx], y[max_idx],
@@ -758,7 +757,7 @@ def plot_mu_sigma_contour(
 
     cf = ax.contourf(Xi, Yi, Zi, levels=20, cmap=cmap)
     ct = ax.contour(Xi, Yi, Zi, levels=20, colors="white", linewidths=0.4, alpha=0.5)
-    cbar = fig.colorbar(cf, ax=ax, label=getattr(latex_param_names, "fDposteriorsQuadraticForm", "KSD"))
+    cbar = fig.colorbar(cf, ax=ax, label=getattr(latex_param_names, "estimatedFDposteriorsQuadraticForm", "KSD"))
     from matplotlib.ticker import MaxNLocator
     cbar.locator = MaxNLocator(integer=True)
     cbar.update_ticks()
@@ -1905,7 +1904,7 @@ def compute_gaussian_complexity_results(
     """
     rng = np.random.default_rng(seed)
 
-    methods = [divergence] if divergence is not None else ["fd", "mean", "wim", "kl"]
+    methods = ["fd", "mean", "wim", "kl"]
 
     error_mean = {method: {d: [] for d in dims} for method in methods}
     error_ci = {method: {d: [] for d in dims} for method in methods}
@@ -2967,8 +2966,8 @@ def plot_gaussian_copula_grid_pair(
     filename: str | None = None,
     xlabel: str = r"$\lambda_c$",
     ylabel: str = r"$\hat{\rho}_m^{\mathrm{FD}}(\tilde{\Pi}^{\lambda})$",
-    label_0: str = r"$(G'_0, \nu')$",
-    label_1: str = r"$(T', \nu')$",
+    label_0: str = r"$(G_0, \nu)$",
+    label_1: str = r"$(T, \nu)$",
     mark_max_point: bool = True,
     mark_corner_point: bool = False,
     logy: bool = False,
@@ -3030,6 +3029,81 @@ def plot_gaussian_copula_grid_pair(
     else:
         ax.set_ylabel(ylabel, color="none")
         ax.tick_params(axis="y", labelcolor="none")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", linestyle=":", alpha=0.35)
+
+    if logy:
+        ax.set_yscale("log")
+
+    if ylim is not None:
+        ax.set_ylim(ylim)
+
+    ax.legend(frameon=False, ncol=1, loc="best")
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+
+
+def plot_copula_all_pairs(
+    grids_and_labels,
+    plot_cfg,
+    output_dir: str,
+    filename: str,
+    xlabel: str = r"$\theta$",
+    ylabel: str = r"$\hat{\rho}_m^{\mathrm{FD}}(\tilde{\Pi}^{\theta})$",
+    mark_max_point: bool = True,
+    logy: bool = False,
+    ylim=None,
+):
+    """
+    Plot one FD-vs-parameter curve per pair on a single axes.
+
+    Parameters
+    ----------
+    grids_and_labels : list of (grid, label)
+        Each grid is a list of (theta, FD) pairs; label is the legend string.
+    """
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        colors = list(plot_cfg.plot.color_palette.colors)
+    except Exception:
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    fig, ax = _make_figure(plot_cfg)
+
+    for i, (grid, label) in enumerate(grids_and_labels):
+        color = colors[i % len(colors)]
+        lambdas = np.asarray([x[0] for x in grid], dtype=float)
+        values = np.asarray([x[1] for x in grid], dtype=float)
+        order = np.argsort(lambdas)
+        lambdas, values = lambdas[order], values[order]
+
+        ax.plot(lambdas, values, linewidth=1.5, color=color, label=label, zorder=2)
+
+        if mark_max_point:
+            idx_star = int(np.argmax(values))
+            ax.scatter(
+                [lambdas[idx_star]], [values[idx_star]],
+                s=27, color="red", zorder=3, marker="*",
+            )
+            ax.axvline(
+                lambdas[idx_star],
+                linestyle=":", linewidth=1.0, color=color, alpha=0.8, zorder=1,
+            )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", linestyle=":", alpha=0.35)

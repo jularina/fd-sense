@@ -212,7 +212,7 @@ def create_combined_plots(cfg: DictConfig):
             plot_cfg=plot_cfg,
             output_dir=output_dir,
             filename=f"ising-lr-comparison-{loss}.pdf",
-            xlabel=r"$\beta$",
+            xlabel=r"$\lambda_L$",
             legend=False,
             ylbl="estimatedFDposteriorsQuadraticForm",
             logy=True,
