@@ -12,7 +12,7 @@ from src.discrepancies.posterior_fisher import PosteriorFDBase
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ising_model")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ising_model")
 def main(cfg: DictConfig) -> None:
     loss = cfg.data.loss_type
     beta_refs = cfg.data.beta_refs
@@ -88,7 +88,7 @@ def main(cfg: DictConfig) -> None:
         data_path + f"{loss_to_file_name[loss]}_size=6_theta=5.0_dnum=1000_pnum=2000_data_{loss}_lr_optimisation_lyddon.npy", arr)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ising_model")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ising_model")
 def create_combined_plots(cfg: DictConfig):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)

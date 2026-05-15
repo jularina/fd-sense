@@ -39,7 +39,7 @@ def _eval_corners_with_cfg(ksd_est, cfg_like: DictConfig) -> Tuple:
     return rows, worst_corner_dict
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="sbi_nle_turin")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="sbi_nle_turin")
 def main_old(cfg: DictConfig) -> None:
     # model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
     # estimator_posterior = PosteriorFDNonParametric(model=model)
@@ -120,7 +120,7 @@ def main_old(cfg: DictConfig) -> None:
     )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="sbi_nle_turin")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="sbi_nle_turin")
 def main(cfg: DictConfig) -> None:
     prefix = cfg.playground.get("output_prefix", "sbi")
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")

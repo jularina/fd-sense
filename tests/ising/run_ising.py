@@ -22,7 +22,7 @@ from src.plots.paper.ising_model_paper_funcs import *
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ising_model")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ising_model")
 def main(cfg: DictConfig) -> None:
     print("=== KSD for Ising model ===")
     model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
@@ -131,7 +131,7 @@ def main(cfg: DictConfig) -> None:
     # )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ising_model")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ising_model")
 def create_combined_plots(cfg: DictConfig):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)

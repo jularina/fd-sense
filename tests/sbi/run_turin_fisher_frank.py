@@ -15,7 +15,7 @@ from src.optimization.corner_points_fisher import (
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="sbi_nle_turin")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="sbi_nle_turin")
 def main(cfg: DictConfig) -> None:
     prefix = cfg.playground.get("output_prefix", "sbi")
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")

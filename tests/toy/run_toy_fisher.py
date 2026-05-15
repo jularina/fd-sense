@@ -117,7 +117,7 @@ def plots_across_gaussian_parameters_ranges_mu_sigma_quadratic_form(cfg, prior_c
     plot_mu_sigma_contour(prior_combinations, prior_corners, plot_cfg, output_dir)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/",
             config_name="univariate_gaussian")
 def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
     """
@@ -150,7 +150,7 @@ def run_gaussian_priors(cfg, save_samples: bool = True) -> None:
     plots_across_gaussian_parameters_ranges_mu_sigma_quadratic_form(cfg, prior_combinations, prior_corners)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/",
             config_name="univariate_gaussian")
 def run_gaussian_priors_for_conjugate_fd(cfg, save_samples: bool = True) -> None:
     """
@@ -182,7 +182,7 @@ def run_gaussian_priors_for_conjugate_fd(cfg, save_samples: bool = True) -> None
     plots_across_gaussian_parameters_ranges_mu_sigma_quadratic_form(cfg, prior_combinations, prior_corners)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/",
             config_name="univariate_gaussian")
 def run_gaussian_priors_qcqp(cfg) -> None:
     """
@@ -250,7 +250,7 @@ def run_gaussian_priors_qcqp(cfg) -> None:
     print("constraint at eta_star:", sdp_dual_solution.constraint_value, "(should be <= r)")
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="multivariate_gaussian")
 def run_multivariate_gaussian_priors(cfg, save_samples: bool = True) -> None:
     """
     Main function to compute Fisher and perform prior parameter grid search using Hydra for configuration.
@@ -292,7 +292,7 @@ def run_multivariate_gaussian_priors(cfg, save_samples: bool = True) -> None:
         cfg, model, qf_priors_all_combinations=qf_priors_all_combinations)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="multivariate_gaussian")
 def comparison_plot_existing_methods(cfg):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
@@ -442,7 +442,7 @@ def comparison_plot_existing_methods(cfg):
         # )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="univariate_gaussian")
 def run_gaussian_lr(cfg, save_samples: bool = True) -> None:
     """
     Main function to compute FD and perform prior parameter grid search using Hydra for configuration.
@@ -463,13 +463,10 @@ def run_gaussian_lr(cfg, save_samples: bool = True) -> None:
     plots_across_gaussian_loss_lr_parameters_ranges(cfg, model)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="univariate_gaussian")
 def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False) -> None:
     """
     Main function to compute FD and perform prior parameter grid search using Hydra for configuration.
-
-    Args:
-        cfg (DictConfig): Configuration loaded by Hydra.
     """
     model = instantiate(cfg.model, data_config=cfg.data)
     output_dir = os.path.join(get_original_cwd(), "data/univariate_gaussian")
@@ -480,17 +477,16 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
         np.save(output_dir + "/observations.npy", model.observations)
         np.save(output_dir + "/prior_samples.npy", model.prior_samples_init)
 
-    # Nonparametric optimisation
     estimator_prior = PriorFDNonParametric(model=model)
     estimator_posterior = PosteriorFDNonParametric(model=model)
-    sdp_psi_list, sdp_fd_estimates_list, radius_labels = [], [], []
-    sdp_psi_list, sdp_fd_estimates_list = [], []
+    sdp_lambda_list, sdp_fd_estimates_list, radius_labels = [], [], []
+    sdp_lambda_list, sdp_fd_estimates_list = [], []
 
     for radius in [0.5, 1.0, 5.0, 10.0]:
         optimizer = OptimisationNonparametricBase(
             estimator_posterior,
             estimator_prior,
-            cfg.ksd.optimize.prior.nonparametric,
+            cfg.fd.optimize.prior.nonparametric,
             radius=radius
         )
         start = time.perf_counter()
@@ -508,7 +504,7 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
         elapsed = time.perf_counter() - start
         print(f"SDP dual time: {elapsed}")
 
-        sdp_psi_list.append(result_sdp["eta_star"])
+        sdp_lambda_list.append(result_sdp["eta_star"])
         sdp_fd_estimates_list.append(result_sdp["primal_value"])
         radius_labels.append(radius)
 
@@ -518,7 +514,7 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
 
     plot_sdp_densities_and_logprior(
         basis_function=optimizer.basis_function,
-        psi_sdp_list=sdp_psi_list,
+        psi_sdp_list=sdp_lambda_list,
         radius_labels=radius_labels,
         estimates=sdp_fd_estimates_list,
         prior_distribution=model.prior_init,
@@ -529,7 +525,7 @@ def run_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = False
     )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/",
             config_name="multivariate_gaussian")
 def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples: bool = True) -> None:
     """
@@ -584,7 +580,7 @@ def run_multivariate_gaussian_priors_nonparametric_diff_radii(cfg, save_samples:
     )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/",
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/",
             config_name="multivariate_gaussian")
 def run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums(cfg, save_samples: bool = False) -> None:
     """
@@ -658,7 +654,7 @@ def run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums(cfg, save_sa
     )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="inverse_wishart")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="inverse_wishart")
 def run_inverse_wishart_priors(cfg) -> None:
     """
     Main function to compute FD and perform prior parameter grid search using Hydra for configuration.
@@ -682,7 +678,7 @@ def run_inverse_wishart_priors(cfg) -> None:
     plot_inverse_wishart_scale_ellipses_by_fd_one_subplot(qf_prior_all_combinations, output_dir, plot_cfg)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="univariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="univariate_gaussian")
 def run_gaussian_priors_nonparametric_diff_samples_num(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
@@ -750,7 +746,7 @@ def run_gaussian_priors_nonparametric_diff_samples_num(cfg) -> None:
         json.dump(times_nonparametric, f, indent=4)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="multivariate_gaussian")
 def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
@@ -816,7 +812,7 @@ def run_multivariate_gaussian_priors_diff_samples_num(cfg) -> None:
         json.dump(times_nonparametric, f, indent=4)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="multivariate_gaussian")
 def run_multivariate_gaussian_priors_diff_basis_funcs_num(cfg) -> None:
     """
     Main function to compute KSD and perform prior parameter grid search using Hydra for configuration.
@@ -857,7 +853,7 @@ def run_multivariate_gaussian_priors_diff_basis_funcs_num(cfg) -> None:
         json.dump(times_nonparametric, f, indent=4)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="multivariate_gaussian")
 def run_priors_optimisation_runtimes(cfg, dim: str = "multivariate"):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
@@ -879,7 +875,7 @@ def run_priors_optimisation_runtimes(cfg, dim: str = "multivariate"):
     )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/toy/", config_name="multivariate_gaussian")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/toy/", config_name="multivariate_gaussian")
 def run_priors_optimisation_runtimes(cfg):
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
     output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
@@ -913,10 +909,9 @@ if __name__ == "__main__":
     # run_gaussian_priors_for_conjugate_fd()
     # run_gaussian_lr()
     # run_multivariate_gaussian_priors()
-    comparison_plot_existing_methods()
+    # comparison_plot_existing_methods()
     # run_gaussian_priors_qcqp()
-    # run_inverse_wishart_priors()
-    # run_gaussian_priors_nonparametric_diff_radii()
+    run_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_diff_radii()
     # run_multivariate_gaussian_priors_nonparametric_basis_funcs_nums()
     # run_gaussian_priors_nonparametric_diff_samples_num()

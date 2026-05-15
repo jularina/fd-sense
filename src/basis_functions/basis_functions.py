@@ -110,7 +110,6 @@ class MaternBasisFunction(BaseBasisFunction):
         method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
-        # Optional: enforce centres in ball Θ_B (Assumption A2 uses Θ_B)
         B: Optional[float] = None,
         eps: float = 1e-12,
     ):

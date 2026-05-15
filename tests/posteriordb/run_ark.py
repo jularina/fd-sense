@@ -56,7 +56,7 @@ def _eval_corners_with_cfg(ksd_est, cfg_like: DictConfig) -> Tuple:
     return rows, worst_corner_dict
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_posteriordb")
 def main(cfg: DictConfig) -> None:
     print("=== Parametric KSD (ArK pooled from the posteriordb) ===")
     model: BayesianModel = instantiate(cfg.model, data_config=cfg.data)
@@ -89,7 +89,7 @@ def main(cfg: DictConfig) -> None:
         print("  ", r)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_posteriordb")
 def main_for_paper(cfg: DictConfig) -> None:
     print("=== Parametric KSD (ArK pooled from the posteriordb) ===")
     rows = _run_one_optimization(cfg)
@@ -110,7 +110,7 @@ def main_for_paper(cfg: DictConfig) -> None:
     )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_posteriordb")
 def main_for_paper_several_variants(cfg: DictConfig) -> None:
     prefix = cfg.playground.get("output_prefix", "ark_param")
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")

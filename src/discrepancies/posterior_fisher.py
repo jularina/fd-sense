@@ -484,9 +484,7 @@ class PosteriorFDNonParametric(PosteriorFDBase):
 
     def _v_prior_only(self) -> np.ndarray:
         """
-        Nonparametric prior-only case (Appendix):
-            v_i = s_{pi_ref}(theta_i)
-        Shape: (m, paramdim)
+        Nonparametric prior-only case
         """
         return self.score_prior_ref
 
@@ -495,19 +493,13 @@ class PosteriorFDNonParametric(PosteriorFDBase):
         basis_func: BaseBasisFunction,
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         """
-        Quadratic form for:
-            (1/m) sum_i || s_{pi_ref}(theta_i) - gradT(theta_i) @ eta ||^2
-
-        Here grad_T is the Jacobian of T(theta) = [phi_1(theta), ..., phi_K(theta)].
-        So grad_T has shape (m, paramdim, K).
+        Quadratic form
         """
-        # IMPORTANT: do NOT call update_candidate() here, because for the nonparametric
-        # representation grad_T comes from the basis, not from prior_candidate.
         self.grad_T = self._compute_grad_basis_function_for_prior(basis_func)
 
-        A = self._compute_A_prior_only()   # uses self.grad_T
-        b = self._compute_b_prior_only()   # uses v = score_prior_ref (via override)
-        c = self._compute_c_prior_only()   # uses v = score_prior_ref (via override)
+        A = self._compute_A_prior_only()
+        b = self._compute_b_prior_only()
+        c = self._compute_c_prior_only()
 
         return A, b, c
 

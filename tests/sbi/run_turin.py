@@ -60,7 +60,7 @@ def _eval_corners_with_cfg(ksd_est, cfg_like: DictConfig) -> Tuple:
     return rows, worst_corner_dict
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="sbi_nle_turin")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="sbi_nle_turin")
 def main(cfg: DictConfig) -> None:
 
     # Plots

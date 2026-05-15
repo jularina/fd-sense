@@ -125,7 +125,7 @@ def rank_blocks(per_block: Dict[str, BlockDecomposition], key: str = "total_with
     return sorted(pairs, key=lambda x: x[1], reverse=True)
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_posteriordb")
 def main(cfg: DictConfig) -> None:
     prefix = cfg.playground.get("output_prefix", "ark_param")
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
@@ -281,7 +281,7 @@ def main(cfg: DictConfig) -> None:
     )
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_posteriordb")
 def compare_complexities(cfg: DictConfig) -> None:
     prefix = cfg.playground.get("output_prefix", "ark_param")
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
@@ -488,7 +488,7 @@ def summarise_samples(samples, K, name):
     print("sigma:", np.mean(sigma), np.std(sigma))
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_posteriordb")
 def plot_posterior_predictive(cfg: DictConfig) -> None:
     prefix = cfg.playground.get("output_prefix", "ark_param")
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
