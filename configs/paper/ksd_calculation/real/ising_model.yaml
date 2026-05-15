@@ -19,21 +19,21 @@ data:
   observations_num: null
   posterior_samples_num: null
   prior_samples_num: null
-#  loss_type: pseudolikelihood
-#  beta_refs:
-#    matsubara: 0.6
-#    syring: 0.52
-#    lyddon: 0.64
+  loss_type: pseudolikelihood
+  beta_refs:
+    matsubara: 0.6
+    syring: 0.52
+    lyddon: 0.64
 #  loss_type: dfd
 #  beta_refs:
 #    matsubara: 0.02
 #    syring: 0.34
 #    lyddon: 0.015
-  loss_type: ksd
-  beta_refs:
-    matsubara: 0.39
-    syring: 0.33
-    lyddon: 2.34
+#  loss_type: ksd
+#  beta_refs:
+#    matsubara: 0.39
+#    syring: 0.33
+#    lyddon: 2.34
 
 model:
   _target_: src.bayesian_model.ising.ising.IsingBayesianModel

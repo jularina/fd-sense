@@ -90,7 +90,7 @@ def main(cfg: DictConfig) -> None:
         cfg.fd.optimize.prior.Composite,
         cfg.fd.optimize.loss.GaussianARLogLikelihood,
     )
-    names = ["alpha", "beta1", "beta2", "beta3", "beta4", "beta5", "sigma"]
+    names = ["beta1", "beta2", "beta3", "beta4", "beta5", "alpha", "sigma"]
     qf_corners, eta_star = optimizer.evaluate_all_prior_corners()
     eta_inf, val_inf = optimizer.minimize_prior_full_qp()
 
@@ -104,6 +104,10 @@ def main(cfg: DictConfig) -> None:
     print("Per-component infimum:")
     for n in names:
         print(n, eta_inf_blocks[n], values_inf[n])
+
+    contributions = {k: sup_res[k][0][1] - values_inf[k] for k in names}
+    total = sum(contributions[k] for k in names)
+    percentages = {k: contributions[k] / total * 100.0 for k in names}
 
     # print(f"Starting black-box optimisation.")
     # bb = optimizer.black_box_optimize_prior_box_global(
@@ -141,6 +145,28 @@ def main(cfg: DictConfig) -> None:
     alpha_box_ranges = {"mu": (-2.0, 2.0), "sigma": (0.25, 1.0)}
     betas_box_ranges = {f"beta{k+1}": {"mu": (-2.0, 2.0), "sigma": (0.25, 1.0)} for k in range(5)}
     sigma_box_ranges = {"alpha": (2.5, 7.0), "beta": (0.1667, 2.0)}
+
+    latex_names = {
+        "alpha":  r"$\alpha$",
+        "beta1":  r"$\beta_1$",
+        "beta2":  r"$\beta_2$",
+        "beta3":  r"$\beta_3$",
+        "beta4":  r"$\beta_4$",
+        "beta5":  r"$\beta_5$",
+        "sigma":  r"$\sigma$",
+    }
+    percentages = {'alpha': 11.1, 'beta1': 21.9, 'beta2': 18.1, 'beta3': 15.6, 'beta4': 14.1, 'beta5': 13.8, 'sigma': 5.4}
+    plot_component_sensitivity_bar(
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        names=names,
+        contributions=percentages,
+        display_names=latex_names,
+        order=names,
+        group_tail_betas=False,
+        tail_beta_keys=["beta3", "beta4", "beta5"],
+        filename=f"{prefix}_component_sensitivity.pdf",
+    )
 
     plot_three_panel_priors_all_betas_one_plot_explicit(
         alpha_ref=alpha_ref,
@@ -260,6 +286,19 @@ def _ar_posterior_predictive(
 
 def _summarise_bands(y_rep: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return np.mean(y_rep, axis=0), np.quantile(y_rep, 0.025, axis=0), np.quantile(y_rep, 0.975, axis=0)
+
+
+def _acf_1d(y: np.ndarray, max_lag: int) -> np.ndarray:
+    y = y - np.mean(y)
+    denom = np.dot(y, y)
+    if denom == 0:
+        return np.zeros(max_lag + 1)
+    n = len(y)
+    return np.array([1.0] + [np.dot(y[:n - k], y[k:]) / denom for k in range(1, max_lag + 1)])
+
+
+def _mean_acf(y_rep: np.ndarray, max_lag: int) -> np.ndarray:
+    return np.mean([_acf_1d(y_rep[i], max_lag) for i in range(y_rep.shape[0])], axis=0)
 
 
 def _summarise_samples(samples, K, name):
@@ -387,49 +426,65 @@ def plot_posterior_predictive(cfg: DictConfig) -> None:
     )
     global_ylim = (min(all_values), max(all_values))
 
-    plot_posterior_predictive_with_data(
+    # plot_posterior_predictive_with_data(
+    #     plot_cfg=plot_cfg,
+    #     output_dir=output_dir,
+    #     x_years=x_years,
+    #     y_uncentered=y,
+    #     x_pred_years=x_pred_years,
+    #     pred_mean=ref_mean + y_mean_offset,
+    #     pred_lo=ref_lo + y_mean_offset,
+    #     pred_hi=ref_hi + y_mean_offset,
+    #     pred_label=r"$\tilde{x}_{\mathrm{ref}} \pm 95\%$ CI",
+    #     filename="kilpisjarvi-posterior-predictive-ref.pdf",
+    #     pred_color="#7c397d",
+    #     ylim=global_ylim,
+    # )
+    # plot_posterior_predictive_with_data(
+    #     plot_cfg=plot_cfg,
+    #     output_dir=output_dir,
+    #     x_years=x_years,
+    #     y_uncentered=y,
+    #     x_pred_years=x_pred_years,
+    #     pred_mean=corner_mean + y_mean_offset,
+    #     pred_lo=corner_lo + y_mean_offset,
+    #     pred_hi=corner_hi + y_mean_offset,
+    #     pred_label=r"$\tilde{x} \pm 95\%$ CI",
+    #     filename="kilpisjarvi-posterior-predictive-corner.pdf",
+    #     pred_color="#5b9bd5",
+    #     ylim=global_ylim,
+    #     show_ylabel=False,
+    # )
+    # animate_posterior_predictive_with_data(
+    #     plot_cfg=plot_cfg,
+    #     output_dir=output_dir,
+    #     x_years=x_years,
+    #     y_uncentered=y,
+    #     x_pred_years=x_pred_years,
+    #     pred_mean=corner_mean + y_mean_offset,
+    #     pred_lo=corner_lo + y_mean_offset,
+    #     pred_hi=corner_hi + y_mean_offset,
+    #     pred_label=r"$\tilde{x} \pm 95\%$ CI",
+    #     filename="kilpisjarvi-posterior-predictive-corner.mp4",
+    #     pred_color="#5b9bd5",
+    #     ylim=global_ylim,
+    #     show_ylabel=False,
+    # )
+
+    max_lag = 5
+    acf_ref = _mean_acf(y_rep_ref, max_lag)
+    acf_corner = _mean_acf(y_rep_corner, max_lag)
+
+    plot_acf_comparison(
         plot_cfg=plot_cfg,
         output_dir=output_dir,
-        x_years=x_years,
-        y_uncentered=y,
-        x_pred_years=x_pred_years,
-        pred_mean=ref_mean + y_mean_offset,
-        pred_lo=ref_lo + y_mean_offset,
-        pred_hi=ref_hi + y_mean_offset,
-        pred_label=r"$\tilde{x}_{\mathrm{ref}} \pm 95\%$ CI",
-        filename="kilpisjarvi-posterior-predictive-ref.pdf",
-        pred_color="#7c397d",
-        ylim=global_ylim,
-    )
-    plot_posterior_predictive_with_data(
-        plot_cfg=plot_cfg,
-        output_dir=output_dir,
-        x_years=x_years,
-        y_uncentered=y,
-        x_pred_years=x_pred_years,
-        pred_mean=corner_mean + y_mean_offset,
-        pred_lo=corner_lo + y_mean_offset,
-        pred_hi=corner_hi + y_mean_offset,
-        pred_label=r"$\tilde{x} \pm 95\%$ CI",
-        filename="kilpisjarvi-posterior-predictive-corner.pdf",
-        pred_color="#5b9bd5",
-        ylim=global_ylim,
-        show_ylabel=False,
-    )
-    animate_posterior_predictive_with_data(
-        plot_cfg=plot_cfg,
-        output_dir=output_dir,
-        x_years=x_years,
-        y_uncentered=y,
-        x_pred_years=x_pred_years,
-        pred_mean=corner_mean + y_mean_offset,
-        pred_lo=corner_lo + y_mean_offset,
-        pred_hi=corner_hi + y_mean_offset,
-        pred_label=r"$\tilde{x} \pm 95\%$ CI",
-        filename="kilpisjarvi-posterior-predictive-corner.mp4",
-        pred_color="#5b9bd5",
-        ylim=global_ylim,
-        show_ylabel=False,
+        acf_ref=acf_ref,
+        acf_corner=acf_corner,
+        ref_color="#7c397d",
+        corner_color="#5b9bd5",
+        ref_label=r"$\tilde{x}_{\mathrm{ref}}$",
+        corner_label=r"$\tilde{x}$",
+        filename="kilpisjarvi-acf-comparison.pdf",
     )
 
 

@@ -2970,6 +2970,9 @@ def plot_gaussian_copula_grid_pair(
     label_1: str = r"$(T, \nu)$",
     mark_max_point: bool = True,
     mark_corner_point: bool = False,
+    mark_x_values: list | None = None,
+    mark_x_red_idx: int | None = None,
+    show_grid_0: bool = True,
     logy: bool = False,
     ylim=None,
     show_ylabel: bool = True,
@@ -2994,10 +2997,13 @@ def plot_gaussian_copula_grid_pair(
 
     fig, ax = _make_figure(plot_cfg)
 
-    for grid, label, line_color, point_color in (
+    for i, (grid, label, line_color, point_color) in enumerate((
         (copula_grid_0, label_0, colors[0], colors[0]),
         (copula_grid_1, label_1, colors[1], colors[1]),
-    ):
+    )):
+        if i == 0 and not show_grid_0:
+            continue
+
         lambdas = np.asarray([x[0] for x in grid], dtype=float)
         values = np.asarray([x[1] for x in grid], dtype=float)
         order = np.argsort(lambdas)
@@ -3016,12 +3022,21 @@ def plot_gaussian_copula_grid_pair(
         if idx_star is not None:
             ax.scatter(
                 [lambdas[idx_star]], [values[idx_star]],
-                s=27, color="red", zorder=3, marker="*",
+                s=30, color="red", zorder=5, marker="*", clip_on=False,
             )
             ax.axvline(
                 lambdas[idx_star],
                 linestyle=":", linewidth=1.0, color=point_color, alpha=0.8, zorder=1,
             )
+
+        if mark_x_values is not None:
+            x_vals_for_grid = mark_x_values[i] if isinstance(mark_x_values[0], (list, tuple)) else mark_x_values
+            for j, x_val in enumerate(x_vals_for_grid):
+                idx_x = int(np.argmin(np.abs(lambdas - x_val)))
+                if j == mark_x_red_idx:
+                    ax.scatter([lambdas[idx_x]], [values[idx_x]], s=30, color="red", zorder=4, marker="*", clip_on=False)
+                else:
+                    ax.scatter([lambdas[idx_x]], [values[idx_x]], s=30, color="black", zorder=4, marker="x", clip_on=False)
 
     ax.set_xlabel(xlabel)
     if show_ylabel:

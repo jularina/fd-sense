@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 from typing import Dict, Tuple, List
 from scipy.special import logsumexp
 
@@ -436,6 +437,7 @@ def plot_lr_vs_method_multi(
     logy: bool = False,
     loss: str = "",
     ylim=None,
+    lr_bars=None,
 ):
     _apply_plot_rc(plot_cfg)
 
@@ -447,16 +449,16 @@ def plot_lr_vs_method_multi(
     y_refs = []
 
     for i, (grid, method_name, beta_ref) in enumerate(zip(lr_grids, methods, beta_refs)):
-        # if loss == "ksd" and method_name == "Lyddon et.al.":
-        #     continue
+        if loss == "ksd" and method_name == "Lyddon et.al.":
+            continue
         xs = np.array(grid[:, 0], dtype=float)
         ys = np.array(grid[:, 1], dtype=float)
 
         idx = np.argsort(xs)
         xs, ys = xs[idx], ys[idx]
 
-        left = max(beta_ref - 0.3, 0.01)
-        right = beta_ref + 0.3
+        left = max(beta_ref - 0.05, 0.01)
+        right = beta_ref + 0.05
 
         mask = (xs >= left) & (xs <= right)
         xs_plot = xs[mask]
@@ -476,14 +478,6 @@ def plot_lr_vs_method_multi(
         y_refs.append(y_ref)
 
         ax.plot(
-            xs_plot[max_idx],
-            ys_plot[max_idx],
-            marker="*",
-            color="red",
-            markersize=6,
-            zorder=5,
-        )
-        ax.plot(
             beta_ref,
             y_ref,
             marker="x",
@@ -491,6 +485,11 @@ def plot_lr_vs_method_multi(
             markersize=6,
             zorder=5,
         )
+
+    if loss == "ksd" and lr_bars is not None:
+        ax.axvline(x=lr_bars[0], color="red", linewidth=1.0, linestyle="--")
+        ax.axvline(x=lr_bars[1], color="red", linewidth=1.0, linestyle="--")
+        ax.axvspan(lr_bars[0], lr_bars[1], color="grey", alpha=0.08)
 
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -502,10 +501,12 @@ def plot_lr_vs_method_multi(
     if ylim is not None:
         ax.set_ylim(ylim)
 
-    if loss == "ksd":
-        ax.set_xlim(0.0, 1.0)
-    else:
-        ax.set_xlim(0.0, 1.0)
+    # if loss == "ksd":
+    #     ax.set_xlim(0.0, 1.0)
+    # else:
+    #     ax.set_xlim(0.0, 1.0)
+
+    ax.xaxis.set_major_locator(MultipleLocator(0.1))
 
     ax.set_ylabel(plot_cfg.plot.param_latex_names[ylbl])
 

@@ -579,9 +579,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     # ===================== ALPHA =====================
     famA_ref, refA_params = alpha_ref["family"], alpha_ref["params"]
     famA_ms, msA_params = alpha_ms["family"], alpha_ms["params"]
-
-    xA_rng = _auto_x_range_from_prior(famA_ref, refA_params) if x_alpha is None else x_alpha
-    xA_rng = (-11, 11)
+    xA_rng = (-7, 7)
     xA = _linspace_pad(*xA_rng)
     pdf_ref_a = make_pdf(famA_ref, refA_params)
     pdf_ms_a = make_pdf(famA_ms, msA_params)
@@ -602,7 +600,6 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
     beta_group_styles = ["-", ":", "--", "-."]
 
     famB_ref, refB_params = betas_ref["family"], betas_ref["params"]
-    xB_rng = _auto_x_range_from_prior(famB_ref, refB_params) if x_beta is None else x_beta
     xB = _linspace_pad(*xA_rng)
     # pdf_ref_b = make_pdf(famB_ref, refB_params)
     # ax_betas.plot(xB, pdf_ref_b(xB), linestyle="--", color=col_ref, linewidth=1.2)
@@ -639,7 +636,7 @@ def plot_three_panel_priors_all_betas_one_plot_explicit(
         if sigma_inf is not None:
             lo3, hi3 = _auto_x_range_from_prior(sigma_inf["family"], sigma_inf["params"])
             lo, hi = min(lo, lo3), max(hi, hi3)
-        xS_rng = (0.0, 1.1)
+        xS_rng = (0.0, 0.8)
     else:
         xS_rng = (0.0, 40.0)
 
@@ -851,8 +848,8 @@ def plot_complexity_bar(
         filename = f"{prefix}_complexity_bar.pdf"
 
     labels = [
-        r"CO + $\Gamma_\text{box}$",
-        r"CO + $\prod_{j=1}^{d_\Theta}\Gamma_{\text{box}_j}$",
+        r"$\Gamma_\text{box}$",
+        r"$\prod_{j=1}^{d_\Theta}\Gamma_{\text{box}_j}$",
         "BBO",
     ]
 
@@ -885,6 +882,8 @@ def plot_complexity_bar(
     if use_log10:
         ax.set_yscale("log")
 
+    print(f"Our approach avg. time={np.mean(data[0])}, bbox={np.min(data[2])}")
+
     for i, (d, color) in enumerate(zip(data, palette)):
         ax.boxplot(
             d,
@@ -900,7 +899,15 @@ def plot_complexity_bar(
 
     ax.set_xticks(np.arange(1, len(labels) + 1))
     ax.set_xticklabels(labels, fontsize="small")
-    ax.tick_params(axis="x", pad=25)
+    ax.tick_params(axis="x", length=0, labelcolor="none")
+
+    for i, (d, label) in enumerate(zip(data, labels)):
+        if i < 2:
+            ax.annotate(label, xy=(i + 1, np.max(d)), xytext=(0, 10),
+                        textcoords="offset points", ha="center", va="bottom", fontsize="small")
+        else:
+            ax.annotate(label, xy=(i + 1, np.min(d)), xytext=(0, -10),
+                        textcoords="offset points", ha="center", va="top", fontsize="small")
 
     ax.set_ylabel(ylab)
 
@@ -916,6 +923,144 @@ def plot_complexity_bar(
     except Exception:
         path = os.path.join(output_dir, filename)
         fig.savefig(path, bbox_inches="tight")
+
+
+def plot_component_sensitivity_bar(
+    plot_cfg,
+    output_dir: str,
+    names: list,
+    contributions: dict,
+    display_names: dict | None = None,
+    order: list | None = None,
+    group_tail_betas: bool = False,
+    tail_beta_keys: list | None = None,
+    filename: str | None = None,
+    prefix: str = "kilpisjarvi",
+):
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    if filename is None:
+        filename = f"{prefix}_component_sensitivity.pdf"
+
+    import matplotlib.colors as mcolors
+
+    _display = display_names or {}
+
+    # optionally collapse tail betas into one block
+    if group_tail_betas:
+        group_keys = tail_beta_keys or ["beta3", "beta4", "beta5"]
+        group_val = sum(contributions.get(k, 0.0) for k in group_keys)
+        group_label = ", ".join(_display.get(k, k) for k in group_keys)
+        _group_key = "__grouped_betas__"
+        contributions = {k: v for k, v in contributions.items() if k not in group_keys}
+        contributions[_group_key] = group_val
+        names = [k for k in names if k not in group_keys] + [_group_key]
+        _display = dict(_display)
+        _display[_group_key] = group_label
+
+    percentages = contributions
+
+    # display order: low to high from bottom to top; default to names order
+    display_order = order if order is not None else list(names)
+
+    # color per component based on contribution rank (highest → #450314, lowest → #5b9bd5)
+    c_high = np.array(mcolors.to_rgb("#450314"))
+    c_low = np.array(mcolors.to_rgb("#5b9bd5"))
+    ranked = sorted(names, key=lambda k: contributions[k])
+    n = len(ranked)
+    color_map = {
+        k: mcolors.to_hex(c_low + t * (c_high - c_low))
+        for k, t in zip(ranked, np.linspace(0, 1, n))
+    }
+
+    fig = plt.figure(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
+        if hasattr(plot_cfg, "plot") else (3, 6),
+        dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
+    )
+    ax = fig.add_subplot(1, 1, 1)
+
+    bottom = 0.0
+    min_label_pct = 4.0
+    for k in display_order:
+        color = color_map[k]
+        pct = percentages[k]
+        ax.bar(0, pct, bottom=bottom, color=color, alpha=0.5, edgecolor="white", linewidth=0.5, width=0.6)
+        if pct >= min_label_pct:
+            label = _display.get(k, k)
+            ax.text(
+                0, bottom + pct / 2,
+                f"{label} {pct:.1f}%",
+                ha="center", va="center",
+                fontsize="x-small", color="black",
+                usetex=False,
+            )
+        bottom += pct
+
+    ax.set_xlim(-0.5, 0.5)
+    ax.set_ylim(0, 100)
+    ax.set_yticks([0, 50, 100])
+    ax.set_yticklabels(["0%", "50%", "100%"], usetex=False)
+    ax.set_ylabel(r"$\widehat{S}_m^{\mathrm{FD}}(\Gamma_j)$ \%")
+
+    ax.tick_params(axis="x", length=0, labelcolor="none")
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+
+    fig.tight_layout()
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, bbox_inches="tight")
+
+
+def plot_acf_comparison(
+    plot_cfg,
+    output_dir: str,
+    acf_ref: np.ndarray,
+    acf_corner: np.ndarray,
+    ref_color: str = "#7c397d",
+    corner_color: str = "#5b9bd5",
+    ref_label: str = "Reference",
+    corner_label: str = "Corner",
+    filename: str = "kilpisjarvi_acf_comparison.pdf",
+):
+    try:
+        _apply_plot_rc(plot_cfg)
+    except Exception:
+        pass
+
+    fig, ax = plt.subplots(
+        figsize=(plot_cfg.plot.figure.size.width, plot_cfg.plot.figure.size.height)
+        if hasattr(plot_cfg, "plot") else (6, 4),
+        dpi=plot_cfg.plot.figure.dpi if hasattr(plot_cfg, "plot") else 120,
+    )
+
+    lags = np.arange(len(acf_ref))
+    ax.plot(lags, acf_ref, color=ref_color, linewidth=1.5, label=ref_label)
+    ax.plot(lags, acf_corner, color=corner_color, linewidth=1.5, label=corner_label)
+    ax.axhline(0.0, color="black", linewidth=0.6, linestyle=":")
+
+    ax.set_xlabel("Lag")
+    ax.set_ylabel("ACF")
+    ax.legend(frameon=False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    try:
+        _save_fig(fig, output_dir, filename, plot_cfg)
+    except Exception:
+        os.makedirs(output_dir, exist_ok=True)
+        fig.savefig(os.path.join(output_dir, filename), bbox_inches="tight")
 
 
 def plot_posterior_predictive_bands(

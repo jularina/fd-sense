@@ -28,8 +28,8 @@ def main(cfg: DictConfig) -> None:
     print(f"Initial Fisher: {fisher_estimator.estimate_fisher_lr_only():.4f}")
 
     results = {}
-    left = beta_refs["matsubara"]-0.3 if beta_refs["matsubara"]-0.3 > 0 else 0.01
-    right = beta_refs["matsubara"] + 0.3
+    left = beta_refs["matsubara"]-0.05 if beta_refs["matsubara"]-0.05 > 0 else 0.01
+    right = beta_refs["matsubara"] + 0.05
     for lr in np.linspace(left, right, 1000):
         model.set_lr_parameter(lr)
         fisher_estimator = PosteriorFDBase(model=model)
@@ -37,10 +37,6 @@ def main(cfg: DictConfig) -> None:
         results[lr] = fisher
         print(f"Lr: {lr}, FD: {fisher:.4f}")
 
-    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
-    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
-    plot_cfg = load_plot_config(plot_config_path)
-    plot_single_param(results, "lr", plot_cfg, output_dir)
     data_path = os.path.join(get_original_cwd(), "data/ising_model/fisher/")
     arr = np.array(list(results.items()))
     np.save(
@@ -55,8 +51,8 @@ def main(cfg: DictConfig) -> None:
     print(f"Initial Fisher: {fisher_estimator.estimate_fisher_lr_only():.4f}")
 
     results = {}
-    left = beta_refs["syring"]-0.3 if beta_refs["syring"]-0.3 > 0 else 0.01
-    right = beta_refs["syring"] + 0.3
+    left = beta_refs["syring"]-0.05 if beta_refs["syring"]-0.05 > 0 else 0.01
+    right = beta_refs["syring"] + 0.05
     for lr in np.linspace(left, right, 1000):
         model.set_lr_parameter(lr)
         fisher_estimator = PosteriorFDBase(model=model)
@@ -64,10 +60,6 @@ def main(cfg: DictConfig) -> None:
         results[lr] = fisher
         print(f"Lr: {lr}, FD: {fisher:.4f}")
 
-    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
-    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
-    plot_cfg = load_plot_config(plot_config_path)
-    plot_single_param(results, "lr", plot_cfg, output_dir)
     data_path = os.path.join(get_original_cwd(), "data/ising_model/fisher/")
     arr = np.array(list(results.items()))
     np.save(
@@ -82,8 +74,8 @@ def main(cfg: DictConfig) -> None:
     print(f"Initial Fisher: {fisher_estimator.estimate_fisher_lr_only():.4f}")
 
     results = {}
-    left = beta_refs["lyddon"]-0.3 if beta_refs["lyddon"]-0.3 > 0 else 0.01
-    right = beta_refs["lyddon"] + 0.3
+    left = beta_refs["lyddon"]-0.05 if beta_refs["lyddon"]-0.05 > 0 else 0.01
+    right = beta_refs["lyddon"] + 0.05
     for lr in np.linspace(left, right, 1000):
         model.set_lr_parameter(lr)
         fisher_estimator = PosteriorFDBase(model=model)
@@ -91,10 +83,6 @@ def main(cfg: DictConfig) -> None:
         results[lr] = fisher
         print(f"Lr: {lr}, FD: {fisher:.4f}")
 
-    plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
-    output_dir = os.path.join(get_original_cwd(), cfg.flags.plots.output_dir)
-    plot_cfg = load_plot_config(plot_config_path)
-    plot_single_param(results, "lr", plot_cfg, output_dir)
     data_path = os.path.join(get_original_cwd(), "data/ising_model/fisher/")
     arr = np.array(list(results.items()))
     np.save(
@@ -188,8 +176,8 @@ def create_combined_plots(cfg: DictConfig):
             xs = np.array(arr[:, 0], dtype=float)
             ys = np.array(arr[:, 1], dtype=float)
             beta_ref = beta_refs_by_method[method][loss_idx]
-            left = max(beta_ref - 0.3, 0.01)
-            right = beta_ref + 0.3
+            left = max(beta_ref - 0.05, 0.01)
+            right = beta_ref + 0.05
             mask = (xs >= left) & (xs <= right)
             all_values.extend(ys[mask].tolist())
 
@@ -218,6 +206,7 @@ def create_combined_plots(cfg: DictConfig):
             logy=True,
             loss=loss,
             ylim=global_ylim,
+            lr_bars=[0.35, 0.38]
         )
 
 
