@@ -6,7 +6,6 @@ from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
 
 from src.utils.files_operations import load_plot_config
-from src.plots.paper.toy_paper_fisher_funcs import plot_single_param
 from src.plots.paper.ising_model_paper_funcs import *
 from src.discrepancies.posterior_fisher import PosteriorFDBase
 

@@ -3034,9 +3034,11 @@ def plot_gaussian_copula_grid_pair(
             for j, x_val in enumerate(x_vals_for_grid):
                 idx_x = int(np.argmin(np.abs(lambdas - x_val)))
                 if j == mark_x_red_idx:
-                    ax.scatter([lambdas[idx_x]], [values[idx_x]], s=30, color="red", zorder=4, marker="*", clip_on=False)
+                    ax.scatter([lambdas[idx_x]], [values[idx_x]], s=30,
+                               color="red", zorder=4, marker="*", clip_on=False)
                 else:
-                    ax.scatter([lambdas[idx_x]], [values[idx_x]], s=30, color="black", zorder=4, marker="x", clip_on=False)
+                    ax.scatter([lambdas[idx_x]], [values[idx_x]], s=30,
+                               color="black", zorder=4, marker="x", clip_on=False)
 
     ax.set_xlabel(xlabel)
     if show_ylabel:

@@ -155,7 +155,8 @@ def main(cfg: DictConfig) -> None:
         "beta5":  r"$\beta_5$",
         "sigma":  r"$\sigma$",
     }
-    percentages = {'alpha': 11.1, 'beta1': 21.9, 'beta2': 18.1, 'beta3': 15.6, 'beta4': 14.1, 'beta5': 13.8, 'sigma': 5.4}
+    percentages = {'alpha': 11.1, 'beta1': 21.9, 'beta2': 18.1,
+                   'beta3': 15.6, 'beta4': 14.1, 'beta5': 13.8, 'sigma': 5.4}
     plot_component_sensitivity_bar(
         plot_cfg=plot_cfg,
         output_dir=output_dir,
