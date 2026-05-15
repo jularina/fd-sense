@@ -158,7 +158,7 @@ def main(cfg: DictConfig) -> None:
         eta_inf, val_inf = optimizer.minimize_prior_full_qp()
         times_full[i] = time.perf_counter() - start
         print(f"  Run {i + 1}/{n_runs}: {times_full[i]:.3f} sec.")
-    np.savez(os.path.join(timing_output_dir, "timing_qf_full.npz"), times=times_full)
+    # np.savez(os.path.join(timing_output_dir, "timing_qf_full.npz"), times=times_full)
 
     print(f"Starting per component optimisation ({n_runs} runs).")
     times_decomp = np.empty(n_runs)
@@ -168,24 +168,24 @@ def main(cfg: DictConfig) -> None:
         eta_inf_blocks, values_inf = optimizer.minimize_prior_per_component_qp(names)
         times_decomp[i] = time.perf_counter() - start
         print(f"  Run {i + 1}/{n_runs}: {times_decomp[i]:.3f} sec.")
-    np.savez(os.path.join(timing_output_dir, "timing_qf_decomp.npz"), times=times_decomp)
-
-    print(f"Starting black-box optimisation ({n_runs_bb} runs).")
-    times_bb = np.empty(n_runs_bb)
-    for i in range(n_runs_bb):
-        start = time.perf_counter()
-        bb = optimizer.black_box_optimize_prior_box_global(
-            method="dual_annealing",
-            seed=i,
-            maxiter=150,
-            n_restarts=5,
-        )
-        times_bb[i] = time.perf_counter() - start
-        print(f"  Run {i + 1}/{n_runs_bb}: {times_bb[i]:.3f} sec.")
-
-    np.savez(os.path.join(timing_output_dir, "timing_bb.npz"), times=times_bb)
-    print(f"Saved timing results to {timing_output_dir}")
-
+    # np.savez(os.path.join(timing_output_dir, "timing_qf_decomp.npz"), times=times_decomp)
+    #
+    # print(f"Starting black-box optimisation ({n_runs_bb} runs).")
+    # times_bb = np.empty(n_runs_bb)
+    # for i in range(n_runs_bb):
+    #     start = time.perf_counter()
+    #     bb = optimizer.black_box_optimize_prior_box_global(
+    #         method="dual_annealing",
+    #         seed=i,
+    #         maxiter=150,
+    #         n_restarts=5,
+    #     )
+    #     times_bb[i] = time.perf_counter() - start
+    #     print(f"  Run {i + 1}/{n_runs_bb}: {times_bb[i]:.3f} sec.")
+    #
+    # np.savez(os.path.join(timing_output_dir, "timing_bb.npz"), times=times_bb)
+    # print(f"Saved timing results to {timing_output_dir}")
+    #
     # print("Per-component argmax corners:")
     # for k in names:
     #     print(k, eta_sup_blocks[k], sup_res[k][0][1])
@@ -195,90 +195,90 @@ def main(cfg: DictConfig) -> None:
     #     print(n, eta_inf_blocks[n], values_inf[n])
     # elapsed = time.perf_counter() - start
     # print(f"Time for per-component optimisation: {elapsed/len(names):.3f} sec.")
-    #
-    # # Interpretation
-    # A, b, c = fisher_estimator.compute_fisher_quadratic_form_prior_only()
-    # names = ["alpha", "beta1", "beta2", "beta3", "beta4", "beta5", "sigma"]
-    # per_block, totals = decompose_prior_qf_by_blocks(
-    #     eta=eta_star, A=A, b=b, c=c, names=names, block_size=2
-    # )
-    # print(totals)
-    # ranking = rank_blocks(per_block, key="total_with_half_interactions")
-    # print("Ranked (main + linear + 0.5*interactions):")
-    # for nm, val in ranking:
-    #     print(nm, val)
-    #
-    # eta_sigma_inf = eta_inf_blocks["sigma"]
-    # sigma_inf = {
-    #     "family": "Gamma",
-    #     "params": {
-    #         "alpha": float(eta_sigma_inf[0] + 1.0),
-    #         "theta": float(-1.0 / eta_sigma_inf[1]),
-    #     },
-    # }
-    #
-    # alpha_ref = {"family": "Gaussian", "params": {"mu": 0.0, "sigma": 10.0}}
-    # betas_ref = {"family": "Gaussian", "params": {"mu": 0.0, "sigma": 10.0}}
-    # sigma_ref = {"family": "HalfCauchy", "params": {"gamma": 2.5}}
-    #
-    # alpha_ms = {"family": "Gaussian", "params": {"mu": 3.0, "sigma": 0.4}}
-    # betas_ms = {
-    #     "beta1": {"family": "Gaussian", "params": {"mu": -3.0, "sigma": 0.4}},
-    #     "beta2": {"family": "Gaussian", "params": {"mu": -3.0, "sigma": 0.4}},
-    #     "beta3": {"family": "Gaussian", "params": {"mu": -3.0, "sigma": 0.4}},
-    #     "beta4": {"family": "Gaussian", "params": {"mu": 3.0, "sigma": 0.4}},
-    #     "beta5": {"family": "Gaussian", "params": {"mu": 3.0, "sigma": 0.4}},
-    # }
-    # sigma_ms = {
-    #     "family": "Gamma",
-    #     "params": {"alpha": 11.11, "theta": 1.0 / 22.22},
-    # }
-    # alpha_box_ranges = {
-    #     "mu": (-3.0, 3.0),
-    #     "sigma": (0.4, 1.0),
-    # }
-    #
-    # beta_box_ranges_neg = {
-    #     "mu": (-3.0, 0.0),
-    #     "sigma": (0.4, 1.0),
-    # }
-    #
-    # beta_box_ranges_pos = {
-    #     "mu": (0.0, 3.0),
-    #     "sigma": (0.4, 1.0),
-    # }
-    # betas_box_ranges = {
-    #     "beta1": beta_box_ranges_neg,
-    #     "beta2": beta_box_ranges_neg,
-    #     "beta3": beta_box_ranges_neg,
-    #     "beta4": beta_box_ranges_pos,
-    #     "beta5": beta_box_ranges_pos,
-    # }
-    # sigma_box_ranges = {
-    #     "alpha": (4.0, 11.11),
-    #     "theta": (1.0 / 22.22, 0.5),
-    # }
-    #
-    # plot_three_panel_priors_all_betas_one_plot_explicit(
-    #     alpha_ref=alpha_ref,
-    #     betas_ref=betas_ref,
-    #     sigma_ref=sigma_ref,
-    #     alpha_ms=alpha_ms,
-    #     betas_ms=betas_ms,
-    #     sigma_ms=sigma_ms,
-    #     sigma_inf=sigma_inf,
-    #     alpha_box_ranges=alpha_box_ranges,
-    #     betas_box_ranges=betas_box_ranges,
-    #     sigma_box_ranges=sigma_box_ranges,
-    #     plot_cfg=plot_cfg,
-    #     output_dir=output_dir,
-    #     prefix=prefix,
-    #     sample_n_alpha=50,
-    #     sample_n_sigma=30,
-    #     sample_n_beta_total=150,
-    #     seed=27,
-    #     filename="ark_param_three_panel_priors.pdf",
-    # )
+
+    # Interpretation
+    A, b, c = fisher_estimator.compute_fisher_quadratic_form_prior_only()
+    names = ["alpha", "beta1", "beta2", "beta3", "beta4", "beta5", "sigma"]
+    per_block, totals = decompose_prior_qf_by_blocks(
+        eta=eta_star, A=A, b=b, c=c, names=names, block_size=2
+    )
+    print(totals)
+    ranking = rank_blocks(per_block, key="total_with_half_interactions")
+    print("Ranked (main + linear + 0.5*interactions):")
+    for nm, val in ranking:
+        print(nm, val)
+
+    eta_sigma_inf = eta_inf_blocks["sigma"]
+    sigma_inf = {
+        "family": "Gamma",
+        "params": {
+            "alpha": float(eta_sigma_inf[0] + 1.0),
+            "theta": float(-1.0 / eta_sigma_inf[1]),
+        },
+    }
+
+    alpha_ref = {"family": "Gaussian", "params": {"mu": 0.0, "sigma": 10.0}}
+    betas_ref = {"family": "Gaussian", "params": {"mu": 0.0, "sigma": 10.0}}
+    sigma_ref = {"family": "HalfCauchy", "params": {"gamma": 2.5}}
+
+    alpha_ms = {"family": "Gaussian", "params": {"mu": 3.0, "sigma": 0.4}}
+    betas_ms = {
+        "beta1": {"family": "Gaussian", "params": {"mu": -3.0, "sigma": 0.4}},
+        "beta2": {"family": "Gaussian", "params": {"mu": -3.0, "sigma": 0.4}},
+        "beta3": {"family": "Gaussian", "params": {"mu": -3.0, "sigma": 0.4}},
+        "beta4": {"family": "Gaussian", "params": {"mu": 3.0, "sigma": 0.4}},
+        "beta5": {"family": "Gaussian", "params": {"mu": 3.0, "sigma": 0.4}},
+    }
+    sigma_ms = {
+        "family": "Gamma",
+        "params": {"alpha": 11.11, "theta": 1.0 / 22.22},
+    }
+    alpha_box_ranges = {
+        "mu": (-3.0, 3.0),
+        "sigma": (0.4, 1.0),
+    }
+
+    beta_box_ranges_neg = {
+        "mu": (-3.0, 0.0),
+        "sigma": (0.4, 1.0),
+    }
+
+    beta_box_ranges_pos = {
+        "mu": (0.0, 3.0),
+        "sigma": (0.4, 1.0),
+    }
+    betas_box_ranges = {
+        "beta1": beta_box_ranges_neg,
+        "beta2": beta_box_ranges_neg,
+        "beta3": beta_box_ranges_neg,
+        "beta4": beta_box_ranges_pos,
+        "beta5": beta_box_ranges_pos,
+    }
+    sigma_box_ranges = {
+        "alpha": (4.0, 11.11),
+        "theta": (1.0 / 22.22, 0.5),
+    }
+
+    plot_three_panel_priors_all_betas_one_plot_explicit(
+        alpha_ref=alpha_ref,
+        betas_ref=betas_ref,
+        sigma_ref=sigma_ref,
+        alpha_ms=alpha_ms,
+        betas_ms=betas_ms,
+        sigma_ms=sigma_ms,
+        sigma_inf=sigma_inf,
+        alpha_box_ranges=alpha_box_ranges,
+        betas_box_ranges=betas_box_ranges,
+        sigma_box_ranges=sigma_box_ranges,
+        plot_cfg=plot_cfg,
+        output_dir=output_dir,
+        prefix=prefix,
+        sample_n_alpha=50,
+        sample_n_sigma=30,
+        sample_n_beta_total=150,
+        seed=27,
+        filename="ark_param_three_panel_priors.pdf",
+    )
 
 
 @hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_posteriordb")
@@ -559,6 +559,6 @@ def plot_posterior_predictive(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    main()
-    plot_posterior_predictive()
-    # compare_complexities()
+    # main()
+    # plot_posterior_predictive()
+    compare_complexities()

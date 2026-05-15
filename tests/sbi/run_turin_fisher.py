@@ -251,25 +251,40 @@ def main(cfg: DictConfig) -> None:
         logy=True,
         ylim=global_ylim,
     )
+    marked_x_values = [[], [-0.018, 0.06, 0.11, 0.12]]  # [values for g0, values for T]
     plot_gaussian_copula_grid_pair(
-        copula_grid_0=copula_grid_g0_narrow,
-        copula_grid_1=copula_grid_T_narrow,
+        copula_grid_0=copula_grid_g0,
+        copula_grid_1=copula_grid_T,
         plot_cfg=plot_cfg,
         output_dir=output_dir,
         prefix=prefix,
-        filename=f"{prefix}_gaussian_copula_fd_grid_narrow.pdf",
+        filename=f"{prefix}_gaussian_copula_fd_grid_marked.pdf",
         logy=True,
-        mark_max_point=False,
-        mark_corner_point=True,
         ylim=global_ylim,
-        show_ylabel=False,
+        mark_max_point=False,
+        show_grid_0=False,
+        mark_x_values=marked_x_values,
+        mark_x_red_idx=1,  # index in marked_x_values[1] that gets red star; others are black crosses
     )
-
-    for lam in [-0.25, -0.5, -0.75, -0.95]:
-        diag = fisher_estimator.diagnose_gaussian_copula_l2(lam, eps=0.0)
-        print(f"\nDiagnostics for lambda={lam}")
-        for k, v in diag.items():
-            print(f"{k}: {v}")
+    # plot_gaussian_copula_grid_pair(
+    #     copula_grid_0=copula_grid_g0_narrow,
+    #     copula_grid_1=copula_grid_T_narrow,
+    #     plot_cfg=plot_cfg,
+    #     output_dir=output_dir,
+    #     prefix=prefix,
+    #     filename=f"{prefix}_gaussian_copula_fd_grid_narrow.pdf",
+    #     logy=True,
+    #     mark_max_point=False,
+    #     mark_corner_point=True,
+    #     ylim=global_ylim,
+    #     show_ylabel=False,
+    # )
+    #
+    # for lam in [-0.25, -0.5, -0.75, -0.95]:
+    #     diag = fisher_estimator.diagnose_gaussian_copula_l2(lam, eps=0.0)
+    #     print(f"\nDiagnostics for lambda={lam}")
+    #     for k, v in diag.items():
+    #         print(f"{k}: {v}")
 
 
 if __name__ == "__main__":
