@@ -7,7 +7,7 @@ from omegaconf import DictConfig
 
 from src.utils.files_operations import load_plot_config
 from src.plots.paper.ising_model_paper_funcs import *
-from src.discrepancies.posterior_fisher import PosteriorFDBase
+from src.discrepancies.posterior_fisher import PosteriorFDParametric as PosteriorFDBase
 
 warnings.filterwarnings("ignore", category=UserWarning, module="hydra._internal.hydra")
 

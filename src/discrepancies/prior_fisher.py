@@ -8,21 +8,44 @@ import numpy as np
 class PriorFDBase:
     def __init__(self, model: "BayesianModel"):
         """
-        Computes Fisher components between *prior* samples (from the reference prior)
-        and a candidate prior distribution.
+        Base class for Fisher divergence between priors.
 
-        Key change vs the old version:
-        - Reference prior enters ONLY via its score evaluated at the samples:
-              score_prior_ref(θ_i) = ∇_θ log π_ref(θ_i)
-          so we do NOT require (grad_T_ref, grad_log_g_ref, eta_ref).
+        Holds prior samples and the reference prior score. Subclasses add
+        either a parametric candidate prior (PriorFDParametric) or a
+        nonparametric basis-function representation (PriorFDNonParametric).
         """
         self.model = model
         self.samples: np.ndarray = self.model.prior_samples_init
         self.m = int(self.samples.shape[0])
 
-        # Reference prior: only need its score at the samples
-        # Shape: (m, paramdim)
+        # Reference prior score at the samples — shape: (m, paramdim)
         self.score_prior_ref = self.model.prior_init.grad_log_pdf(self.samples)
+
+    # -------------------------
+    # Shared quadratic-form helpers (require self.grad_T and _v_prior_only)
+    # -------------------------
+
+    def _compute_A_prior_only(self) -> np.ndarray:
+        return np.einsum("idp,idq->pq", self.grad_T, self.grad_T) / self.m
+
+    def _compute_b_prior_only(self) -> np.ndarray:
+        v = self._v_prior_only()
+        term = np.einsum("idp,id->p", self.grad_T, v)
+        return (-2.0 / self.m) * term
+
+    def _compute_c_prior_only(self) -> float:
+        v = self._v_prior_only()
+        return float(np.sum(v * v) / self.m)
+
+
+class PriorFDParametric(PriorFDBase):
+    def __init__(self, model: "BayesianModel"):
+        """
+        Fisher divergence between priors in the parametric (exponential-family) representation.
+
+        Requires model.prior_candidate to be set.
+        """
+        super().__init__(model=model)
 
         # Candidate prior (exp family decomposition), evaluated at the same samples
         # grad_T: (m, paramdim, natparamdim)
@@ -36,14 +59,9 @@ class PriorFDBase:
         self.grad_log_g = self.model.prior_candidate.grad_log_base_measure(self.samples)
         self.eta = self.model.prior_candidate.natural_parameters()
 
-    # -------------------------
-    # Prior-only regime
-    # -------------------------
-
     def _v_prior_only(self) -> np.ndarray:
         """
         v_i = s_ref(θ_i) - grad_log_g(θ_i)
-        where s_ref(θ) = ∇ log π_ref(θ).
 
         Shape: (m, paramdim)
         """
@@ -52,7 +70,6 @@ class PriorFDBase:
     def _delta_score_prior_only(self, eta: np.ndarray) -> np.ndarray:
         """
         delta_i = s_ref(θ_i) - s_candidate(θ_i)
-               = (s_ref(θ_i) - grad_log_g(θ_i)) - grad_T(θ_i) @ eta
                = v_i - grad_T(θ_i) @ eta
 
         Shape: (m, paramdim)
@@ -83,52 +100,27 @@ class PriorFDBase:
         c = self._compute_c_prior_only()
         return A, b, c
 
-    def _compute_A_prior_only(self) -> np.ndarray:
-        return np.einsum("idp,idq->pq", self.grad_T, self.grad_T) / self.m
-
-    def _compute_b_prior_only(self) -> np.ndarray:
-        v = self._v_prior_only()
-        term = np.einsum("idp,id->p", self.grad_T, v)
-        return (-2.0 / self.m) * term
-
-    def _compute_c_prior_only(self) -> float:
-        v = self._v_prior_only()
-        return float(np.sum(v * v) / self.m)
-
 
 class PriorFDNonParametric(PriorFDBase):
     def __init__(self, model: "BayesianModel"):
         """
-        Fisher divergence between priors in the nonparametric representation:
-            (1/l) sum_i || s_{pi_ref}(theta_i) - gradT(theta_i) @ eta ||^2
-
-        Reference enters ONLY via self.score_prior_ref.
+        Fisher divergence between priors in the nonparametric representation.
+        No candidate prior required. The base measure g is the reference prior.
         """
         super().__init__(model=model)
+        # ∇_θ log g(θ_i) where g = prior_init is the base measure in the nonparametric family
+        self.grad_log_g = self.model.prior_init.grad_log_pdf(self.samples)
 
     def _v_prior_only(self) -> np.ndarray:
-        """
-        Nonparametric prior-only case (Appendix):
-            v_i = s_{pi_ref}(theta_i)
-
-        Shape: (m, paramdim)  [here m corresponds to l in the write-up]
-        """
-        return self.score_prior_ref
+        return self.score_prior_ref - self.grad_log_g
 
     def compute_non_parametric_fisher_quadratic_form_prior_only(
         self,
         basis_func: "BaseBasisFunction",
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         """
-        Quadratic form for:
-            (1/l) sum_i || s_{pi_ref}(theta_i) - gradT(theta_i) @ eta ||^2
-
-        Returns:
-            A_c: (K, K)
-            b_c: (K,)
-            c_c: float
+        Quadratic form using nonparametric basis functions.
         """
-        # For the nonparametric form, grad_T comes from the basis (not prior_candidate).
         self.grad_T = self._compute_grad_basis_function_for_prior(basis_func)
 
         A = self._compute_A_prior_only()
@@ -146,4 +138,3 @@ class PriorFDNonParametric(PriorFDBase):
         Expected shape: (m, paramdim, K)
         """
         return basis_func.gradient(self.samples)
-

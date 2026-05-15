@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 import time
 import json
 
-from src.discrepancies.posterior_fisher import PosteriorFDBase
+from src.discrepancies.posterior_fisher import PosteriorFDParametric as PosteriorFDBase
 from src.utils.files_operations import load_plot_config
 from src.plots.paper.posterior_db_paper_funcs import *
 from src.optimization.corner_points_fisher import (

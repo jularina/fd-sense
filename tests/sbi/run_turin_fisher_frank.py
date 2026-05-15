@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 import time
 
 from src.utils.files_operations import load_plot_config
-from src.discrepancies.posterior_fisher import PosteriorFDBase
+from src.discrepancies.posterior_fisher import PosteriorFDParametric as PosteriorFDBase
 from src.plots.paper.toy_paper_fisher_funcs import plot_gaussian_copula_grid_pair
 from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior

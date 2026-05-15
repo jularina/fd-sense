@@ -10,7 +10,7 @@ import json
 from src.utils.files_operations import load_plot_config
 from src.utils.files_operations import deepcopy_cfg
 from src.utils.choosers import pick_optimizer
-from src.discrepancies.posterior_fisher import PosteriorFDBase
+from src.discrepancies.posterior_fisher import PosteriorFDParametric as PosteriorFDBase
 from src.plots.paper.sbi_paper_funcs import *
 from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior

@@ -15,7 +15,7 @@ plot:
     colors:
 #      - "#450314" # dark cherry
 #      - "#5A051A"  # cherry
-      - "#7c397d" # purple
+#      - "#7c397d" # purple
 #      - "#D20A2E"  # red
 #      - "#EE1E52"  # pink
 #      - "#6E3D6F" # darker purple
@@ -26,12 +26,25 @@ plot:
 #      - "#EE1E52"  # pink
 #      - "#F2BDCD"  # light-light-pink
 #      - "#00BFC4"   # blue-green
-      - "#5b9bd5"  # lighter blue
+#      - "#5b9bd5"  # lighter blue
 #      - "#5A051A"  # cherry
 #      - "#009E73"   # forest green
 #      - "#E69F00"   # orange
 #      - "#F0E442"   # golden yellow
 #      - "#3F3FFF"   # indigo
+  # Green
+     - "#005500"
+     - "#007200"
+#     - "#008000"
+#     - "#00A800"
+#     - "#48BF40"
+#     - "#58AF50"
+#     - "#6C936C"
+     - "#9EB8A0"
+#     - "#849E00"
+#     - "#CCFFCC"
+     - "#ADEBC8"
+#     - "#ADEBDC"
 
   seaborn:
     style: "whitegrid"
@@ -84,7 +97,7 @@ plot:
     estimatedFDposteriorsQuadraticForm: "$\\hat{\\rho}_m^{FD}(\\tilde{\\Pi}^{\\lambda_L})$"
     fDposteriorsQuadraticForm: "$\\rho^{FD}(\\tilde{\\Pi})$"
     estimatedFDposteriorsQuadraticFormWithK: "$\\hat{\\rho}_m^{FD}(\\tilde{\\Pi}_K)$"
-    estimatedSensitivityMeasureWithK: "$\\widehat{S}_{\\mathrm{FD}}(\\tilde{\\Gamma}_{K,l})$"
+    estimatedSensitivityMeasure: "$\\widehat{S}_m^{\\mathrm{FD}}(\\widehat{\\mathcal{Q}}_{r,K,l})$"
 
   y_axis:
     log_scale: false

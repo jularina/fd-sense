@@ -9,7 +9,7 @@ from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
 import json
 
-from src.discrepancies.posterior_fisher import PosteriorFDBase
+from src.discrepancies.posterior_fisher import PosteriorFDParametric as PosteriorFDBase
 from src.plots.paper.posterior_db_paper_funcs import *
 from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior
