@@ -112,11 +112,11 @@ class OptimisationNonparametricBase:
         w_inv[mask] = 1.0 / w[mask]
         return (V * w_inv) @ V.T
 
-    def _evaluate_qf(self, eta_tilde: np.ndarray) -> float:
-        return eta_tilde @ self.A @ eta_tilde + self.b @ eta_tilde + self.c
+    def _evaluate_qf(self, lam: np.ndarray) -> float:
+        return lam @ self.A @ lam + self.b @ lam + self.c
 
-    def _evaluate_constraint_qf(self, eta_tilde: np.ndarray) -> float:
-        return eta_tilde @ self.A_c @ eta_tilde + self.b_c @ eta_tilde + self.c_c
+    def _evaluate_constraint_qf(self, lam: np.ndarray) -> float:
+        return lam @ self.A_c @ lam + self.b_c @ lam + self.c_c
 
     def _compute_min_radius(self) -> float:
         quad_term = -0.25 * float(self.b_c.T @ self._pinv_psd(self.A_c) @ self.b_c)
@@ -124,61 +124,25 @@ class OptimisationNonparametricBase:
         print(f"Computed min radius threshold: {min_val}.")
         return max(0.0, min_val)
 
-    def optimize_through_sdp_relaxation(self):
-        psi = cp.Variable(self.d)
-        Psi = cp.Variable((self.d, self.d), symmetric=True)
+    # -------------------------
+    # Helpers for dual methods
+    # -------------------------
 
-        objective = cp.Maximize(cp.trace(self.A @ Psi) + self.b @ psi + self.c)
-        constraint1 = (
-            cp.trace(self.A_c @ Psi) + self.b_c @ psi + self.c_c <= self.r
-        )
-        schur_matrix = cp.bmat([
-            [Psi, cp.reshape(psi, (self.d, 1), order='C')],
-            [cp.reshape(psi, (1, self.d), order='C'), cp.Constant([[1]])]
-        ])
-        constraint2 = schur_matrix >> 0
-
-        # Diagnostics
-        print("cond(A):", np.linalg.cond(self.A))
-        print("cond(A_c):", np.linalg.cond(self.A_c))
-        print("r:", self.r)
-
-        problem = cp.Problem(objective, [constraint1, constraint2])
-        problem.solve(solver=cp.MOSEK)
-
-        if problem.status not in ["optimal", "optimal_inaccurate"]:
-            raise ValueError(f"SDP optimization failed: {problem.status}")
-
-        primal_value = self._evaluate_qf(psi.value)
-        constraint_value = self._evaluate_constraint_qf(psi.value)
-
-        return {
-            "eta_star": psi.value,
-            "Psi_opt": Psi.value,
-            "primal_value": primal_value,
-            "constraint_value": constraint_value,
-            "dual_value": problem.value,
-        }
-
-    # ----------------------------
-    # Helpers for 1D dual in lambda
-    # ----------------------------
-
-    def _M_s(self, lam: float):
-        M = lam * self.A_c - self.A
-        s = lam * self.b_c - self.b
+    def _M_s(self, omega: float):
+        M = omega * self.A_c - self.A
+        s = omega * self.b_c - self.b
         return M, s
 
-    def _eta_from_lambda(self, lam: float, tol: float) -> np.ndarray:
-        M, s = self._M_s(lam)
+    def _lam_from_omega(self, omega: float, tol: float) -> np.ndarray:
+        M, s = self._M_s(omega)
         M_pinv = np.linalg.pinv(M, rcond=tol)
         return -0.5 * (M_pinv @ s)
 
-    def _constraint(self, eta: np.ndarray) -> float:
-        return float(eta.T @ self.A_c @ eta + self.b_c.T @ eta + self.c_c)
+    def _constraint(self, lam: np.ndarray) -> float:
+        return float(lam.T @ self.A_c @ lam + self.b_c.T @ lam + self.c_c)
 
-    def _objective(self, eta: np.ndarray) -> float:
-        return float(eta.T @ self.A @ eta + self.b.T @ eta + self.c)
+    def _objective(self, lam: np.ndarray) -> float:
+        return float(lam.T @ self.A @ lam + self.b.T @ lam + self.c)
 
     def _max_eig_sym(self, X: np.ndarray) -> float:
         Xs = 0.5 * (X + X.T)
@@ -189,43 +153,40 @@ class OptimisationNonparametricBase:
         resid = s - M @ (M_pinv @ s)
         return float(np.linalg.norm(resid)) <= 1e3 * tol * (1.0 + float(np.linalg.norm(s)))
 
-    def _dual_1d_value_strict(self, lam: float, radius: float, tol: float) -> float:
+    def _dual_1d_value_strict(self, omega: float, radius: float, tol: float) -> float:
         """
-        Dual objective:
-            d(lam) = c - lam(c_c - r) - 1/4 s^T M^† s
-        Strictly return +inf if domain conditions fail.
+        Dual objective d(omega) = c - omega*(c_c - r) - 1/4 s^T M^† s.
+        Returns +inf if domain conditions fail.
         """
-        if lam < 0:
+        if omega < 0:
             return float("inf")
 
         r = float(radius)
-        M, s = self._M_s(lam)
+        M, s = self._M_s(omega)
 
-        # domain: M(lam) ⪯ 0 and s in Range(M)
         if self._max_eig_sym(M) > 1e3 * tol:
             return float("inf")
         if not self._range_ok(M, s, tol):
             return float("inf")
 
         M_pinv = np.linalg.pinv(M, rcond=tol)
-        quad = float(s.T @ (M_pinv @ s))  # should be <= 0 if M ⪯ 0
-        return float(self.c - lam * (self.c_c - r) - 0.25 * quad)
+        quad = float(s.T @ (M_pinv @ s))
+        return float(self.c - omega * (self.c_c - r) - 0.25 * quad)
 
-    def _bracket_feasible_lambda(self, radius: float, tol: float, lam_max: float, grid: int):
+    def _bracket_feasible_omega(self, radius: float, tol: float, omega_max: float, grid: int):
         """
-        Find an interval [L,U] that contains feasible lambdas (domain ok).
+        Find an interval [L,U] that contains feasible values of the dual variable omega.
         """
-        xs = np.linspace(0.0, lam_max, grid)
+        xs = np.linspace(0.0, omega_max, grid)
         feas = []
-        for lam in xs:
-            val = self._dual_1d_value_strict(lam, radius, tol)
+        for omega in xs:
+            val = self._dual_1d_value_strict(omega, radius, tol)
             feas.append(np.isfinite(val))
         feas = np.array(feas, dtype=bool)
         if not feas.any():
             return None
 
         idx = np.where(feas)[0]
-        # take the first contiguous feasible run
         start = idx[0]
         end = start
         for j in idx[1:]:
@@ -236,7 +197,6 @@ class OptimisationNonparametricBase:
         L = float(xs[start])
         U = float(xs[end])
 
-        # widen a little if single point
         if start == end:
             if start > 0:
                 L = float(xs[start - 1])
@@ -244,35 +204,32 @@ class OptimisationNonparametricBase:
                 U = float(xs[start + 1])
         return (max(0.0, L), max(0.0, U))
 
-    def _refine_lambda_by_active_constraint(
+    def _refine_omega_by_active_constraint(
         self,
-        lam_init: float,
+        omega_init: float,
         radius: float,
         tol: float,
-        lam_lo: float,
-        lam_hi: float,
+        omega_lo: float,
+        omega_hi: float,
         max_iter: int = 80,
     ) -> float:
         """
-        If lambda>0, KKT suggests g(eta(lambda)) = r.
-        Enforce by bisection on phi(lam) = g(eta(lam)) - r over a feasible bracket.
-        Assumes phi is continuous on the feasible interval.
+        If omega>0, KKT suggests g(lambda(omega)) = r.
+        Enforce by bisection on phi(omega) = g(lambda(omega)) - r over a feasible bracket.
         """
         r = float(radius)
 
-        def phi(lam: float) -> float:
-            eta = self._eta_from_lambda(lam, tol)
-            return self._constraint(eta) - r
+        def phi(omega: float) -> float:
+            lam = self._lam_from_omega(omega, tol)
+            return self._constraint(lam) - r
 
-        # Ensure endpoints feasible for eta map (domain should already be ok via bracket)
-        plo = phi(lam_lo)
-        phi_ = phi(lam_hi)
+        plo = phi(omega_lo)
+        phi_ = phi(omega_hi)
 
-        # If no sign change, just return lam_init (cannot bisect safely).
         if not np.isfinite(plo) or not np.isfinite(phi_) or plo * phi_ > 0:
-            return float(lam_init)
+            return float(omega_init)
 
-        a, b = lam_lo, lam_hi
+        a, b = omega_lo, omega_hi
         fa, fb = plo, phi_
 
         for _ in range(max_iter):
@@ -282,7 +239,6 @@ class OptimisationNonparametricBase:
                 break
             if abs(fm) <= 1e2 * tol:
                 return float(m)
-            # bisection
             if fa * fm <= 0:
                 b, fb = m, fm
             else:
@@ -294,28 +250,122 @@ class OptimisationNonparametricBase:
         eigvals = np.linalg.eigvalsh(0.5 * (M + M.T))
         return np.min(np.abs(eigvals)) <= tol
 
-    # ---------- main method ----------
-    def _sym(self, A: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _sym(A: np.ndarray) -> np.ndarray:
         return 0.5 * (A + A.T)
+
+    @staticmethod
+    def _canonical_sign(lam: np.ndarray) -> np.ndarray:
+        """Make the largest-magnitude component positive to break sign ambiguity."""
+        return lam if lam[np.argmax(np.abs(lam))] >= 0 else -lam
+
+    def _complete_lambda_from_kernel(
+        self, lam_p: np.ndarray, M: np.ndarray, tol: float = 1e-8
+    ) -> np.ndarray:
+        """
+        When s(omega*) = 0, the KKT particular solution lam_p = 0.
+        The optimum lies in ker(M(omega*)): pick the null eigenvector that
+        maximises the objective and scale it to satisfy the active constraint
+        lambda^T A_c lambda = r.
+        """
+        M_sym = self._sym(M)
+        w, V = np.linalg.eigh(M_sym)
+        null_tol = tol * max(float(np.abs(w).max()), 1.0) * 1e3
+        null_mask = np.abs(w) <= null_tol
+        if not np.any(null_mask):
+            return lam_p
+
+        null_vecs = V[:, null_mask]
+        objectives = np.array([float(v @ self.A @ v) for v in null_vecs.T])
+        v = null_vecs[:, np.argmax(np.abs(objectives))]
+
+        v_Ac_v = float(v @ self.A_c @ v)
+        if v_Ac_v <= tol:
+            return lam_p
+
+        alpha = np.sqrt(max(self.r, 0.0) / v_Ac_v)
+        lam_pos = lam_p + alpha * v
+        lam_neg = lam_p - alpha * v
+        return lam_pos if self._evaluate_qf(lam_pos) >= self._evaluate_qf(lam_neg) else lam_neg
+
+    # -------------------------
+    # Optimisation methods
+    # -------------------------
+
+    def optimize_through_sdp_relaxation(self):
+        """
+        Primal SDP relaxation: lift lambda*lambda^T to H and relax H = lambda*lambda^T
+        to [[H, lambda], [lambda^T, 1]] >= 0 (Schur complement form).
+
+        When b = b_c = 0, lambda does not appear in the objective or constraint,
+        so the solver sets it to 0. In that case lambda is recovered from the
+        leading eigenvector of H (rank-1 extraction).
+        """
+        lam = cp.Variable(self.d)
+        H = cp.Variable((self.d, self.d), symmetric=True)
+
+        objective = cp.Maximize(cp.trace(self.A @ H) + self.b @ lam + self.c)
+        constraint1 = (
+            cp.trace(self.A_c @ H) + self.b_c @ lam + self.c_c <= self.r
+        )
+        schur_matrix = cp.bmat([
+            [H,  cp.reshape(lam, (self.d, 1), order='C')],
+            [cp.reshape(lam, (1, self.d), order='C'), cp.Constant([[1]])]
+        ])
+        constraint2 = schur_matrix >> 0
+
+        print("cond(A):", np.linalg.cond(self.A))
+        print("cond(A_c):", np.linalg.cond(self.A_c))
+        print("r:", self.r)
+
+        problem = cp.Problem(objective, [constraint1, constraint2])
+        problem.solve(solver=cp.MOSEK)
+
+        if problem.status not in ["optimal", "optimal_inaccurate"]:
+            raise ValueError(f"SDP optimization failed: {problem.status}")
+
+        lam_val = lam.value
+        H_val = H.value
+
+        H_rank, _ = self._check_pd_psd_and_rank(H_val)
+        H_numerical_rank = int(np.sum(np.linalg.eigvalsh(H_val) > 1e-6 * max(np.linalg.eigvalsh(H_val).max(), 1.0)))
+        print(f"H is rank-1: {H_numerical_rank == 1} (numerical rank: {H_numerical_rank}, status: {H_rank})")
+
+        # When b = b_c = 0, lambda does not appear in the objective or constraint
+        # so the solver leaves it at 0. Recover lambda from the leading eigenvector
+        # of H (rank-1 extraction: H = lambda*lambda^T at the optimum).
+        if np.linalg.norm(lam_val) < 1e-8 * max(np.linalg.norm(H_val), 1.0):
+            w, V = np.linalg.eigh(H_val)
+            lam_val = V[:, -1] * np.sqrt(max(w[-1], 0.0))
+        lam_val = self._canonical_sign(lam_val)
+
+        primal_value = self._evaluate_qf(lam_val)
+        constraint_value = self._evaluate_constraint_qf(lam_val)
+
+        return {
+            "lambda_star": lam_val,
+            "H_opt": H_val,
+            "primal_value": primal_value,
+            "constraint_value": constraint_value,
+            "dual_value": problem.value,
+        }
 
     def optimize_through_dual_1d_lambda(
             self,
             tol: float = 1e-10,
-            lam_init: float | None = None,
-            lam_cap: float = 1e12,
+            omega_init: float | None = None,
+            omega_cap: float = 1e12,
             max_expand: int = 80,
             max_iter: int = 200,
     ):
         """
-        Solve   inf_{λ>=0} d(λ)  with domain:
-          M(λ)=λ A_c - A ⪰ 0  and  s(λ)=λ b_c - b ∈ Range(M(λ)).
+        Solve   max_{lambda}  lambda^T A lambda + b^T lambda + c
+                s.t.  lambda^T A_c lambda + b_c^T lambda + c_c <= r
 
-        Uses:
-          - eigendecomp-based feasibility check + pseudoinverse
-          - bracketing by expansion to get a 3-point "bowl"
-          - golden-section search on the bracket (convex, 1D)
+        via the 1D dual in omega (the Lagrange multiplier):
+            inf_{omega >= 0}  d(omega) = c - omega*(c_c - r) + 1/4 s(omega)^T M(omega)^† s(omega)
+        where M(omega) = omega*A_c - A,  s(omega) = omega*b_c - b.
         """
-
         A = self._sym(self.A)
         Ac = self._sym(self.A_c)
         b = np.asarray(self.b).reshape(-1)
@@ -325,28 +375,23 @@ class OptimisationNonparametricBase:
         r = float(self.r)
         n = A.shape[0]
 
-        # ---------- helpers ----------
-        def eval_dual_and_eta(lam: float):
+        def eval_dual_and_lam(omega: float):
             """
-            Returns (feasible: bool, dval: float, eta: np.ndarray | None).
-            If infeasible -> (False, +inf, None).
+            Returns (feasible: bool, dval: float, lam: np.ndarray | None).
             """
-            if lam < 0.0:
+            if omega < 0.0:
                 return False, float("inf"), None
 
-            M = self._sym(lam * Ac - A)
-            s = lam * bc - b
+            M = self._sym(omega * Ac - A)
+            s = omega * bc - b
 
-            # Eigendecomp for symmetric M
             w, V = np.linalg.eigh(M)
             wmax = float(w.max()) if w.size else 0.0
 
-            # PSD test tolerance (scale-aware)
             eps = 1e3 * tol * max(1.0, abs(wmax))
             if float(w.min()) < -eps:
                 return False, float("inf"), None
 
-            # Range condition: s ⟂ Null(M)
             null_mask = w <= eps
             if np.any(null_mask):
                 U0 = V[:, null_mask]
@@ -354,134 +399,123 @@ class OptimisationNonparametricBase:
                 if float(np.linalg.norm(proj)) > 1e3 * tol * (1.0 + float(np.linalg.norm(s))):
                     return False, float("inf"), None
 
-            # pseudoinverse via eigvals
             w_inv = np.zeros_like(w)
             pos_mask = w > eps
             w_inv[pos_mask] = 1.0 / w[pos_mask]
             M_pinv = (V * w_inv) @ V.T
 
-            quad = float(s @ (M_pinv @ s))  # >= 0 if M ⪰ 0
-            dval = float(c0 - lam * (cc - r) + 0.25 * quad)
+            quad = float(s @ (M_pinv @ s))
+            dval = float(c0 - omega * (cc - r) + 0.25 * quad)
 
-            eta = -0.5 * (M_pinv @ s)
-            return True, dval, eta
+            lam_vec = -0.5 * (M_pinv @ s)
+            # When s = 0, lam_vec = 0; recover from ker(M) instead.
+            if np.linalg.norm(s) <= tol * max(float(np.linalg.norm(bc)), 1.0):
+                lam_vec = self._complete_lambda_from_kernel(lam_vec, M, tol)
+            lam_vec = self._canonical_sign(lam_vec)
+            return True, dval, lam_vec
 
-        def find_lambda_min_feasible():
+        def find_omega_min_feasible():
             """
-            Find the smallest feasible lambda by:
-              1) exponential search to find some feasible point
-              2) bisection back to the boundary
+            Find the smallest feasible omega by exponential search then bisection.
             """
-            if lam_init is None:
-                lam_hi = 1.0
+            if omega_init is None:
+                omega_hi = 1.0
             else:
-                lam_hi = max(0.0, float(lam_init))
+                omega_hi = max(0.0, float(omega_init))
 
-            feas, _, _ = eval_dual_and_eta(lam_hi)
+            feas, _, _ = eval_dual_and_lam(omega_hi)
             expand = 0
-            while not feas and lam_hi < lam_cap and expand < max_expand:
-                lam_hi = 2.0 * lam_hi if lam_hi > 0 else 1.0
-                feas, _, _ = eval_dual_and_eta(lam_hi)
+            while not feas and omega_hi < omega_cap and expand < max_expand:
+                omega_hi = 2.0 * omega_hi if omega_hi > 0 else 1.0
+                feas, _, _ = eval_dual_and_lam(omega_hi)
                 expand += 1
 
             if not feas:
-                return None  # no feasible point found
+                return None
 
-            lam_lo = 0.0
-            # bisection to boundary (lam_hi feasible, lam_lo may be infeasible)
+            omega_lo = 0.0
             for _ in range(max_iter):
-                mid = 0.5 * (lam_lo + lam_hi)
-                feas_mid, _, _ = eval_dual_and_eta(mid)
+                mid = 0.5 * (omega_lo + omega_hi)
+                feas_mid, _, _ = eval_dual_and_lam(mid)
                 if feas_mid:
-                    lam_hi = mid
+                    omega_hi = mid
                 else:
-                    lam_lo = mid
-                if abs(lam_hi - lam_lo) <= 1e-14 * (1.0 + abs(lam_hi) + abs(lam_lo)):
+                    omega_lo = mid
+                if abs(omega_hi - omega_lo) <= 1e-14 * (1.0 + abs(omega_hi) + abs(omega_lo)):
                     break
-            return float(lam_hi)
+            return float(omega_hi)
 
-        def bracket_minimizer(lam0: float):
+        def bracket_minimizer(omega0: float):
             """
-            Produce a bracket [a,b,c] with a < b < c and f(b) <= f(a), f(b) <= f(c).
-            Convex function => minimizer lies in [a,c].
+            Produce a bracket [pt_a, pt_b, pt_c] with pt_a < pt_b < pt_c
+            and f(pt_b) <= f(pt_a), f(pt_b) <= f(pt_c).
             """
-            # Start at feasible boundary
-            a = lam0
-            fa_ok, fa, _ = eval_dual_and_eta(a)
+            pt_a = omega0
+            fa_ok, fa, _ = eval_dual_and_lam(pt_a)
             if not fa_ok:
                 return None
 
-            # Step right
-            step = max(1e-6, 0.05 * (1.0 + a))
-            b = a + step
-            fb_ok, fb, _ = eval_dual_and_eta(b)
+            step = max(1e-6, 0.05 * (1.0 + pt_a))
+            pt_b = pt_a + step
+            fb_ok, fb, _ = eval_dual_and_lam(pt_b)
 
-            # Ensure b feasible; if not, push until feasible
             tries = 0
-            while (not fb_ok) and b < lam_cap and tries < max_expand:
+            while (not fb_ok) and pt_b < omega_cap and tries < max_expand:
                 step *= 2.0
-                b = a + step
-                fb_ok, fb, _ = eval_dual_and_eta(b)
+                pt_b = pt_a + step
+                fb_ok, fb, _ = eval_dual_and_lam(pt_b)
                 tries += 1
             if not fb_ok:
                 return None
 
-            # If already increasing right away, convex min is at boundary a
             if fb >= fa:
-                return (a, a, b, fa, fa, fb)  # degenerate bowl: min at a
+                return (pt_a, pt_a, pt_b, fa, fa, fb)
 
-            # Expand to the right until we see an upturn: f(c) >= f(b)
-            c = b + step
-            fc_ok, fc, _ = eval_dual_and_eta(c)
+            pt_c = pt_b + step
+            fc_ok, fc, _ = eval_dual_and_lam(pt_c)
             tries = 0
-            while (not fc_ok or fc < fb) and c < lam_cap and tries < max_expand:
-                # If infeasible, jump further right (domain typically becomes feasible for larger λ)
+            while (not fc_ok or fc < fb) and pt_c < omega_cap and tries < max_expand:
                 step *= 2.0
-                a, fa = b, fb
-                b, fb = c, fc if fc_ok else fb
-                c = b + step
-                fc_ok, fc, _ = eval_dual_and_eta(c)
+                pt_a, fa = pt_b, fb
+                pt_b, fb = pt_c, fc if fc_ok else fb
+                pt_c = pt_b + step
+                fc_ok, fc, _ = eval_dual_and_lam(pt_c)
                 tries += 1
 
             if not fc_ok:
-                # We couldn't find a right point feasible+upturn, but we may still proceed with what we have
-                # In practice, boundedness assumption should prevent this.
                 return None
 
-            return (a, b, c, fa, fb, fc)
+            return (pt_a, pt_b, pt_c, fa, fb, fc)
 
         def golden_section(a: float, b: float, c: float):
             """
-            Minimize on [a,c] assuming unimodal/convex.
-            If b==a, returns a.
+            Minimize on [a, c] assuming unimodal/convex in omega.
             """
             if b == a:
                 return a
 
             left, right = a, c
-            gr = 0.5 * (np.sqrt(5.0) - 1.0)  # golden ratio conjugate
+            gr = 0.5 * (np.sqrt(5.0) - 1.0)
 
             x1 = right - gr * (right - left)
             x2 = left + gr * (right - left)
 
-            f1_ok, f1, _ = eval_dual_and_eta(x1)
-            f2_ok, f2, _ = eval_dual_and_eta(x2)
+            f1_ok, f1, _ = eval_dual_and_lam(x1)
+            f2_ok, f2, _ = eval_dual_and_lam(x2)
 
-            # If feasibility fails inside, nudge inward; but with convex feasible set this should be rare
             for _ in range(max_iter):
                 if (right - left) <= 1e-12 * (1.0 + abs(left) + abs(right)):
                     break
 
-                # If either point infeasible, shrink interval toward feasible side
                 if not f1_ok:
                     left = x1
                     x1 = right - gr * (right - left)
-                    f1_ok, f1, _ = eval_dual_and_eta(x1)
+                    f1_ok, f1, _ = eval_dual_and_lam(x1)
                     continue
                 if not f2_ok:
                     right = x2
                     x2 = left + gr * (right - left)
-                    f2_ok, f2, _ = eval_dual_and_eta(x2)
+                    f2_ok, f2, _ = eval_dual_and_lam(x2)
                     continue
 
                 if f1 > f2:
@@ -489,62 +523,52 @@ class OptimisationNonparametricBase:
                     x1 = x2
                     f1 = f2
                     x2 = left + gr * (right - left)
-                    f2_ok, f2, _ = eval_dual_and_eta(x2)
+                    f2_ok, f2, _ = eval_dual_and_lam(x2)
                 else:
                     right = x2
                     x2 = x1
                     f2 = f1
                     x1 = right - gr * (right - left)
-                    f1_ok, f1, _ = eval_dual_and_eta(x1)
+                    f1_ok, f1, _ = eval_dual_and_lam(x1)
 
             return 0.5 * (left + right)
 
         # ---------- main ----------
-        lam0 = find_lambda_min_feasible()
-        if lam0 is None:
+        omega0 = find_omega_min_feasible()
+        if omega0 is None:
             return {
-                "lambda_star": np.nan,
+                "omega_star": np.nan,
                 "dual_value": np.nan,
-                "eta_star": np.full(n, np.nan),
-                "status": "no_feasible_lambda_found",
+                "lambda_star": np.full(n, np.nan),
+                "status": "no_feasible_omega_found",
             }
 
-        bowl = bracket_minimizer(lam0)
+        bowl = bracket_minimizer(omega0)
         if bowl is None:
-            feas0, d0, eta0 = eval_dual_and_eta(lam0)
+            feas0, d0, lam0_val = eval_dual_and_lam(omega0)
             return {
-                "lambda_star": float(lam0),
+                "omega_star": float(omega0),
                 "dual_value": float(d0),
-                "eta_star": np.asarray(eta0) if eta0 is not None else np.full(n, np.nan),
+                "lambda_star": np.asarray(lam0_val) if lam0_val is not None else np.full(n, np.nan),
                 "status": "failed_to_bracket_minimizer_return_boundary",
             }
 
-        a, b, c, fa, fb, fc = bowl
+        pt_a, pt_b, pt_c, fa, fb, fc = bowl
 
-        # If degenerate bowl indicates boundary minimum
-        if b == a:
-            lam_star = a
+        if pt_b == pt_a:
+            omega_star = pt_a
         else:
-            lam_star = golden_section(a, b, c)
+            omega_star = golden_section(pt_a, pt_b, pt_c)
 
-        feas, dstar, eta_star = eval_dual_and_eta(lam_star)
-
-        def dual_value(lam: float) -> float:
-            M = self._sym(lam * Ac - A)
-            s = lam * bc - b
-            M_pinv = np.linalg.pinv(M, rcond=tol)
-            quad = float(s @ (M_pinv @ s))
-            return float(c0 - lam * (cc - r) + 0.25 * quad)
-
-        dual_val = float(dual_value(lam_star))
+        feas, dstar, lam_star = eval_dual_and_lam(omega_star)
 
         return {
-            "lambda_star": float(lam_star),
+            "omega_star": float(omega_star),
             "dual_value": float(dstar),
-            "eta_star": np.asarray(eta_star) if eta_star is not None else np.full(n, np.nan),
+            "lambda_star": np.asarray(lam_star) if lam_star is not None else np.full(n, np.nan),
             "domain_feasible": bool(feas),
-            "lambda_min_feasible": float(lam0),
-            "bracket": (float(a), float(b), float(c)),
+            "omega_min_feasible": float(omega0),
+            "bracket": (float(pt_a), float(pt_b), float(pt_c)),
             "status": "optimal_dual_1d_golden",
         }
 
@@ -555,23 +579,21 @@ class OptimisationNonparametricBase:
         tol: float = 1e-8,
     ):
         """
-        Solve the single-constraint QCQP via the SDP dual in (lambda, t):
+        Solve the single-constraint QCQP via the SDP dual in (omega, d):
 
-            min_{lambda >= 0, t}  t + c - lambda (c_c - radius)
-            s.t.  [[lambda A_c - A, 1/2 (b - lambda b_c)],
-                  [1/2 (b - lambda b_c)^T, t]]  ⪰ 0
+            min_{omega >= 0, d in R}  d + c - omega*(c_c - r)
+            s.t.  [[omega*A_c - A,        1/2*(omega*b_c - b)],
+                   [1/2*(omega*b_c - b)^T,  d                ]]  ⪰ 0
 
-        Then recover a primal maximiser via the KKT stationarity condition:
-            2(A - lambda A_c) eta + (b - lambda b_c) = 0
-            => eta = -1/2 * pinv(A - lambda A_c) * (b - lambda b_c)
-
-        Returns DualQCQPSolution with primal/dual values and feasibility diagnostics.
+        Recover lambda via KKT stationarity:
+            lambda = -1/2 * M(omega*)^† * s(omega*)
+        where M(omega) = omega*A_c - A,  s(omega) = omega*b_c - b.
         """
         try:
             import cvxpy as cp
         except Exception as e:
             raise ImportError(
-                "cvxpy is required for solve_dual_sdp_lambda_t(). "
+                "cvxpy is required for optimize_dual_sdp_lambda_t(). "
                 "Install it (and a solver like SCS/ECOS/MOSEK)."
             ) from e
 
@@ -583,18 +605,17 @@ class OptimisationNonparametricBase:
 
         r = self.r
 
-        lam = cp.Variable(nonneg=True)   # lambda >= 0
-        t = cp.Variable()                # free scalar
+        omega = cp.Variable(nonneg=True)
+        d = cp.Variable()
 
-        # Build LMI:
-        top_left = lam * self.A_c - self.A
-        top_right = 0.5 * (self.b - lam * self.b_c)
+        M_expr = omega * self.A_c - self.A
+        s_expr = 0.5 * (omega * self.b_c - self.b)
         LMI = cp.bmat([
-            [top_left,              cp.reshape(top_right, (n, 1))],
-            [cp.reshape(top_right, (1, n)), cp.reshape(t, (1, 1))]
+            [M_expr,                             cp.reshape(s_expr, (n, 1))],
+            [cp.reshape(s_expr, (1, n)), cp.reshape(d, (1, 1))]
         ])
 
-        objective = cp.Minimize(t + self.c - lam * (self.c_c - r))
+        objective = cp.Minimize(d + self.c - omega * (self.c_c - r))
         constraints = [LMI >> 0]
 
         prob = cp.Problem(objective, constraints)
@@ -608,40 +629,29 @@ class OptimisationNonparametricBase:
         try:
             prob.solve(**solve_kwargs)
         except Exception:
-            # Fallback: SCS is a reasonable default for SDPs
             prob.solve(solver=cp.SCS)
 
-        status = str(prob.status)
-
-        # If the solve failed, return a structured "failed" solution
-        if prob.value is None or lam.value is None or t.value is None:
-            eta_nan = np.full(n, np.nan, dtype=float)
+        if prob.value is None or omega.value is None or d.value is None:
             return {}
 
-        lambda_star = float(lam.value)
+        omega_star = float(omega.value)
         dual_value = float(prob.value)
 
-        # Domain objects for diagnostics (your new notation)
-        M = lambda_star * self.A_c - self.A
-        s = lambda_star * self.b_c - self.b
-        r = self.is_singular_symmetric(M)
-        eta_star = -0.5 * np.linalg.inv(M) @ s
+        # Recover lambda via KKT: lambda = -1/2 * M(omega*)^† * s(omega*)
+        # When s = 0 (b = b_c = 0), lambda lies in ker(M(omega*)) instead.
+        M = omega_star * self.A_c - self.A
+        s = omega_star * self.b_c - self.b
+        M_pinv = np.linalg.pinv(self._sym(M), rcond=tol)
+        lam_star = -0.5 * M_pinv @ s
+        if np.linalg.norm(s) <= tol * max(float(np.linalg.norm(self.b)), 1.0):
+            lam_star = self._complete_lambda_from_kernel(lam_star, M, tol)
+        lam_star = self._canonical_sign(lam_star)
 
-        Q = lambda_star * self.A_c - self.A  # should be PSD
-        s_dual = lambda_star * self.b_c - self.b  # should lie in Range(Q)
-        Q_pinv = np.linalg.pinv(Q, rcond=tol)
-        resid = s_dual - Q @ (Q_pinv @ s_dual)
-
-        min_eig_Q = float(np.linalg.eigvalsh(0.5 * (Q + Q.T)).min())
-        range_ok = float(np.linalg.norm(resid)) <= 1e3 * tol * (1.0 + float(np.linalg.norm(s_dual)))
-
-        # Don't pretend we recovered primal maximiser:
-        # eta_star = np.full(n, np.nan, dtype=float)
-        primal_value = eta_star @ self.A @ eta_star + eta_star @ self.b + self.c
+        primal_value = lam_star @ self.A @ lam_star + lam_star @ self.b + self.c
 
         return {
             "dual_value": dual_value,
-            "eta_star": eta_star,
+            "lambda_star": lam_star,
             "primal_value": primal_value,
-            "lambda_star": lambda_star,
+            "omega_star": omega_star,
         }

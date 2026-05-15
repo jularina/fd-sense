@@ -8,6 +8,7 @@ from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 from numpy.linalg import eigh
 from scipy.special import gamma, kv
+from scipy.stats.qmc import Halton
 
 
 class BaseBasisFunction(ABC):
@@ -107,10 +108,9 @@ class MaternBasisFunction(BaseBasisFunction):
         lengthscale: Optional[float] = None,
         nu: float = 1.5,
         variance: float = 1.0,
-        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        method: Literal["kmeans", "farthest", "halton"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
-        # Optional: enforce centres in ball Θ_B (Assumption A2 uses Θ_B)
         B: Optional[float] = None,
         eps: float = 1e-12,
     ):
@@ -180,32 +180,31 @@ class MaternBasisFunction(BaseBasisFunction):
             n = min(num_centers, m)
             return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
 
-        if method == "random":
-            n = min(num_centers, m)
-            idx = self.rng.choice(m, n, replace=False)
-            return X[idx]
-
         if method == "farthest":
             return self._farthest_point_sampling(X, min(num_centers, m))
 
-        if method == "kmeans_mix":
-            if prior_samples is None:
-                raise ValueError("kmeans_mix requires prior_samples.")
-            Xp = np.asarray(prior_samples, dtype=float)
-            Xpost = np.asarray(posterior_samples, dtype=float)
-            m_post = min(len(Xpost), max(1, num_centers * 50))
-            m_prior = min(len(Xp), max(1, num_centers * 50))
-            Xmix = np.vstack(
-                [
-                    Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
-                    Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
-                ]
-            )
-            return KMeans(
-                n_clusters=min(num_centers, len(Xmix)), random_state=0
-            ).fit(Xmix).cluster_centers_
+        if method == "halton":
+            return self._halton_centers(X, num_centers)
 
         raise ValueError(f"Unknown center selection method: {method}")
+
+    def _halton_centers(self, X: np.ndarray, num_centers: int) -> np.ndarray:
+        """
+        Quasi-uniform centers via a scrambled Halton sequence mapped through
+        the empirical quantiles of X (dimension-wise).
+
+        Halton points u_k ∈ [0,1]^d are mapped as c_{k,j} = Q_j(u_{k,j}),
+        where Q_j is the empirical quantile function of X[:,j].
+        This preserves the O(K^{-1/d}) fill-distance guarantee of the
+        Halton sequence while adapting centers to the data support.
+        """
+        d = X.shape[1]
+        sampler = Halton(d=d, scramble=True, seed=27)
+        u = sampler.random(n=num_centers)          # (K, d) in [0, 1]^d
+        centers = np.empty((num_centers, d), dtype=float)
+        for j in range(d):
+            centers[:, j] = np.quantile(X[:, j], u[:, j])
+        return centers
 
     def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
         n = X.shape[0]
@@ -384,7 +383,7 @@ class MaternBasisFunctionMultidim(BaseBasisFunction):
         metric: Literal["diag", "full"] = "diag",
         nu: float = 1.5,
         variance: float = 1.0,
-        method: Literal["kmeans", "random", "farthest", "kmeans_mix", "quantile_grid"] = "kmeans",
+        method: Literal["kmeans", "farthest", "halton", "quantile_grid"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",  # "prior" or "posterior"
         estimation_centers_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
@@ -499,30 +498,11 @@ class MaternBasisFunctionMultidim(BaseBasisFunction):
             n = min(num_centers, m)
             return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
 
-        if method == "random":
-            n = min(num_centers, m)
-            idx = self.rng.choice(m, n, replace=False)
-            return X[idx]
-
         if method == "farthest":
             return self._farthest_point_sampling(X, min(num_centers, m))
 
-        if method == "kmeans_mix":
-            if prior_samples is None:
-                raise ValueError("kmeans_mix requires prior_samples.")
-            Xp = np.asarray(prior_samples, dtype=float)
-            Xpost = np.asarray(posterior_samples, dtype=float)
-            m_post = min(len(Xpost), max(1, num_centers * 50))
-            m_prior = min(len(Xp), max(1, num_centers * 50))
-            Xmix = np.vstack(
-                [
-                    Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
-                    Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
-                ]
-            )
-            return KMeans(
-                n_clusters=min(num_centers, len(Xmix)), random_state=0
-            ).fit(Xmix).cluster_centers_
+        if method == "halton":
+            return self._halton_centers(X, num_centers)
 
         if method == "quantile_grid":
             return self._select_centers_quantile_grid(X, num_centers=num_centers)
@@ -556,6 +536,19 @@ class MaternBasisFunctionMultidim(BaseBasisFunction):
 
         # trim if too many
         return C[:num_centers]
+
+    def _halton_centers(self, X: np.ndarray, num_centers: int) -> np.ndarray:
+        """
+        Quasi-uniform centers via a scrambled Halton sequence mapped through
+        the empirical quantiles of X (dimension-wise).
+        """
+        d = X.shape[1]
+        sampler = Halton(d=d, scramble=True, seed=27)
+        u = sampler.random(n=num_centers)
+        centers = np.empty((num_centers, d), dtype=float)
+        for j in range(d):
+            centers[:, j] = np.quantile(X[:, j], u[:, j])
+        return centers
 
     def _farthest_point_sampling(self, X: np.ndarray, k: int) -> np.ndarray:
         n = X.shape[0]
@@ -811,7 +804,7 @@ class RBFBasisFunction(BaseBasisFunction):
         num_basis_functions: int,
         prior_samples: Optional[np.ndarray] = None,
         lengthscale: Optional[float] = None,
-        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        method: Literal["kmeans", "farthest"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
     ):
@@ -856,25 +849,8 @@ class RBFBasisFunction(BaseBasisFunction):
             n = min(num_centers, m)
             return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
 
-        if method == "random":
-            n = min(num_centers, m)
-            idx = self.rng.choice(m, n, replace=False)
-            return X[idx]
-
         if method == "farthest":
             return self._farthest_point_sampling(X, min(num_centers, m))
-
-        if method == "kmeans_mix":
-            Xp = np.asarray(prior_samples, dtype=float)
-            Xpost = np.asarray(posterior_samples, dtype=float)
-            m_post = min(len(Xpost), max(1, num_centers * 50))
-            m_prior = min(len(Xp), max(1, num_centers * 50))
-            Xmix = np.vstack([
-                Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
-                Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
-            ])
-
-            return KMeans(n_clusters=min(num_centers, len(Xmix)), random_state=0).fit(Xmix).cluster_centers_
 
         raise ValueError(f"Unknown center selection method: {method}")
 
@@ -937,7 +913,7 @@ class SigmoidBasisFunction(BaseBasisFunction):
         num_basis_functions: int,
         prior_samples: Optional[np.ndarray] = None,
         scale: Optional[float] = None,
-        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        method: Literal["kmeans", "farthest"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",
         scale_multiplier: float = 1.0,
     ):
@@ -983,25 +959,8 @@ class SigmoidBasisFunction(BaseBasisFunction):
             n = min(num_centers, m)
             return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
 
-        if method == "random":
-            n = min(num_centers, m)
-            idx = self.rng.choice(m, n, replace=False)
-            return X[idx]
-
         if method == "farthest":
             return self._farthest_point_sampling(X, min(num_centers, m))
-
-        if method == "kmeans_mix":
-            Xp = np.asarray(prior_samples, dtype=float)
-            Xpost = np.asarray(posterior_samples, dtype=float)
-            m_post = min(len(Xpost), max(1, num_centers * 50))
-            m_prior = min(len(Xp), max(1, num_centers * 50))
-            Xmix = np.vstack([
-                Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
-                Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
-            ])
-
-            return KMeans(n_clusters=min(num_centers, len(Xmix)), random_state=0).fit(Xmix).cluster_centers_
 
         raise ValueError(f"Unknown center selection method: {method}")
 
@@ -1084,7 +1043,7 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
         lengthscale: Optional[np.ndarray] = None,
         precision: Optional[np.ndarray] = None,
         metric: Literal["diag", "full"] = "diag",
-        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        method: Literal["kmeans", "farthest"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",  # "prior" or "posterior"
         scale_multiplier: float = 1.0,
         floor_frac: float = 0.1,
@@ -1196,26 +1155,8 @@ class RBFBasisFunctionMultidim(BaseBasisFunction):
             n = min(num_centers, m)
             return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
 
-        if method == "random":
-            n = min(num_centers, m)
-            idx = self.rng.choice(m, n, replace=False)
-            return X[idx]
-
         if method == "farthest":
             return self._farthest_point_sampling(X, min(num_centers, m))
-
-        if method == "kmeans_mix":
-            if prior_samples is None:
-                raise ValueError("kmeans_mix requires prior_samples.")
-            Xp = np.asarray(prior_samples, dtype=float)
-            Xpost = np.asarray(posterior_samples, dtype=float)
-            m_post = min(len(Xpost), max(1, num_centers * 50))
-            m_prior = min(len(Xp), max(1, num_centers * 50))
-            Xmix = np.vstack([
-                Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
-                Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
-            ])
-            return KMeans(n_clusters=min(num_centers, len(Xmix)), random_state=0).fit(Xmix).cluster_centers_
 
         raise ValueError(f"Unknown center selection method: {method}")
 
@@ -1401,7 +1342,7 @@ class SigmoidBasisFunctionMultidim(BaseBasisFunction):
         scale: Optional[np.ndarray] = None,              # (d,) for diag
         precision: Optional[np.ndarray] = None,          # (d,d) for full
         metric: Literal["diag", "full"] = "diag",
-        method: Literal["kmeans", "random", "farthest", "kmeans_mix"] = "kmeans",
+        method: Literal["kmeans", "farthest"] = "kmeans",
         estimation_samples_source: Optional[str] = "prior",  # "prior" or "posterior"
         scale_multiplier: float = 1.0,
         floor_frac: float = 0.1,
@@ -1513,26 +1454,8 @@ class SigmoidBasisFunctionMultidim(BaseBasisFunction):
             n = min(num_centers, m)
             return KMeans(n_clusters=n, random_state=0).fit(X).cluster_centers_
 
-        if method == "random":
-            n = min(num_centers, m)
-            idx = self.rng.choice(m, n, replace=False)
-            return X[idx]
-
         if method == "farthest":
             return self._farthest_point_sampling(X, min(num_centers, m))
-
-        if method == "kmeans_mix":
-            if prior_samples is None:
-                raise ValueError("kmeans_mix requires prior_samples.")
-            Xp = np.asarray(prior_samples, dtype=float)
-            Xpost = np.asarray(posterior_samples, dtype=float)
-            m_post = min(len(Xpost), max(1, num_centers * 50))
-            m_prior = min(len(Xp), max(1, num_centers * 50))
-            Xmix = np.vstack([
-                Xpost[self.rng.choice(len(Xpost), m_post, replace=False)],
-                Xp[self.rng.choice(len(Xp), m_prior, replace=False)],
-            ])
-            return KMeans(n_clusters=min(num_centers, len(Xmix)), random_state=0).fit(Xmix).cluster_centers_
 
         raise ValueError(f"Unknown center selection method: {method}")
 

@@ -27,12 +27,7 @@ data:
 model:
   _target_: src.bayesian_model.gaussian.SimpleGaussianModel
 
-ksd:
-  kernel:
-    _target_: src.kernels.inverse_multiquadric.InverseUnivariateMultiquadricKernel
-    lengthscale: 1.0
-    alpha: 0.5
-    heuristic: False
+fd:
   optimize:
     prior:
       Gaussian:
@@ -44,8 +39,9 @@ ksd:
               mu: 21
               sigma: 4
       nonparametric:
-        basis_funcs_type: MaternBasisFunction # PolynomialBasisFunction RBFBasisFunction SigmoidBasisFunction
-        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "scale_multiplier": 1} # {"degree": 3} for polynomial, {"num_basis_functions": 5, "method": "kmeans", "lengthscale": 3.0,  "scale_multiplier": 1} for rbf, {"num_basis_functions": 5, "method": "kmeans", "scale": 5.0, "scale_multiplier": 1.0} for sigmoid
+        basis_funcs_type: MaternBasisFunction
+        basis_funcs_kwargs: {"num_basis_functions": 5, "method": "kmeans", "scale_multiplier": 1}
+        base_function: src.distributions.gaussian.Gaussian
 
       LogNormal:
           parameters_box_range:

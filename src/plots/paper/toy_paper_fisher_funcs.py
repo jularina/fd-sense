@@ -8,7 +8,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.colors as mcolors
 from matplotlib.colors import to_rgb, Normalize, ListedColormap, BoundaryNorm
 import matplotlib.cm as cmx
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse, Patch
 from matplotlib.cm import ScalarMappable
 from scipy.special import logsumexp
 import os
@@ -804,7 +804,7 @@ def plot_mu_sigma_contour(
 
 def plot_sdp_densities_and_logprior(
     basis_function,
-    psi_sdp_list: list[np.ndarray],
+    sdp_lambda_list: list[np.ndarray],
     radius_labels: list[float],
     estimates: list[float],
     prior_distribution,
@@ -839,8 +839,8 @@ def plot_sdp_densities_and_logprior(
 
     # --- Names & labels ---
     names = plot_cfg.plot.param_latex_names
-    ksd_label = names.get("estimatedSensitivityMeasureWithK")
-    xlabel = names.get("mu_0", "theta")
+    fd_label = names.get("estimatedSensitivityMeasure")
+    xlabel = names.get("theta")
     ylabel_density = names.get("nonparametric_prior", "Density")
     ylabel_logprior = names.get("log_prior", "log_prior")
     true_density_label = names.get("logbaseprior", "True Prior Density")
@@ -860,7 +860,7 @@ def plot_sdp_densities_and_logprior(
 
     # ===== Top panel: densities =====
     # SDP densities
-    for i, (psi, r_label, ksd) in enumerate(zip(psi_sdp_list, radius_labels, estimates)):
+    for i, (psi, r_label, ksd) in enumerate(zip(sdp_lambda_list, radius_labels, estimates)):
         f = (Phi_x @ psi).flatten()
         logZ = logsumexp(f) + np.log(dx)
         p_hat = np.exp(f - logZ)
@@ -892,7 +892,7 @@ def plot_sdp_densities_and_logprior(
     # ===== Bottom panel: log prior =====
 
     # SDP log prior approximations (centered)
-    for i, (psi, r_label, _) in enumerate(zip(psi_sdp_list, radius_labels, estimates)):
+    for i, (psi, r_label, _) in enumerate(zip(sdp_lambda_list, radius_labels, estimates)):
         f = (Phi_x @ psi).flatten()
         c = float(np.mean(log_prior_true - f))  # match mean
         color = palette[i % len(palette)]
@@ -925,7 +925,7 @@ def plot_sdp_densities_and_logprior(
     handles, labels = ax_density.get_legend_handles_labels()
     leg = fig.legend(
         handles, labels,
-        title=ksd_label,
+        title=fd_label,
         loc="center left",
         bbox_to_anchor=(0.95, 0.5),
         frameon=False,
@@ -945,7 +945,7 @@ def plot_sdp_densities_and_logprior(
         plt.tight_layout(rect=[0, 0, 0.95, 1])
 
     # ===== Save =====
-    filename = "toy_univariate_gaussian_model_nonparametric_qcqp.pdf"
+    filename = "toy_univariate_gaussian_model_nonparametric.pdf"
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -990,7 +990,7 @@ def plot_sdp_2d_densities(
 
     # --- Labels ---
     names = getattr(plot_cfg.plot, "param_latex_names", {})
-    ksd_label = names.get("estimatedSensitivityMeasureWithK")
+    fd_label = names.get("estimatedSensitivityMeasure")
     xlabel = names.get("mu_01", r"$\mu_{01}$")
     ylabel = names.get("mu_02", r"$\mu_{02}$")
     approx_sym = r"$\approx$"
@@ -1057,7 +1057,7 @@ def plot_sdp_2d_densities(
     legend_handles.append(Line2D([0], [0], color="dimgray", lw=1.5, label=r"$\Pi_{\mathrm{ref}}$"))
     fig.legend(
         handles=legend_handles,
-        title=ksd_label,
+        title=fd_label,
         loc="center left",
         bbox_to_anchor=(0.96, 0.5),
         frameon=False,
@@ -3139,3 +3139,196 @@ def plot_copula_all_pairs(
         path = os.path.join(output_dir, filename)
         fig.savefig(path, bbox_inches="tight")
         plt.close(fig)
+
+
+def plot_prior_neighbourhood_comparison(
+    optimizer,
+    prior_distribution,
+    plot_cfg,
+    output_dir: str,
+    domain: tuple = (-8, 8),
+    resolution: int = 500,
+    epsilon: float = 0.2,
+    n_nonparam_samples: int = 40,
+    seed: int = 42,
+    mu_range: tuple = None,
+    sigma_range: tuple = None,
+    n_param_grid: int = 12,
+) -> None:
+    """
+    Four separate figures comparing the flexibility of prior neighbourhoods.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    plt.rcParams.update({
+        "font.size": plot_cfg.plot.font.size,
+        "font.family": plot_cfg.plot.font.family,
+        "text.usetex": plot_cfg.plot.font.use_tex,
+        "text.latex.preamble": r"\usepackage{amsmath}",
+    })
+
+    names = plot_cfg.plot.param_latex_names
+    fd_label = names.get("estimatedSensitivityMeasure")
+    xlabel = names.get("theta")
+    ylabel = names.get("nonparametric_prior", "Density")
+    xlabel = names.get("theta", r"$\theta$")
+    ref_label = names.get("baseprior", r"$\Pi_\mathrm{ref}$")
+
+    palette = list(getattr(plot_cfg.plot.color_palette, "colors", []))
+    if not palette:
+        palette = ["#005500", "#007200", "#9EB8A0", "#ADEBC8"]
+    col_band = palette[2] if len(palette) > 2 else palette[-1]
+    col_member = palette[1] if len(palette) > 1 else palette[0]
+
+    # shared grid
+    x = np.linspace(domain[0], domain[1], resolution)   # (R,)
+    dx = float(x[1] - x[0])
+    x_col = x[:, None]                                   # (R, 1) for basis eval
+
+    pi_ref = prior_distribution.pdf(x_col).flatten()    # (R,)
+    log_pi_ref = np.log(np.maximum(pi_ref, 1e-300))
+
+    def _make_fig():
+        return plt.subplots(
+            figsize=(plot_cfg.plot.figure.size.width,
+                     plot_cfg.plot.figure.size.height),
+            dpi=plot_cfg.plot.figure.dpi,
+        )
+
+    def _finish(fig, ax, filename):
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_ylim(bottom=0)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.legend(
+            handles=[Line2D([0], [0], color="black", linestyle="--", linewidth=1.5)],
+            labels=[ref_label],
+            frameon=False,
+            fontsize=plt.rcParams["font.size"] * 0.85,
+        )
+        if getattr(plot_cfg.plot.figure, "tight_layout", False):
+            fig.tight_layout()
+        path = os.path.join(output_dir, filename)
+        fig.savefig(path, format="pdf", bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved {path}")
+
+    # ------------------------------------------------------------------
+    # Figure a: nonparametric (basis-function) neighbourhood
+    # ------------------------------------------------------------------
+    Phi_x = optimizer.basis_function.evaluate(x_col)   # (R, 1, K) for d=1
+
+    rng = np.random.default_rng(seed)
+    np_densities = []
+    for _ in range(n_nonparam_samples):
+        v = rng.standard_normal(optimizer.d)
+        v_Ac_v = float(v @ optimizer.A_c @ v)
+        if v_Ac_v < 1e-14:
+            continue
+        alpha = np.sqrt(max(optimizer.r - optimizer.c_c, 0.0) / v_Ac_v)
+        lam = alpha * v
+        log_p = (Phi_x @ lam).flatten() + log_pi_ref   # (R,)
+        log_Z = float(logsumexp(log_p) + np.log(dx))
+        np_densities.append(np.exp(log_p - log_Z))
+
+    np_arr = np.array(np_densities)   # (n, R)
+    lo_a, hi_a = np_arr.min(axis=0), np_arr.max(axis=0)
+
+    fig_a, ax_a = _make_fig()
+    ax_a.fill_between(x, lo_a, hi_a, color=col_band, alpha=0.5)
+    for p in np_arr[:: max(1, len(np_densities) // 8)]:
+        ax_a.plot(x, p, color=col_member, alpha=0.3, linewidth=0.7)
+    ax_a.plot(x, pi_ref, color="black", linestyle="--", linewidth=1.5)
+    _finish(fig_a, ax_a, "neighbourhood_nonparametric.pdf")
+
+    # ------------------------------------------------------------------
+    # Figure b: Huber epsilon-contamination (unimodal)
+    # ------------------------------------------------------------------
+    domain_mid = 0.5 * (domain[0] + domain[1])
+    domain_half = 0.5 * (domain[1] - domain[0])
+
+    contaminations = []
+    # shifts across domain
+    for mu_c in np.linspace(domain[0] + 0.15 * domain_half,
+                             domain[1] - 0.15 * domain_half, 10):
+        sig_c = domain_half * 0.12
+        contaminations.append(
+            np.exp(-0.5 * ((x - mu_c) / sig_c) ** 2) / (sig_c * np.sqrt(2 * np.pi))
+        )
+    # varying widths at the centre
+    for w_frac in [0.06, 0.18, 0.40]:
+        sig_c = domain_half * w_frac
+        contaminations.append(
+            np.exp(-0.5 * ((x - domain_mid) / sig_c) ** 2) / (sig_c * np.sqrt(2 * np.pi))
+        )
+
+    huber_list = []
+    for q in contaminations:
+        mix = (1.0 - epsilon) * pi_ref + epsilon * q
+        Z = float(np.trapz(mix, x))
+        if Z > 0:
+            huber_list.append(mix / Z)
+
+    huber_arr = np.array(huber_list)
+    lo_b, hi_b = huber_arr.min(axis=0), huber_arr.max(axis=0)
+
+    fig_b, ax_b = _make_fig()
+    ax_b.fill_between(x, lo_b, hi_b, color=col_band, alpha=0.5)
+    for p in huber_arr[:: max(1, len(huber_list) // 8)]:
+        ax_b.plot(x, p, color=col_member, alpha=0.3, linewidth=0.7)
+    ax_b.plot(x, pi_ref, color="black", linestyle="--", linewidth=1.5)
+    _finish(fig_b, ax_b, "neighbourhood_huber.pdf")
+
+    # ------------------------------------------------------------------
+    # Figure c: density-band neighbourhood
+    # ------------------------------------------------------------------
+    x_std = (x - domain_mid) / domain_half   # approx [-1, 1]
+
+    def _band_member(w_raw):
+        w = np.clip(w_raw, 1.0 - epsilon, 1.0 + epsilon)
+        p = pi_ref * w
+        Z = float(np.trapz(p, x))
+        return p / Z if Z > 0 else pi_ref.copy()
+
+    band_members = [
+        _band_member(np.full_like(x, 1.0 + epsilon)),          # uniform inflate
+        _band_member(np.full_like(x, 1.0 - epsilon)),          # uniform deflate
+        _band_member(1.0 + epsilon * x_std),                    # right tilt
+        _band_member(1.0 - epsilon * x_std),                    # left tilt
+        _band_member(1.0 + epsilon * (2.0 * x_std**2 - 1.0)),  # bowl weight
+        _band_member(1.0 - epsilon * (2.0 * x_std**2 - 1.0)),  # hat weight
+        _band_member(1.0 + epsilon * np.sin(np.pi * x_std)),   # sine modulation
+        _band_member(1.0 - epsilon * np.sin(np.pi * x_std)),   # sine modulation
+    ]
+
+    band_arr = np.array(band_members)
+    lo_c, hi_c = band_arr.min(axis=0), band_arr.max(axis=0)
+
+    fig_c, ax_c = _make_fig()
+    ax_c.fill_between(x, lo_c, hi_c, color=col_band, alpha=0.5)
+    for p in band_arr[::2]:
+        ax_c.plot(x, p, color=col_member, alpha=0.3, linewidth=0.7)
+    ax_c.plot(x, pi_ref, color="black", linestyle="--", linewidth=1.5)
+    _finish(fig_c, ax_c, "neighbourhood_density_band.pdf")
+
+    # ------------------------------------------------------------------
+    # Figure d: parametric Gaussian neighbourhood
+    # ------------------------------------------------------------------
+    # Default ranges: ±half the domain span around the reference parameters
+    if mu_range is None:
+        mu_range = (domain_mid - 0.4 * domain_half, domain_mid + 0.4 * domain_half)
+    if sigma_range is None:
+        sigma_range = (domain_half * 0.1, domain_half * 0.5)
+
+    mu_vals = np.linspace(mu_range[0], mu_range[1], n_param_grid)
+    sigma_vals = np.linspace(sigma_range[0], sigma_range[1], n_param_grid)
+
+    fig_d, ax_d = _make_fig()
+    for mu_p in mu_vals:
+        for sigma_p in sigma_vals:
+            p = (np.exp(-0.5 * ((x - mu_p) / sigma_p) ** 2)
+                 / (sigma_p * np.sqrt(2 * np.pi)))
+            ax_d.plot(x, p, color=col_member, alpha=0.3, linewidth=0.7)
+    ax_d.plot(x, pi_ref, color="black", linestyle="--", linewidth=1.5)
+    _finish(fig_d, ax_d, "neighbourhood_parametric.pdf")

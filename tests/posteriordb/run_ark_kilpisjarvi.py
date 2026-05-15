@@ -9,7 +9,7 @@ from hydra.utils import instantiate, get_original_cwd
 from omegaconf import DictConfig
 import json
 
-from src.discrepancies.posterior_fisher import PosteriorFDBase
+from src.discrepancies.posterior_fisher import PosteriorFDParametric as PosteriorFDBase
 from src.plots.paper.posterior_db_paper_funcs import *
 from src.optimization.corner_points_fisher import (
     OptimizationCornerPointsCompositePrior
@@ -76,7 +76,7 @@ def plot_time_series(output_dir: str, plot_cfg, prefix: str = "kilpisjarvi") -> 
     print(f"Saved plot to {os.path.join(output_dir, prefix + '_time_series.pdf')}")
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_kilpisjarvi")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_kilpisjarvi")
 def main(cfg: DictConfig) -> None:
     print("=== FD for PosteriorDB model ===")
     model = instantiate(cfg.model, data_config=cfg.data)
@@ -377,7 +377,7 @@ def print_predictive_variance_decomposition(
     print(f"  95% CI half-width (mean over t): {np.mean(1.96 * pred_std):.6f}")
 
 
-@hydra.main(version_base="1.1", config_path="../../configs/paper/ksd_calculation/real/", config_name="ark_kilpisjarvi")
+@hydra.main(version_base="1.1", config_path="../../configs/paper/real/", config_name="ark_kilpisjarvi")
 def plot_posterior_predictive(cfg: DictConfig) -> None:
     prefix = cfg.playground.get("output_prefix", "kilpisjarvi_param")
     plot_config_path = os.path.join(get_original_cwd(), "configs/plots/overleaf_plots_settings.yaml")
